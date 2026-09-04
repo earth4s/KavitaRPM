@@ -1,9 +1,6 @@
 name: Package Kavita RPM
 
 on:
-  push:
-    branches:
-      - agent/add-kavita-rpm-packaging
   schedule:
     # GitHub schedules use UTC. Check upstream four times per day.
     - cron: "17 */6 * * *"
@@ -309,7 +306,7 @@ jobs:
     needs:
       - prepare
       - build
-    if: needs.prepare.outputs.should_build == 'true' && github.event_name != 'push'
+    if: needs.prepare.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
 
     steps:
