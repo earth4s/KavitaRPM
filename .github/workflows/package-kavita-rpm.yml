@@ -119,7 +119,7 @@ jobs:
         include:
           # Standard glibc x86_64 build.
           - runner: ubuntu-24.04
-            runner_arch: x86_64
+            expected_uname: x86_64
             rpm_arch: x86_64
             kavita_rid: linux-x64
             rpm_name: kavita
@@ -130,7 +130,7 @@ jobs:
           # runner, so this only repackages the already-built upstream binary
           # on an ARM64 host. The spec disables binary rewriting/stripping.
           - runner: ubuntu-24.04-arm
-            runner_arch: aarch64
+            expected_uname: aarch64
             rpm_arch: armv7hl
             kavita_rid: linux-arm
             rpm_name: kavita
@@ -139,7 +139,7 @@ jobs:
 
           # Standard glibc ARM64 build.
           - runner: ubuntu-24.04-arm
-            runner_arch: aarch64
+            expected_uname: aarch64
             rpm_arch: aarch64
             kavita_rid: linux-arm64
             rpm_name: kavita
@@ -149,7 +149,7 @@ jobs:
           # The musl x64 archive must have a distinct RPM name because it has
           # the same RPM architecture as the glibc x64 package.
           - runner: ubuntu-24.04
-            runner_arch: x86_64
+            expected_uname: x86_64
             rpm_arch: x86_64
             kavita_rid: linux-musl-x64
             rpm_name: kavita-musl
@@ -179,13 +179,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
           KAVITA_RID: ${{ matrix.kavita_rid }}
-          RUNNER_ARCH: ${{ matrix.runner_arch }}
+          EXPECTED_UNAME: ${{ matrix.expected_uname }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$(uname -m)" != "${RUNNER_ARCH}" ]]; then
-            echo "Expected ${RUNNER_ARCH} runner, got $(uname -m)." >&2
+          if [[ "$(uname -m)" != "${EXPECTED_UNAME}" ]]; then
+            echo "Expected ${EXPECTED_UNAME} runner, got $(uname -m)." >&2
             exit 1
           fi
 
