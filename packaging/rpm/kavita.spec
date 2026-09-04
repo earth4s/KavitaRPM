@@ -1,18 +1,19 @@
 %global _build_id_links none
 %global debug_package %{nil}
 
+# Kavita's release archives are already-built application payloads. Keep their
+# binaries byte-for-byte intact instead of running host-architecture brp-strip
+# processing. This is also what permits the linux-arm archive to be wrapped as
+# an armv7hl RPM on GitHub's ARM64 runner.
+%global __os_install_post %{nil}
+
 %global kavita_version %{?kavita_version_override}%{!?kavita_version_override:0.0.0}
 %global kavita_release %{?kavita_release_override}%{!?kavita_release_override:1}
+%global kavita_rid %{?kavita_rid_override}%{!?kavita_rid_override:linux-x64}
+%global kavita_name %{?kavita_name_override}%{!?kavita_name_override:kavita}
+%global kavita_musl %{?kavita_musl_override}%{!?kavita_musl_override:0}
 
-%ifarch x86_64
-%global kavita_rid linux-x64
-%endif
-
-%ifarch aarch64
-%global kavita_rid linux-arm64
-%endif
-
-Name:           kavita
+Name:           %{kavita_name}
 Version:        %{kavita_version}
 Release:        %{kavita_release}%{?dist}
 Summary:        Cross-platform reading server for books, comics, and manga
@@ -22,22 +23,30 @@ URL:            https://github.com/Kareadita/Kavita
 Source0:        kavita-%{kavita_rid}.tar.gz
 Source1:        kavita.service
 
-ExclusiveArch:  x86_64 aarch64
+ExclusiveArch:  x86_64 aarch64 armv7hl
 
 BuildRequires:  systemd-rpm-macros
 
-Requires:       libgdiplus
-Requires:       libicu
 Requires:       tzdata
 Requires(pre):  shadow-utils
 Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
 
+%if 0%{?kavita_musl}
+# This is a distinct package because the upstream musl and glibc archives are
+# both x86_64 and cannot share the same RPM NEVRA.
+Conflicts:      kavita
+%else
+Requires:       libgdiplus
+Requires:       libicu
+Conflicts:      kavita-musl
+%endif
+
 %description
 Kavita is a self-hosted reading server for manga, comics, PDFs, EPUB books,
-and other reading material. This package repackages Kavita's official,
-self-contained Linux release and installs a systemd service.
+and other reading material. This package repackages one of Kavita's official,
+self-contained Linux release archives and installs a systemd service.
 
 %prep
 %setup -q -n Kavita
@@ -104,5 +113,9 @@ exit 0
 %config(noreplace) %attr(0640,kavita,kavita) /opt/Kavita/config/appsettings-init.json
 
 %changelog
+* Thu Sep 03 2026 John Martinez <earth4s@users.noreply.github.com> - 0.0.0-1
+- Package all official Kavita Linux release variants
+- Add ARM32 armv7hl and musl x86_64 RPM variants
+
 * Tue Aug 04 2026 John Martinez <earth4s@users.noreply.github.com> - 0.0.0-1
 - Add automated RPM repackaging for official Kavita Linux releases
