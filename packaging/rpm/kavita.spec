@@ -72,14 +72,22 @@ chmod 0750 %{buildroot}/opt/Kavita/config
 chmod 0640 %{buildroot}/opt/Kavita/config/appsettings-init.json
 
 # Generate the payload list dynamically so new upstream runtime files are
-# included automatically. The writable config directory is packaged below.
+# included automatically. Quote every path because the upstream web assets
+# contain directory names with spaces. Construct the RPM "percent-dir" marker
+# at shell runtime so neither rpmbuild nor find interprets it as formatting.
 pushd %{buildroot}
+pct="$(printf '\045')"
 find opt/Kavita -mindepth 1 \
     -path 'opt/Kavita/config' -prune -o \
-    -type d -printf '%%dir /%p\n' -o \
-    -type f -printf '/%p\n' -o \
-    -type l -printf '/%p\n' \
-    > %{_builddir}/kavita-files.list
+    \( -type d -o -type f -o -type l \) -print |
+while IFS= read -r path; do
+    escaped="$(printf '%s' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    if [ -d "$path" ] && [ ! -L "$path" ]; then
+        echo "${pct}dir \"/${escaped}\""
+    else
+        echo "\"/${escaped}\""
+    fi
+done > %{_builddir}/kavita-files.list
 popd
 
 %pre
@@ -116,6 +124,7 @@ exit 0
 * Thu Sep 03 2026 John Martinez <earth4s@users.noreply.github.com> - 0.0.0-1
 - Package all official Kavita Linux release variants
 - Add ARM32 armv7hl and musl x86_64 RPM variants
+- Fix dynamic file list handling for directories with spaces
 
 * Tue Aug 04 2026 John Martinez <earth4s@users.noreply.github.com> - 0.0.0-1
 - Add automated RPM repackaging for official Kavita Linux releases
