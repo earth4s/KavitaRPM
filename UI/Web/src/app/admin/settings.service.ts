@@ -10,6 +10,7 @@ import {FieldMappingsImportResult, ImportSettings} from "../_models/import-field
 import {AuthorityValidationResult, OidcPublicConfig} from "./_models/oidc-config";
 import {RunMetadataMappingsRequest} from "../_models/metadata/run-metadata-mappings-request";
 import {KepubifyStatus} from "./_models/kepubify-status";
+import {ComicVineConnectionResult, ComicVineSettings} from './_models/comicvine-settings';
 
 /**
  * Used only for the Test Email Service call
@@ -31,6 +32,22 @@ export class SettingsService {
 
   getServerSettings() {
     return this.http.get<ServerSettings>(this.baseUrl + 'settings');
+  }
+
+  getComicVineSettings() {
+    return this.http.get<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  saveComicVineSettings(apiKey: string) {
+    return this.http.post<ComicVineSettings>(this.baseUrl + 'settings/comicvine', {apiKey});
+  }
+
+  removeComicVineSettings() {
+    return this.http.delete<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  testComicVineConnection() {
+    return this.http.post<ComicVineConnectionResult>(this.baseUrl + 'settings/comicvine/test', {});
   }
 
   getPublicOidcConfig() {

@@ -7,6 +7,7 @@ using AutoMapper;
 using Hangfire;
 using Kavita.API.Database;
 using Kavita.API.Services;
+using Kavita.API.Services.Metadata;
 using Kavita.Common;
 using Kavita.Common.Extensions;
 using Kavita.Common.Helpers;
@@ -40,6 +41,49 @@ public class SettingsController(
     IKepubifyConverterService kepubifyConverterService)
     : BaseApiController
 {
+    [HttpGet("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> GetComicVineSettings(
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        return Ok(await comicVineSettings.GetStatusAsync(HttpContext.RequestAborted));
+    }
+
+    [HttpPost("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> SaveComicVineSettings(UpdateComicVineSettingsDto dto,
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (string.IsNullOrWhiteSpace(dto.ApiKey) || dto.ApiKey.Trim().Length > 256
+            || dto.ApiKey.Trim().Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            return BadRequest();
+        await comicVineSettings.SaveAsync(dto.ApiKey, ct);
+        return Ok(await comicVineSettings.GetStatusAsync(ct));
+    }
+
+    [HttpDelete("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> RemoveComicVineSettings(
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        var ct = HttpContext.RequestAborted;
+        await comicVineSettings.RemoveAsync(ct);
+        return Ok(await comicVineSettings.GetStatusAsync(ct));
+    }
+
+    [HttpPost("comicvine/test")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineConnectionResultDto>> TestComicVineConnection(
+        [FromServices] IComicVineService comicVine)
+    {
+        return Ok(new ComicVineConnectionResultDto(await comicVine.TestConnectionAsync(HttpContext.RequestAborted)));
+    }
+
     /// <summary>
     /// Returns the base url for this instance (if set)
     /// </summary>

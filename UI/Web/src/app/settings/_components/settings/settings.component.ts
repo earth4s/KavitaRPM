@@ -45,6 +45,7 @@ import {
   ManagePublicMetadataSettingsComponent
 } from "../../../admin/manage-public-metadata-settings/manage-public-metadata-settings.component";
 import {ImportMappingsComponent} from "../../../admin/import-mappings/import-mappings.component";
+import {ManageComicVineComponent} from '../../../admin/manage-comicvine/manage-comicvine.component';
 import {ManageOpenIDConnectComponent} from "../../../admin/manage-open-idconnect/manage-open-idconnect.component";
 import {FontManagerComponent} from "../../../user-settings/font-manager/font-manager/font-manager.component";
 import {ServerActivityComponent} from "../../../admin/server-activity/server-activity.component";
@@ -101,6 +102,7 @@ import {
     ManageOpenIDConnectComponent,
     ManagePublicMetadataSettingsComponent,
     ImportMappingsComponent,
+    ManageComicVineComponent,
     FontManagerComponent,
     ServerActivityComponent,
     ServerDevicesComponent,

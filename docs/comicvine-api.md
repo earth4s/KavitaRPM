@@ -8,12 +8,27 @@ asynchronous enrichment runs in `ProcessSeries` before chapter metadata is saved
 ## Enable
 
 1. Sign in at <https://comicvine.gamespot.com/api/> and obtain your own API key.
-2. Set `KAVITA_COMICVINE_API_KEY` in the Kavita server process environment and
-   restart Kavita. With no key, no requests are made. Keep the key out of Git.
+2. As a Kavita administrator, open **Settings > Import > Comic Vine**. Enter the
+   key, select **Save API key**, then **Test connection**. Changes take effect on
+   the next lookup without restarting. The test makes a small, uncached request
+   directly to Comic Vine and uses the same request limits as scanning.
 3. Enable metadata reading for the library and run a **forced library scan**.
    A normal incremental scan intentionally skips unchanged files.
 
-For a systemd installation, use `systemctl edit kavita` (substitute your unit's
+Keys saved through Settings are protected using ASP.NET Core Data Protection and
+stored in the server database. Only administrators can read credential status,
+save/replace/remove a key or test the connection. Neither the settings response nor
+the general server settings includes the key. The input is blank when revisiting
+the page. Debug exports scrub the protected setting and the Data Protection keys.
+
+**Replace API key** updates the credential immediately, clears cached responses and
+the old credential's failure cooldown, and retains hourly request accounting.
+**Remove saved key** deletes it; if an environment key is configured, that key then
+becomes active. With neither credential configured, no requests are made.
+
+An environment key remains supported for unattended installations. A saved key
+takes priority over `KAVITA_COMICVINE_API_KEY`. For a systemd installation, use
+`systemctl edit kavita` (substitute your unit's
 actual name) and add:
 
 ```ini
@@ -22,7 +37,8 @@ Environment="KAVITA_COMICVINE_API_KEY=YOUR_API_KEY"
 ```
 
 Then restart the service. Treat this setting as a secret and restrict who can read
-the unit override. To disable direct lookups, remove the variable and restart.
+the unit override. To disable direct lookups entirely, remove any saved key in
+Settings and remove the environment variable, then restart.
 
 ## Matching
 

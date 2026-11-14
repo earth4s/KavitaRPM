@@ -137,7 +137,7 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
-            await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
+            var directComicVineEnabled = await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
 
             // parsedInfos[0] is not the first volume or chapter. We need to find it using a ComicInfo check (as it uses firstParsedInfo for series sort)
             var firstParsedInfo = parsedInfos.FirstOrDefault(p => p.ComicInfo != null, firstInfo);
@@ -159,8 +159,7 @@ public class ProcessSeries(
                 DatabasePeople = databasePeople,
                 Kept = kept,
                 ForceUpdate = args.ForceUpdate,
-                PreserveMissingComicVineMetadata = comicVineService.IsEnabled && library.EnableMetadata
-                    && library.Type == LibraryType.ComicVine,
+                PreserveMissingComicVineMetadata = directComicVineEnabled,
             });
             var chaptersMs = stepWatch.ElapsedMilliseconds;
 

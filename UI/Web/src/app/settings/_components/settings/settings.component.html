@@ -211,6 +211,16 @@
             }
           }
 
+          @case (SettingsTabId.ComicVine) {
+            @if (accountService.hasAdminRole()) {
+              @defer {
+                <div class="scale col-md-12">
+                  <app-manage-comicvine />
+                </div>
+              }
+            }
+          }
+
           <!-- Kavita+ Tabs (any user, license required) -->
           @case (SettingsTabId.Scrobbling) {
             @if (hasActiveLicense()) {

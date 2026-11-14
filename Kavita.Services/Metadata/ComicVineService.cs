@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,7 +23,8 @@ namespace Kavita.Services.Metadata;
 /// this service runs before the scanner builds chapter metadata and applies field locks.
 /// </summary>
 public sealed class ComicVineService(
-    HttpClient client, string? apiKey, ILogger<ComicVineService> logger, TimeProvider timeProvider)
+    HttpClient client, string? apiKey, ILogger<ComicVineService> logger, TimeProvider timeProvider,
+    Func<CancellationToken, Task<string?>>? resolveApiKey = null)
     : IComicVineService, IDisposable
 {
     private const string ApiBase = "https://comicvine.gamespot.com/api/";
@@ -38,19 +41,21 @@ public sealed class ComicVineService(
     private DateTimeOffset _lastRequest = DateTimeOffset.MinValue;
     private DateTimeOffset _blockedUntil = DateTimeOffset.MinValue;
 
-    public bool IsEnabled => !string.IsNullOrWhiteSpace(apiKey);
+    private string _credentialFingerprint = string.Empty;
 
-    public async Task EnrichAsync(IList<ParserInfo> infos, LibraryType libraryType, bool enableMetadata,
+    public async Task<bool> EnrichAsync(IList<ParserInfo> infos, LibraryType libraryType, bool enableMetadata,
         CancellationToken ct = default)
     {
-        if (!IsEnabled || !enableMetadata || libraryType != LibraryType.ComicVine) return;
+        if (!enableMetadata || libraryType != LibraryType.ComicVine) return false;
+        var key = await GetApiKey(ct);
+        if (string.IsNullOrWhiteSpace(key)) return false;
 
         foreach (var info in infos.Where(i => !i.IsPlaceholder))
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                await EnrichIssue(info, ct);
+                await EnrichIssue(info, key, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -64,9 +69,31 @@ public sealed class ComicVineService(
                 #pragma warning restore S6667
             }
         }
+        return true;
     }
 
-    private async Task EnrichIssue(ParserInfo info, CancellationToken ct)
+    public async Task<bool> TestConnectionAsync(CancellationToken ct = default)
+    {
+        var key = await GetApiKey(ct);
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        try
+        {
+            return await GetResponse("volumes/", "limit=1&field_list=id", key, ct, useCache: false) != null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private Task<string?> GetApiKey(CancellationToken ct) =>
+        resolveApiKey == null ? Task.FromResult(apiKey) : resolveApiKey(ct);
+
+    private async Task EnrichIssue(ParserInfo info, string key, CancellationToken ct)
     {
         var issueId = ParseId(info.ComicVineId);
         var volumeId = ParseId(info.ComicVineSeriesId);
@@ -79,7 +106,7 @@ public sealed class ComicVineService(
             var number = NormalizeNumber(string.IsNullOrWhiteSpace(explicitNumber) ? info.Chapters : explicitNumber);
             if (number == null || (number == "0" && string.IsNullOrWhiteSpace(explicitNumber))) return;
 
-            var list = await GetResponse("issues/", $"filter={Uri.EscapeDataString($"volume:{volumeId},issue_number:{number}")}&limit=100&field_list=id,issue_number,volume", ct);
+            var list = await GetResponse("issues/", $"filter={Uri.EscapeDataString($"volume:{volumeId},issue_number:{number}")}&limit=100&field_list=id,issue_number,volume", key, ct);
             if (list == null || Int(list.Value, "number_of_total_results") != 1) return;
             var matches = Items(list.Value, "results").ToList();
             if (matches.Count != 1 || NormalizeNumber(Text(matches[0], "issue_number")) != number
@@ -88,7 +115,7 @@ public sealed class ComicVineService(
             if (issueId == null || issueId <= 0) return;
         }
 
-        var response = await GetResponse($"issue/4000-{issueId}/", $"field_list={IssueFields}", ct);
+        var response = await GetResponse($"issue/4000-{issueId}/", $"field_list={IssueFields}", key, ct);
         if (response == null || !response.Value.TryGetProperty("results", out var issue)
             || issue.ValueKind != JsonValueKind.Object || Int(issue, "id") != issueId) return;
 
@@ -98,7 +125,7 @@ public sealed class ComicVineService(
         JsonElement? volume = null;
         if (returnedVolumeId > 0)
         {
-            var volumeResponse = await GetResponse($"volume/4050-{returnedVolumeId}/", $"field_list={VolumeFields}", ct);
+            var volumeResponse = await GetResponse($"volume/4050-{returnedVolumeId}/", $"field_list={VolumeFields}", key, ct);
             if (volumeResponse != null && volumeResponse.Value.TryGetProperty("results", out var result)
                 && result.ValueKind == JsonValueKind.Object && Int(result, "id") == returnedVolumeId)
                 volume = result;
@@ -111,14 +138,23 @@ public sealed class ComicVineService(
             info.ComicVineSeriesId = returnedVolumeId.Value.ToString(CultureInfo.InvariantCulture);
     }
 
-    private async Task<JsonElement?> GetResponse(string path, string query, CancellationToken ct)
+    private async Task<JsonElement?> GetResponse(string path, string query, string key, CancellationToken ct,
+        bool useCache = true)
     {
         var cacheKey = path + "?" + query;
         await _gate.WaitAsync(ct);
         try
         {
+            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+            if (_credentialFingerprint != fingerprint)
+            {
+                _credentialFingerprint = fingerprint;
+                _cache.Clear();
+                _blockedUntil = DateTimeOffset.MinValue;
+                // Preserve request accounting across key changes, including the hourly budget.
+            }
             var now = timeProvider.GetUtcNow();
-            if (_cache.TryGetValue(cacheKey, out var cached) && cached.Expires > now) return cached.Data;
+            if (useCache && _cache.TryGetValue(cacheKey, out var cached) && cached.Expires > now) return cached.Data;
             if (now < _blockedUntil) return null;
 
             while (_requests.TryPeek(out var sent) && now - sent >= TimeSpan.FromHours(1)) _requests.Dequeue();
@@ -138,7 +174,7 @@ public sealed class ComicVineService(
             // Only fixed endpoint paths built from numeric IDs reach this method. The owned client has
             // no request logging handlers, redirects or cookies, so the API key cannot leak through them.
             using var request = new HttpRequestMessage(HttpMethod.Get,
-                ApiBase + cacheKey + "&format=json&api_key=" + Uri.EscapeDataString(apiKey!));
+                ApiBase + cacheKey + "&format=json&api_key=" + Uri.EscapeDataString(key));
             request.Headers.UserAgent.ParseAdd("KavitaRPM-ComicVine/1.0 (+https://github.com/earth4s/KavitaRPM)");
             using var response = await client.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)

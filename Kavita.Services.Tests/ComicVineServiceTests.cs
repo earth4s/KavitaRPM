@@ -358,4 +358,33 @@ public class ComicVineServiceTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception) + exception);
     }
+
+    [Fact]
+    public async Task ReplacingKey_UsesNewCredentialAndClearsOldFailureCooldown()
+    {
+        string? key = "test-key-invalid";
+        var handler = new Handler(request => request.RequestUri!.Query.Contains("test-key-invalid")
+            ? Json("""{"status_code":100,"error":"Invalid key"}""") : Json(IssueJson));
+        using var service = new ComicVineService(new HttpClient(handler), null,
+            NullLogger<ComicVineService>.Instance, new Clock(), _ => Task.FromResult(key));
+        Assert.False(await service.TestConnectionAsync());
+        key = "test-key-replacement";
+        Assert.True(await service.TestConnectionAsync());
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Contains("api_key=test-key-replacement", handler.Requests[1].Query);
+        key = null;
+        Assert.False(await service.TestConnectionAsync());
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task TestConnection_DoesNotReuseAStoredSuccessfulResponse()
+    {
+        var handler = new Handler();
+        using var service = Service(handler);
+        Assert.True(await service.TestConnectionAsync());
+        handler.FailureStatus = HttpStatusCode.ServiceUnavailable;
+        Assert.False(await service.TestConnectionAsync());
+        Assert.Equal(2, handler.Requests.Count);
+    }
 }

@@ -219,4 +219,8 @@ public enum ServerSettingKey
     /// </summary>
     [Description("EnableKobo")]
     EnableKobo = 45,
+    /// <summary>The protected direct Comic Vine API key, managed by the Import settings page.</summary>
+    [Description("ComicVineApiKey")]
+    [ExportScrub(ExportScrubKind.Random)]
+    ComicVineApiKey = 46,
 }
