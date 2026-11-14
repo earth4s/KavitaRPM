@@ -101,6 +101,15 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IImageService, ImageService>();
         services.AddScoped<ICoverDbService, CoverDbService>();
 
+        // The query-string API key must never pass through HttpClientFactory's URI logging.
+        services.AddSingleton<IComicVineService>(sp => new ComicVineService(
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            },
+            Environment.GetEnvironmentVariable("KAVITA_COMICVINE_API_KEY"),
+            sp.GetRequiredService<ILogger<ComicVineService>>(), TimeProvider.System));
+
         services.AddScoped<ILocalizationService, LocalizationService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IAuthKeyService, AuthKeyService>();

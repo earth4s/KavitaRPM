@@ -10,6 +10,7 @@ using Hangfire;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services;
+using Kavita.API.Services.Metadata;
 using Kavita.API.Services.Plus;
 using Kavita.API.Services.Reading;
 using Kavita.API.Services.ReadingLists;
@@ -33,6 +34,7 @@ using Kavita.Models.Parser;
 using Kavita.Services.Builders;
 using Kavita.Services.Extensions;
 using Kavita.Services.Helpers;
+using Kavita.Services.Metadata;
 using Kavita.Services.Plus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -47,6 +49,7 @@ internal sealed record ProcessParserInfosArgs
     public required Dictionary<string, Person> DatabasePeople { get; init; }
     public KeptFiles Kept { get; init; } = KeptFiles.None;
     public bool ForceUpdate { get; init; }
+    public bool PreserveMissingComicVineMetadata { get; init; }
 }
 
 internal sealed record UpdateChapterComicInfoArgs
@@ -81,7 +84,8 @@ public class ProcessSeries(
     IReadingItemService readingItemService,
     IFileService fileService,
     IReadingListService readingListService,
-    IExternalMetadataService externalMetadataService)
+    IExternalMetadataService externalMetadataService,
+    IComicVineService comicVineService)
     : IProcessSeries
 {
 
@@ -133,6 +137,8 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
+            await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
+
             // parsedInfos[0] is not the first volume or chapter. We need to find it using a ComicInfo check (as it uses firstParsedInfo for series sort)
             var firstParsedInfo = parsedInfos.FirstOrDefault(p => p.ComicInfo != null, firstInfo);
             stepWatch.Restart();
@@ -153,6 +159,8 @@ public class ProcessSeries(
                 DatabasePeople = databasePeople,
                 Kept = kept,
                 ForceUpdate = args.ForceUpdate,
+                PreserveMissingComicVineMetadata = comicVineService.IsEnabled && library.EnableMetadata
+                    && library.Type == LibraryType.ComicVine,
             });
             var chaptersMs = stepWatch.ElapsedMilliseconds;
 
@@ -1070,6 +1078,16 @@ public class ProcessSeries(
 
     private async Task UpdateChapter(ProcessParserInfosArgs args, Chapter chapter, ParserInfo info, bool fileChanged)
     {
+        // A forced rescan may hit an API outage or the request budget. Keep previously fetched
+        // values as a final fallback, but only while the file still identifies the same comic.
+        if (args.PreserveMissingComicVineMetadata && !string.IsNullOrEmpty(chapter.ComicVineId)
+            && (chapter.ComicVineId == info.ComicVineId
+                || (string.IsNullOrEmpty(info.ComicVineId) && !string.IsNullOrEmpty(info.ComicVineSeriesId)
+                    && info.ComicVineSeriesId == args.Series.ComicVineId)))
+        {
+            ComicVineService.FillFromExistingChapter(info.ComicInfo ??= new ComicInfo(), chapter);
+        }
+
         chapter.UpdateFrom(info);
 
         chapter.Number = info.LowestChapter.ToString(CultureInfo.InvariantCulture);
