@@ -1,0 +1,155 @@
+name: Comic Vine Nightly Release
+
+on:
+  push:
+    branches: [feature/comicvine-api-metadata]
+    paths:
+      - .github/workflows/comicvine-nightly.yml
+      - scripts/nightly/**
+      - packaging/rpm/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comicvine-nightly-release
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    if: github.repository == 'earth4s/KavitaRPM'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UI/Web/package-lock.json
+      - name: Build production frontend
+        working-directory: UI/Web
+        run: |
+          npm ci --legacy-peer-deps
+          npm run prod
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-web
+          path: UI/Web/dist/browser/
+          if-no-files-found: error
+          retention-days: 7
+
+  tests:
+    if: github.repository == 'earth4s/KavitaRPM'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify Comic Vine, settings, scanning and export behavior
+        run: |
+          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests'
+          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVineSettingsTests|FullyQualifiedName~EndpointAccessTests'
+
+  package:
+    needs: [frontend, tests]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            arch: x86_64
+            runner: ubuntu-24.04
+            smoke: 'true'
+          - rid: linux-arm64
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            smoke: 'true'
+          - rid: linux-arm
+            arch: armv7hl
+            runner: ubuntu-24.04-arm
+            smoke: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-web
+          path: Kavita.Server/wwwroot
+      - name: Publish binaries and build RPM
+        env:
+          BUILD_RID: ${{ matrix.rid }}
+          RPM_ARCH: ${{ matrix.arch }}
+          SMOKE_TEST: ${{ matrix.smoke }}
+        run: bash scripts/nightly/build-package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.rid }}
+          path: _nightly/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-linux-*
+          merge-multiple: true
+          path: dist
+      - name: Verify packages and write release metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 3
+          test "$(find dist -maxdepth 1 -name '*.rpm' | wc -l)" -eq 3
+          version="$(sed -n 's:.*<AssemblyVersion>\([^<]*\)</AssemblyVersion>.*:\1:p' Kavita.Common/Kavita.Common.csproj)"
+          date_stamp="$(TZ=America/Chicago date +%Y%m%d)"
+          tag="nightly-comicvine-${date_stamp}-${GITHUB_SHA:0:7}"
+          jq -n --arg version "$version" --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" \
+            --arg tag "$tag" --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{channel:"nightly",version:$version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
+          (cd dist && sha256sum ./*.tar.gz ./*.rpm SOURCE.json > SHA256SUMS)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          cat > release-notes.md <<EOF
+          Nightly build of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
+
+          Includes direct Comic Vine metadata and Settings > Import > Comic Vine for saving and testing your own API key. No Kavita+ license is required for direct Comic Vine lookups.
+
+          Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
+
+          RPM installation: sudo dnf install ./kavita-*.rpm
+
+          Start the RPM service: sudo systemctl enable --now kavita.service
+
+          Native archives extract into Kavita/ and start with ./Kavita. This is a prerelease from an unmerged feature branch. Back up your existing config directory before upgrading; database migrations may prevent downgrading.
+          EOF
+      - name: Publish nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_TAG: ${{ steps.metadata.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$NIGHTLY_TAG" --json isDraft --jq '.isDraft' > draft-state.txt 2>/dev/null; then
+            if [[ "$(cat draft-state.txt)" == false ]]; then
+              echo "Nightly $NIGHTLY_TAG is already published."
+              exit 0
+            fi
+          else
+            gh release create "$NIGHTLY_TAG" --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+              --title "Comic Vine nightly $NIGHTLY_TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$NIGHTLY_TAG" dist/* --clobber
+          test "$(gh release view "$NIGHTLY_TAG" --json assets --jq '.assets | length')" -eq 8
+          gh release edit "$NIGHTLY_TAG" --draft=false --prerelease --latest=false
+          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$NIGHTLY_TAG" >> "$GITHUB_STEP_SUMMARY"
