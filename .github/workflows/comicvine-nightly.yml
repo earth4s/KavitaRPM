@@ -1,4 +1,4 @@
-name: Comic Vine Nightly Release
+name: Comic Vine Private Nightly
 
 on:
   push:
@@ -20,6 +20,10 @@ jobs:
   frontend:
     if: github.repository == 'earth4s/KavitaRPM'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -32,12 +36,22 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm run prod
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nightly-web
-          path: UI/Web/dist/browser/
-          if-no-files-found: error
-          retention-days: 7
+      - name: Create private draft and store web build
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          date_stamp="$(TZ=America/Chicago date +%Y%m%d)"
+          tag="nightly-private-comicvine-${date_stamp}-${GITHUB_SHA:0:7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          tar -C UI/Web/dist/browser -czf "$RUNNER_TEMP/nightly-web.tar.gz" .
+          gh release create "$tag" "$RUNNER_TEMP/nightly-web.tar.gz" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+            --title "Private Comic Vine nightly $tag" \
+            --notes 'Build in progress. This draft is restricted to repository writers. Do not publish it.'
+          NIGHTLY_TAG="$tag" bash scripts/nightly/draft-release.sh assert
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   tests:
     if: github.repository == 'earth4s/KavitaRPM'
@@ -47,6 +61,8 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - name: Verify draft-only release guard
+        run: python3 scripts/nightly/test-draft-release.py
       - name: Verify Comic Vine matching, settings, scanning and export behavior
         run: |
           dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
@@ -55,6 +71,10 @@ jobs:
   package:
     needs: [frontend, tests]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    env:
+      NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -76,35 +96,40 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - uses: actions/download-artifact@v4
-        with:
-          name: nightly-web
-          path: Kavita.Server/wwwroot
+      - name: Download web build from private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/nightly/draft-release.sh download "$RUNNER_TEMP" nightly-web.tar.gz
+          mkdir -p Kavita.Server/wwwroot
+          tar -xzf "$RUNNER_TEMP/nightly-web.tar.gz" -C Kavita.Server/wwwroot
       - name: Publish binaries and build RPM
         env:
           BUILD_RID: ${{ matrix.rid }}
           RPM_ARCH: ${{ matrix.arch }}
           SMOKE_TEST: ${{ matrix.smoke }}
         run: bash scripts/nightly/build-package.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nightly-${{ matrix.rid }}
-          path: _nightly/dist/*
-          if-no-files-found: error
-          retention-days: 14
+      - name: Store packages only in private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/nightly/draft-release.sh upload _nightly/dist/*
 
   release:
-    needs: [package]
+    needs: [frontend, package]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: nightly-linux-*
-          merge-multiple: true
-          path: dist
+      - name: Collect packages from private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          bash scripts/nightly/draft-release.sh download dist 'kavita-*.tar.gz'
+          bash scripts/nightly/draft-release.sh download dist 'kavita-*.rpm'
       - name: Verify packages and write release metadata
         id: metadata
         shell: bash
@@ -113,15 +138,16 @@ jobs:
           test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 3
           test "$(find dist -maxdepth 1 -name '*.rpm' | wc -l)" -eq 3
           version="$(sed -n 's:.*<AssemblyVersion>\([^<]*\)</AssemblyVersion>.*:\1:p' Kavita.Common/Kavita.Common.csproj)"
-          date_stamp="$(TZ=America/Chicago date +%Y%m%d)"
-          tag="nightly-comicvine-${date_stamp}-${GITHUB_SHA:0:7}"
+          tag="$NIGHTLY_TAG"
           jq -n --arg version "$version" --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" \
             --arg tag "$tag" --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            '{channel:"nightly",version:$version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
+            '{channel:"private-draft-nightly",version:$version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
           (cd dist && sha256sum ./*.tar.gz ./*.rpm SOURCE.json > SHA256SUMS)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           cat > release-notes.md <<EOF
-          Nightly build of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
+          Private draft nightly of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
+
+          This unpublished release and its downloads are restricted to repository writers. Do not publish it. Source code and workflow logs remain public because the repository is public.
 
           Includes direct Comic Vine metadata, Settings > Kavita+ > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups. The API key panel has an explicit Save button for new or replacement keys.
 
@@ -133,23 +159,24 @@ jobs:
 
           Native archives extract into Kavita/ and start with ./Kavita. This is a prerelease from an unmerged feature branch. Back up your existing config directory before upgrading; database migrations may prevent downgrading.
           EOF
-      - name: Publish nightly prerelease
+      - name: Complete private draft without publishing
         env:
           GH_TOKEN: ${{ github.token }}
-          NIGHTLY_TAG: ${{ steps.metadata.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$NIGHTLY_TAG" --json isDraft --jq '.isDraft' > draft-state.txt 2>/dev/null; then
-            if [[ "$(cat draft-state.txt)" == false ]]; then
-              echo "Nightly $NIGHTLY_TAG is already published."
-              exit 0
-            fi
-          else
-            gh release create "$NIGHTLY_TAG" --target "$GITHUB_SHA" --draft --prerelease --latest=false \
-              --title "Comic Vine nightly $NIGHTLY_TAG" --notes-file release-notes.md
-          fi
-          gh release upload "$NIGHTLY_TAG" dist/* --clobber
-          test "$(gh release view "$NIGHTLY_TAG" --json assets --jq '.assets | length')" -eq 8
-          gh release edit "$NIGHTLY_TAG" --draft=false --prerelease --latest=false
-          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$NIGHTLY_TAG" >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/nightly/draft-release.sh upload dist/SOURCE.json dist/SHA256SUMS
+          bash scripts/nightly/draft-release.sh notes release-notes.md
+          bash scripts/nightly/draft-release.sh remove-web
+          gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,url > draft-state.json
+          jq -e '.isDraft == true and (.assets | length) == 8' draft-state.json > /dev/null
+          # Fetch by listing, since the tag endpoint is intended for published releases.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | \
+            jq -s --arg tag "$NIGHTLY_TAG" 'add | map(select(.tag_name == $tag)) | if length == 1 then .[0] else error("Draft not found") end' > release-state.json
+          jq -e '.draft == true and .published_at == null and (.assets | length) == 8' release-state.json > /dev/null
+          # curl receives no Authorization header: both requests must be denied anonymously.
+          for url in "$(jq -r '.url' release-state.json)" "$(jq -r '.assets[0].url' release-state.json)"; do
+            code="$(curl --disable --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$code" = 404
+          done
+          echo "Private draft nightly (repository writers only): $(jq -r '.url' draft-state.json)" >> "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,15 @@
 # Comic Vine nightly builds
 
-The `Comic Vine Nightly Release` workflow builds the current feature branch from
+The `Comic Vine Private Nightly` workflow builds the current feature branch from
 source, including its production Angular frontend and direct Comic Vine settings.
-It publishes an explicitly marked GitHub prerelease in `earth4s/KavitaRPM`.
+It creates an unpublished draft release in `earth4s/KavitaRPM`, visible only to
+people with write access to the repository. It never publishes the draft.
+
+All build transfers use authenticated draft-release assets. No web build or package
+is uploaded as a GitHub Actions artifact, since those downloads would be accessible
+to readers of this public repository. Source code and build logs remain public.
+The workflow checks that anonymous requests cannot read the completed release
+or its assets. Publishing the draft manually would make the downloads public.
 
 Each release contains self-contained Linux x64, ARM64 and ARM32 archives, three
 matching RPMs, `SHA256SUMS`, and `SOURCE.json` identifying the commit and workflow
@@ -30,4 +37,4 @@ sudo systemctl enable --now kavita.service
 
 Use the `aarch64` RPM on ARM64 or the `armv7hl` RPM on supported ARM32 systems.
 The service account needs read/traverse permission on media-library directories.
-Then open **Settings > Import > Comic Vine** to configure your API key.
+Then open **Settings > Kavita+ > Comic Vine** to configure your API key.
