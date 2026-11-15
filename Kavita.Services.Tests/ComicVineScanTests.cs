@@ -1,4 +1,10 @@
 using Kavita.Database.Tests;
+using Kavita.API.Services.Metadata;
+using Kavita.API.Services.SignalR;
+using Kavita.Models.DTOs.KavitaPlus.Metadata;
+using Kavita.Models.Entities.Enums;
+using Kavita.Services.Metadata;
+using NSubstitute;
 using Kavita.Models.Metadata;
 using Kavita.Services.Tests.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +14,45 @@ namespace Kavita.Services.Tests;
 
 public class ComicVineScanTests(ITestOutputHelper output) : AbstractDbTest(output)
 {
+    [Fact]
+    public async Task ExplicitMatch_AppliesSeriesMetadataImmediately_AndPreservesItAcrossIssueScans()
+    {
+        var (unitOfWork, context, mapper) = await CreateDatabase();
+        var helper = new ScannerHelper(unitOfWork, output);
+        var library = await helper.GenerateScannerData("Volume match - ComicVine",
+            ["Example (2020)/Example (2020) #001.cbz"],
+            new Dictionary<string, ComicInfo>
+            {
+                ["Example (2020) #001.cbz"] = new()
+                {
+                    Series = "Example", Volume = "2020", Number = "1", Year = 2020,
+                    Summary = "Local issue summary", Publisher = "Issue publisher",
+                    Web = "https://comicvine.gamespot.com/issue/4000-100/"
+                }
+            });
+        var scanner = helper.CreateServices();
+        await scanner.ScanLibrary(library.Id, forceUpdate: true);
+        var series = await context.Series.SingleAsync(s => s.LibraryId == library.Id);
+        var api = Substitute.For<IComicVineService>();
+        api.GetVolumeAsync(200, Arg.Any<CancellationToken>()).Returns(new ExternalSeriesDetailDto
+        {
+            ComicVineId = 200, Summary = "Volume synopsis", StartDate = new DateTime(1986, 1, 1),
+            Publisher = "Volume publisher", SiteUrl = "https://comicvine.gamespot.com/volume/4050-200/"
+        });
+        var matching = new ComicVineMatchingService(unitOfWork, api, mapper, Substitute.For<IEventHub>());
+        await matching.ApplyAsync(series.Id, 200);
+        Assert.Equal("Volume synopsis", series.Metadata.Summary);
+        Assert.Equal(1986, series.Metadata.ReleaseYear);
+
+        // An unavailable provider or an unresolved issue cannot erase the selected volume's metadata.
+        await scanner.ScanSeries(series.Id, true);
+        await context.Entry(series.Metadata).ReloadAsync();
+        Assert.Equal("Volume synopsis", series.Metadata.Summary);
+        Assert.Equal(1986, series.Metadata.ReleaseYear);
+        Assert.Equal("Volume publisher", Assert.Single(series.Metadata.People.Where(p => p.Role == PersonRole.Publisher)).Person.Name);
+        Assert.Contains("4050-200", series.Metadata.WebLinks);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

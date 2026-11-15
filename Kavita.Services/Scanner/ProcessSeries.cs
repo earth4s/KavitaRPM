@@ -440,8 +440,13 @@ public class ProcessSeries(
             .SelectMany(volume => volume.Chapters)
             .ToList();
 
-        // Update Metadata based on Chapter metadata
-        if (!series.Metadata.ReleaseYearLocked)
+        // A manually selected Comic Vine volume owns series-level metadata. Issue aggregation
+        // must not replace its synopsis/year/publisher with those of the first local issue.
+        var hasComicVineMatch = !series.DontMatch && !string.IsNullOrEmpty(series.ComicVineId)
+            && (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine;
+
+        // Use chapter metadata as a fallback when the selected volume has no value.
+        if (!series.Metadata.ReleaseYearLocked && (!hasComicVineMatch || series.Metadata.ReleaseYear == 0))
         {
             series.Metadata.ReleaseYear = chapters.MinimumReleaseYear();
         }
@@ -455,7 +460,7 @@ public class ProcessSeries(
             TryUpdatePublicationStatus(series, chapters);
         }
 
-        if (!series.Metadata.SummaryLocked)
+        if (!series.Metadata.SummaryLocked && (!hasComicVineMatch || string.IsNullOrWhiteSpace(series.Metadata.Summary)))
         {
             series.Metadata.Summary = firstChapter?.Summary ?? string.Empty;
         }
@@ -472,7 +477,8 @@ public class ProcessSeries(
             }
         }
 
-        if (!string.IsNullOrEmpty(firstChapter?.WebLinks) && library.InheritWebLinksFromFirstChapter)
+        if (!string.IsNullOrEmpty(firstChapter?.WebLinks) && library.InheritWebLinksFromFirstChapter
+            && (!hasComicVineMatch || string.IsNullOrEmpty(series.Metadata.WebLinks)))
         {
             series.Metadata.WebLinks = firstChapter.WebLinks;
             var aniListId = ExternalIdParser.GetAniListId(series.Metadata.WebLinks);
@@ -509,6 +515,8 @@ public class ProcessSeries(
         foreach (var personRole in Enum.GetValues<PersonRole>())
         {
             if (series.Metadata.IsPersonRoleLocked(personRole)) continue;
+            if (hasComicVineMatch && personRole == PersonRole.Publisher
+                && series.Metadata.People.Any(p => p.Role == PersonRole.Publisher)) continue;
 
             var chapterPeople = chapters
                 .SelectMany(c => c.People.Where(p => p.Role == personRole)).ToList();

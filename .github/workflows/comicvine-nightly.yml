@@ -149,7 +149,7 @@ jobs:
 
           This unpublished release and its downloads are restricted to repository writers. Do not publish it. Source code and workflow logs remain public because the repository is public.
 
-          Includes direct Comic Vine metadata, Settings > Kavita+ > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups. The API key panel has an explicit Save button for new or replacement keys.
+          Includes direct Comic Vine metadata, Settings > Kavita+ > Meta API Connections > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups. The Meta API Connections panel contains an explicit Save button for Comic Vine keys. Matching persists the selected volume metadata immediately, and settings panels begin loading on selection.
 
           Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
 
@@ -168,15 +168,27 @@ jobs:
           bash scripts/nightly/draft-release.sh upload dist/SOURCE.json dist/SHA256SUMS
           bash scripts/nightly/draft-release.sh notes release-notes.md
           bash scripts/nightly/draft-release.sh remove-web
-          gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,url > draft-state.json
+          # Allow GitHub's asset listing to settle after deleting the temporary web archive.
+          for attempt in $(seq 1 10); do
+            gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,url > draft-state.json
+            if jq -e '.isDraft == true and (.assets | length) == 8' draft-state.json > /dev/null; then break; fi
+            sleep 1
+          done
           jq -e '.isDraft == true and (.assets | length) == 8' draft-state.json > /dev/null
           # Fetch by listing, since the tag endpoint is intended for published releases.
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | \
             jq -s --arg tag "$NIGHTLY_TAG" 'add | map(select(.tag_name == $tag)) | if length == 1 then .[0] else error("Draft not found") end' > release-state.json
           jq -e '.draft == true and .published_at == null and (.assets | length) == 8' release-state.json > /dev/null
-          # curl receives no Authorization header: both requests must be denied anonymously.
-          for url in "$(jq -r '.url' release-state.json)" "$(jq -r '.assets[0].url' release-state.json)"; do
-            code="$(curl --disable --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "$url")"
-            test "$code" = 404
-          done
+          # curl receives no Authorization header. Browser downloads must be inaccessible;
+          # the anonymous API may return 403 when its shared runner IP is rate limited.
+          check_denied() {
+            local label="$1" api_url="$2" web_url="$3" api_code web_code
+            api_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$api_url")"
+            web_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$web_url")"
+            echo "$label anonymous status: API=$api_code, browser=$web_code"
+            test "$web_code" = 404
+            [[ "$api_code" == 404 || "$api_code" == 403 ]]
+          }
+          check_denied release "$(jq -r '.url' release-state.json)" "$(jq -r '.html_url' release-state.json)"
+          check_denied asset "$(jq -r '.assets[0].url' release-state.json)" "$(jq -r '.assets[0].browser_download_url' release-state.json)"
           echo "Private draft nightly (repository writers only): $(jq -r '.url' draft-state.json)" >> "$GITHUB_STEP_SUMMARY"

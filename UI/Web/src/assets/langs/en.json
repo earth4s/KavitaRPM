@@ -1845,7 +1845,7 @@
 
     "match-series-modal": {
         "comicvine-query-hint": "Search by title, volume ID, or Comic Vine volume URL.",
-        "comicvine-key-hint": "Requires your API key in Settings > Kavita+ > Comic Vine. Applying a match queues a metadata rescan and respects locked fields.",
+        "comicvine-key-hint": "Requires your API key in Settings > Kavita+ > Meta API Connections > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",
         "description": "Pick a match to rewire Kavita+ metadata and regenerate scrobble events. Click an edition to get Volume/Chapter level metadata (if applicable).",
@@ -2735,6 +2735,9 @@
 
 
     "settings": {
+        "admin-meta-api-connections": "Meta API Connections",
+        "panel-load-error": "Unable to load this settings panel.",
+        "reload-settings": "Reload settings",
         "account-section-title": "Account",
         "server-section-title": "Server",
         "insights-section-title": "Insights",
@@ -2784,6 +2787,9 @@
         "kobo": "Kobo Sync"
     },
 
+    "meta-api-connections": {
+        "description": "Manage API connections for external metadata services. Each service has its own credentials and connection test."
+    },
     "manage-comicvine": {
         "save": "{{common.save}}",
         "description": "Connect Comic Vine to fill missing comic metadata using your own API key.",
@@ -2811,7 +2817,7 @@
         "remove-error": "Unable to remove the saved API key. Try again.",
         "load-error": "Unable to load Comic Vine settings.",
         "retry": "Retry",
-        "scan-help": "Enable metadata reading for your Comic library, then run a forced library scan. Comics need a Comic Vine issue ID, or a series ID and issue number.",
+        "scan-help": "Use Settings > Import > Matched Series to apply a Comic Vine series match. Enable metadata reading to enrich its issues during the queued scan. Existing Comic Vine issue IDs, or a series ID and issue number, can also be used.",
         "environment-help": "Saving a key here takes priority over the server's environment key. To disable the environment key, your administrator must remove it from the server configuration."
     },
 

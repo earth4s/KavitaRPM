@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  computed,
   DestroyRef,
   effect,
   inject,
@@ -17,15 +18,13 @@ import {SideNavItemComponent} from "../_components/side-nav-item/side-nav-item.c
 import {ActivatedRoute, NavigationEnd, Router} from "@angular/router";
 import {takeUntilDestroyed, toObservable, toSignal} from "@angular/core/rxjs-interop";
 import {SettingFragmentPipe} from "../../_pipes/setting-fragment.pipe";
-import {map, of, shareReplay, switchMap, take} from "rxjs";
+import {catchError, map, of, shareReplay, switchMap, take} from "rxjs";
 import {ServerService} from "../../_services/server.service";
 import {ScrobblingService} from "../../_services/scrobbling.service";
 import {User} from "../../_models/user/user";
 import {filter} from "rxjs/operators";
 import {UtilityService} from "../../shared/_services/utility.service";
 import {LicenseService} from "../../_services/license.service";
-import {ManageService} from "../../_services/manage.service";
-import {MatchStateOption} from "../../_models/kavitaplus/match-state-option";
 import {KeyBindService} from "../../_services/key-bind.service";
 import {KeyBindTarget} from "../../_models/preferences/preferences";
 import {BreakpointService} from "../../_services/breakpoint.service";
@@ -54,6 +53,8 @@ export enum SettingsTabId {
   KavitaPlusLicense = 'admin-kavitaplus',
   MALStackImport = 'mal-stack-import',
   MappingsImport = 'admin-mappings-import',
+  MetaApiConnections = 'admin-meta-api-connections',
+  /** Backward-compatible fragment for existing bookmarks. */
   ComicVine = 'admin-comicvine',
   MatchedMetadata = 'admin-matched-metadata',
   ManageUserTokens = 'admin-manage-tokens',
@@ -147,7 +148,6 @@ export class PreferenceNavComponent implements AfterViewInit {
   private readonly scrobbleService = inject(ScrobblingService);
   private readonly router = inject(Router);
   protected readonly utilityService = inject(UtilityService);
-  private readonly manageService = inject(ManageService);
   private readonly document = inject(DOCUMENT);
   private readonly keyBindService = inject(KeyBindService);
   protected readonly breakpointService = inject(BreakpointService);
@@ -164,32 +164,21 @@ export class PreferenceNavComponent implements AfterViewInit {
   /**
    * This links to settings.component.html which has triggers on what underlying component to render out.
    */
-  sections: Array<PrefSection> = [];
+  private readonly sections: Array<PrefSection>;
+  protected readonly visibleSections = computed(() => {
+    const user = this.accountService.currentUser();
+    if (!user) return [];
+    return this.sections.map(section => ({
+      ...section,
+      children: section.children.filter(item => this.isItemVisible(user, item))
+    })).filter(section => section.children.length > 0);
+  });
 
-
-  private readonly matchedMetadataBadgeCount = toSignal(
-    toObservable(this.accountService.hasAdminRole).pipe(
-      take(1),
-      filter(_ => this.licenseService.hasActiveLicense()),
-      switchMap(isAdmin => {
-        if (!isAdmin) return of(-1);
-        return this.manageService.getAllKavitaPlusSeries({
-          matchStateOption: MatchStateOption.Error,
-          libraryType: -1,
-          searchTerm: ''
-        }).pipe(
-          takeUntilDestroyed(this.destroyRef),
-          map(d => d.pagination.totalItems),
-          shareReplay({bufferSize: 1, refCount: true})
-        );
-      })
-    ),
-    { initialValue: -1 }
-  );
 
   private readonly scrobblingFailuresBadgeCount = toSignal(
     of(this.licenseService.hasActiveLicense()).pipe(
-      switchMap(hasLicense => hasLicense ? this.kavitaplusAuditService.getFailedScrobbleEvents() : of(-1)),
+      switchMap(hasLicense => hasLicense
+        ? this.kavitaplusAuditService.getFailedScrobbleEvents().pipe(catchError(() => of(-1))) : of(-1)),
       takeUntilDestroyed(this.destroyRef),
       shareReplay({ bufferSize: 1, refCount: true })
     ),
@@ -200,10 +189,11 @@ export class PreferenceNavComponent implements AfterViewInit {
     toObservable(this.accountService.hasAdminRole).pipe(
       take(1),
       switchMap(isAdmin => {
-        if (!isAdmin) return of(-1);
+        if (!isAdmin || !this.licenseService.hasActiveLicense()) return of(-1);
         return this.scrobbleService.getScrobbleErrors().pipe(
           takeUntilDestroyed(this.destroyRef),
           map(d => d.length),
+          catchError(() => of(-1)),
           shareReplay({bufferSize: 1, refCount: true})
         );
       })
@@ -219,6 +209,7 @@ export class PreferenceNavComponent implements AfterViewInit {
         return this.serverService.getMediaErrors().pipe(
           takeUntilDestroyed(this.destroyRef),
           map(d => d.filter(d2 => !d2.isDismissed).length),
+          catchError(() => of(-1)),
           shareReplay({ bufferSize: 1, refCount: true })
         );
       })
@@ -303,7 +294,7 @@ export class PreferenceNavComponent implements AfterViewInit {
         title: SettingSectionId.KavitaPlusSection,
         children: [
           new SideNavItem(SettingsTabId.KavitaPlusLicense, [Role.Admin]),
-          new SideNavItem(SettingsTabId.ComicVine, [Role.Admin]),
+          new SideNavItem(SettingsTabId.MetaApiConnections, [Role.Admin]),
           SideNavItem.kPlusOnly(SettingsTabId.Connections),
           SideNavItem.kPlusOnly(SettingsTabId.ManageUserTokens, [Role.Admin]),
           SideNavItem.kPlusOnly(SettingsTabId.Metadata, [Role.Admin]),
@@ -347,11 +338,7 @@ export class PreferenceNavComponent implements AfterViewInit {
     }
   }
 
-  getVisibleChildren(user: User, section: PrefSection) {
-    return section.children.filter(item => this.isItemVisible(user, item));
-  }
-
-  isItemVisible(user: User, item: SideNavItem) {
+  private isItemVisible(user: User, item: SideNavItem) {
     return this.accountService.hasAnyRole(user, item.roles, item.restrictRoles) && (!item.kPlusOnly || this.licenseService.hasActiveLicense())
   }
 

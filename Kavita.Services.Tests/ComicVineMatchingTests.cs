@@ -1,4 +1,5 @@
 using Kavita.API.Services.Metadata;
+using Kavita.API.Services.SignalR;
 using Kavita.Common;
 using Kavita.Common.Helpers;
 using Kavita.Database.Tests;
@@ -7,6 +8,7 @@ using Kavita.Models.DTOs.KavitaPlus.Manage;
 using Kavita.Models.DTOs.KavitaPlus.Metadata;
 using Kavita.Models.DTOs.Metadata.Matching;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Entities.Person;
 using Kavita.Services.Metadata;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -32,8 +34,12 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         db.Series.Add(series);
         await db.SaveChangesAsync();
         var api = Substitute.For<IComicVineService>();
-        api.GetVolumeAsync(200, Arg.Any<CancellationToken>()).Returns(new ExternalSeriesDetailDto { ComicVineId = 200 });
-        var service = new ComicVineMatchingService(uow, api, mapper);
+        api.GetVolumeAsync(200, Arg.Any<CancellationToken>()).Returns(new ExternalSeriesDetailDto
+        {
+            ComicVineId = 200, Summary = "Selected volume synopsis", StartDate = new DateTime(1986, 1, 1),
+            Publisher = "Selected publisher", SiteUrl = "https://comicvine.gamespot.com/example/4050-200/"
+        });
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
 
         await service.ApplyAsync(series.Id, 200);
         await db.Entry(series).ReloadAsync();
@@ -41,10 +47,69 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         Assert.Equal(MetadataProvider.ComicVine, series.MetadataProviderOverride);
         Assert.False(series.DontMatch);
         Assert.False(series.IsBlacklisted);
+        // Read persisted data, rather than accepting only in-memory changes or a queued scan.
+        db.ChangeTracker.Clear();
+        var saved = await db.Series.Include(x => x.Metadata).ThenInclude(x => x.People).ThenInclude(x => x.Person)
+            .SingleAsync(x => x.Id == series.Id);
+        Assert.Equal("Selected volume synopsis", saved.Metadata.Summary);
+        Assert.Equal(1986, saved.Metadata.ReleaseYear);
+        Assert.Equal("Selected publisher", Assert.Single(saved.Metadata.People).Person.Name);
+        Assert.Contains("4050-200", saved.Metadata.WebLinks);
+        Assert.False(saved.Metadata.SummaryLocked);
+        Assert.Equal("Example", saved.Name); // Matching must not change file grouping.
 
         api.SearchVolumesAsync("comicvine:200", Arg.Any<CancellationToken>()).Returns(new MatchSeriesResultDto());
         await service.SearchAsync(series.Id, "");
         await api.Received(1).SearchVolumesAsync("comicvine:200", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Apply_RespectsUserLocks_AndAllowsRematchingUnlockedFields()
+    {
+        var (uow, db, mapper) = await CreateDatabase();
+        var library = new LibraryBuilder("Comics", LibraryType.ComicVine).Build();
+        db.Library.Add(library);
+        await db.SaveChangesAsync();
+        var series = new SeriesBuilder("Local title").WithLibraryId(library.Id)
+            .WithMetadata(new SeriesMetadataBuilder().Build()).Build();
+        series.Metadata.Summary = "My synopsis";
+        series.Metadata.SummaryLocked = true;
+        series.Metadata.ReleaseYear = 1999;
+        series.Metadata.ReleaseYearLocked = true;
+        series.Metadata.PublisherLocked = true;
+        series.Metadata.WebLinks = "https://example.org/local,https://comicvine.gamespot.com/old/4050-99/";
+        series.Metadata.People.Add(new SeriesMetadataPeople
+        {
+            Person = new PersonBuilder("My publisher").Build(), Role = PersonRole.Publisher
+        });
+        db.Series.Add(series);
+        await db.SaveChangesAsync();
+        var api = Substitute.For<IComicVineService>();
+        api.GetVolumeAsync(200, Arg.Any<CancellationToken>()).Returns(new ExternalSeriesDetailDto
+        {
+            ComicVineId = 200, Summary = "Remote synopsis", StartDate = new DateTime(2001, 1, 1),
+            Publisher = "Remote publisher", SiteUrl = "https://comicvine.gamespot.com/new/4050-200/"
+        });
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
+        await service.ApplyAsync(series.Id, 200);
+        Assert.Equal("My synopsis", series.Metadata.Summary);
+        Assert.Equal(1999, series.Metadata.ReleaseYear);
+        Assert.Equal("My publisher", Assert.Single(series.Metadata.People).Person.Name);
+        Assert.Contains("https://example.org/local", series.Metadata.WebLinks);
+        Assert.DoesNotContain("4050-99", series.Metadata.WebLinks);
+        Assert.Contains("4050-200", series.Metadata.WebLinks);
+
+        series.Metadata.SummaryLocked = false;
+        series.Metadata.ReleaseYearLocked = false;
+        series.Metadata.PublisherLocked = false;
+        await db.SaveChangesAsync();
+        await service.ApplyAsync(series.Id, 200);
+        Assert.Equal("Remote synopsis", series.Metadata.Summary);
+        Assert.Equal(2001, series.Metadata.ReleaseYear);
+        Assert.Equal("Remote publisher", Assert.Single(series.Metadata.People).Person.Name);
+        await service.ApplyAsync(series.Id, 200);
+        Assert.Single(series.Metadata.People);
+        Assert.Equal(1, await db.Person.CountAsync(p => p.Name == "Remote publisher"));
     }
 
     [Fact]
@@ -55,7 +120,7 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         db.Series.Add(series);
         await db.SaveChangesAsync();
         var api = Substitute.For<IComicVineService>();
-        var service = new ComicVineMatchingService(uow, api, mapper);
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
         await Assert.ThrowsAsync<KavitaException>(() => service.ApplyAsync(series.Id, 200));
         await api.DidNotReceive().GetVolumeAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
 
@@ -85,7 +150,7 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         }
         db.Series.Add(new SeriesBuilder("Other library").WithLibraryId(1).Build());
         await db.SaveChangesAsync();
-        var service = new ComicVineMatchingService(uow, Substitute.For<IComicVineService>(), mapper);
+        var service = new ComicVineMatchingService(uow, Substitute.For<IComicVineService>(), mapper, Substitute.For<IEventHub>());
         var counts = await service.CountsAsync();
         Assert.Equal(3, counts.TotalCount);
         Assert.Equal(1, counts.NotMatchedCount);

@@ -9,8 +9,8 @@
       }">
         <div class="side-nav">
 
-          @for(section of sections; track section.title + section.children.length; let idx = $index;) {
-            @let children = getVisibleChildren(user, section);
+          @for(section of visibleSections(); track section.title; let idx = $index;) {
+            @let children = section.children;
 
             @if (children.length > 0) {
               <h5 class="side-nav-header mb-2" [ngClass]="{'mt-4': idx > 0}">{{t(section.title)}}</h5>

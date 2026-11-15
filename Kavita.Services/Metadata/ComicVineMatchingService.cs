@@ -7,23 +7,30 @@ using AutoMapper;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services.Metadata;
+using Kavita.API.Services.SignalR;
 using Kavita.Common;
 using Kavita.Common.Helpers;
 using Kavita.Models.DTOs;
 using Kavita.Models.DTOs.KavitaPlus.Manage;
 using Kavita.Models.DTOs.Metadata.Matching;
+using Kavita.Models.DTOs.KavitaPlus.Metadata;
+using Kavita.Models.DTOs.SignalR;
+using Kavita.Models.Builders;
+using Kavita.Models.Entities.Person;
 using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kavita.Services.Metadata;
 
-public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineService comicVine, IMapper mapper)
+public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineService comicVine, IMapper mapper, IEventHub eventHub)
     : IComicVineMatchingService
 {
-    private async Task<Series> ComicSeries(int seriesId, CancellationToken ct)
+    private async Task<Series> ComicSeries(int seriesId, CancellationToken ct, bool includeMetadata = false)
     {
-        var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library, ct);
+        var includes = SeriesIncludes.Library;
+        if (includeMetadata) includes |= SeriesIncludes.Metadata;
+        var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, includes, ct);
         if (series == null) throw new KavitaException("Series not found.");
         if (series.Library.Type is not (LibraryType.Comic or LibraryType.ComicVine))
             throw new KavitaException("Comic Vine matching is available for Comic and Comic (Flexible) libraries.");
@@ -40,7 +47,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
 
     public async Task ApplyAsync(int seriesId, int volumeId, CancellationToken ct = default)
     {
-        var series = await ComicSeries(seriesId, ct);
+        var series = await ComicSeries(seriesId, ct, includeMetadata: true);
         var volume = await comicVine.GetVolumeAsync(volumeId, ct);
         if (volume?.ComicVineId != volumeId) throw new KavitaException("Comic Vine volume not found.");
         series.ComicVineId = volumeId.ToString(CultureInfo.InvariantCulture);
@@ -48,9 +55,44 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
             ? null : MetadataProvider.ComicVine;
         series.DontMatch = false;
         series.IsBlacklisted = false;
+        await ApplyVolumeMetadata(series, volume, ct);
         unitOfWork.SeriesRepository.Update(series);
         await unitOfWork.CommitAsync(ct);
+        await eventHub.SendMessageAsync(MessageFactory.SeriesUpdated, MessageFactory.SeriesUpdatedEvent(series.Id), ct: ct);
     }
+
+    private async Task ApplyVolumeMetadata(Series series, ExternalSeriesDetailDto volume, CancellationToken ct)
+    {
+        // An explicit match applies series-level data now, even when no issue can be scanned.
+        // The scanner preserves these provider values; user locks still take precedence.
+        var metadata = series.Metadata ??= new SeriesMetadataBuilder().Build();
+        if (!metadata.SummaryLocked && !string.IsNullOrWhiteSpace(volume.Summary))
+            metadata.Summary = volume.Summary;
+        if (!metadata.ReleaseYearLocked && volume.StartDate.HasValue)
+            metadata.ReleaseYear = volume.StartDate.Value.Year;
+
+        if (!metadata.PublisherLocked && !string.IsNullOrWhiteSpace(volume.Publisher))
+        {
+            var publisher = await unitOfWork.PersonRepository.GetPersonByNameOrAliasAsync(volume.Publisher, ct: ct)
+                ?? new PersonBuilder(volume.Publisher).Build();
+            foreach (var previous in metadata.People.Where(p => p.Role == PersonRole.Publisher).ToList())
+                metadata.People.Remove(previous);
+            metadata.People.Add(new SeriesMetadataPeople
+            {
+                Person = publisher, Role = PersonRole.Publisher, SeriesMetadata = metadata
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(volume.SiteUrl))
+        {
+            var links = metadata.WebLinks.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(link => !IsComicVineVolumeLink(link)).Append(volume.SiteUrl).Distinct(StringComparer.Ordinal);
+            metadata.WebLinks = string.Join(',', links);
+        }
+    }
+
+    private static bool IsComicVineVolumeLink(string link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Host == "comicvine.gamespot.com"
+        && uri.AbsolutePath.Split('/').Any(part => part.StartsWith("4050-", StringComparison.Ordinal));
 
     public async Task SetDontMatchAsync(int seriesId, bool dontMatch, CancellationToken ct = default)
     {
