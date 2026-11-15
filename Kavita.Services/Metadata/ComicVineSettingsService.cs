@@ -60,7 +60,7 @@ public sealed class ComicVineSettingsService(
         catch (CryptographicException)
         {
             #pragma warning disable S6667 // Credential failures must never log the protected value or exception.
-            logger.LogWarning("[ComicVine] Saved API key is unavailable; replace it in Settings > Import > Comic Vine");
+            logger.LogWarning("[ComicVine] Saved API key is unavailable; replace it in Settings > Kavita+ > Comic Vine");
             #pragma warning restore S6667
             return null;
         }

@@ -47,10 +47,6 @@
             <p id="comicvine-api-key-help" class="text-muted small">{{t('key-help')}}</p>
 
             <div class="d-flex flex-wrap gap-2 mt-3 mb-4">
-              <button type="submit" class="btn btn-primary"
-                      [disabled]="busy() || !keyForm.valid || !apiKey().trim()">
-                {{t(status.hasSavedApiKey ? 'replace-key' : 'save-key')}}
-              </button>
               <button type="button" class="btn btn-secondary" (click)="testConnection()"
                       [disabled]="busy() || !status.hasApiKey || !!apiKey()">
                 {{t('test-connection')}}
@@ -60,6 +56,10 @@
                   {{t('remove-key')}}
                 </button>
               }
+              <button id="comicvine-save" type="submit" class="btn btn-primary ms-auto"
+                      [disabled]="busy() || !keyForm.valid || !apiKey().trim()">
+                {{t('save')}}
+              </button>
             </div>
           </form>
           <p class="text-muted">{{t('scan-help')}}</p>

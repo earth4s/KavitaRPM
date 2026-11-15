@@ -130,7 +130,7 @@ public class ComicVineServiceTests
         var handler = new Handler();
         using var service = Service(handler, key: null);
         var error = await Assert.ThrowsAsync<Kavita.Common.KavitaException>(() => service.SearchVolumesAsync("Example"));
-        Assert.Contains("Settings > Import > Comic Vine", error.Message);
+        Assert.Contains("Settings > Kavita+ > Comic Vine", error.Message);
         Assert.Empty(handler.Requests);
     }
 

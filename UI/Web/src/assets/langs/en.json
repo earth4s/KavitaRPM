@@ -1845,7 +1845,7 @@
 
     "match-series-modal": {
         "comicvine-query-hint": "Search by title, volume ID, or Comic Vine volume URL.",
-        "comicvine-key-hint": "Requires your API key in Settings > Import > Comic Vine. Applying a match queues a metadata rescan and respects locked fields.",
+        "comicvine-key-hint": "Requires your API key in Settings > Kavita+ > Comic Vine. Applying a match queues a metadata rescan and respects locked fields.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",
         "description": "Pick a match to rewire Kavita+ metadata and regenerate scrobble events. Click an edition to get Volume/Chapter level metadata (if applicable).",
@@ -2785,6 +2785,7 @@
     },
 
     "manage-comicvine": {
+        "save": "{{common.save}}",
         "description": "Connect Comic Vine to fill missing comic metadata using your own API key.",
         "get-api-key": "Get your Comic Vine API key",
         "api-title": "Comic Vine API",

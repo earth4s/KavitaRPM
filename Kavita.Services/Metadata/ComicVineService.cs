@@ -148,7 +148,7 @@ public sealed class ComicVineService(
     {
         var key = await GetApiKey(ct);
         return string.IsNullOrWhiteSpace(key)
-            ? throw new KavitaException("Configure your API key in Settings > Import > Comic Vine first.") : key;
+            ? throw new KavitaException("Configure your API key in Settings > Kavita+ > Comic Vine first.") : key;
     }
 
     private static KavitaException ProviderUnavailable() =>

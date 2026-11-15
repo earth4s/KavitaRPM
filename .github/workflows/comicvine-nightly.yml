@@ -123,7 +123,7 @@ jobs:
           cat > release-notes.md <<EOF
           Nightly build of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
 
-          Includes direct Comic Vine metadata, Settings > Import > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups.
+          Includes direct Comic Vine metadata, Settings > Kavita+ > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups. The API key panel has an explicit Save button for new or replacement keys.
 
           Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
 
