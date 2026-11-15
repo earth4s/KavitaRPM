@@ -50,6 +50,7 @@ chmod 0755 "$payload/kepubify" "$payload/Kavita"
 file "$payload/Kavita" | grep -q "$executable_arch"
 test -f "$payload/wwwroot/index.html"
 grep -rqF --include='*.js' 'admin-comicvine' "$payload/wwwroot"
+grep -rqF --include='*.js' 'comicvine/search?seriesId=' "$payload/wwwroot"
 jq -n --arg commit "$GITHUB_SHA" --arg rid "$BUILD_RID" --arg version "$version" \
   '{channel:"nightly",commit:$commit,runtime:$rid,version:$version}' > "$payload/BUILD-INFO.json"
 
@@ -73,6 +74,7 @@ if [[ "${SMOKE_TEST:-false}" == true ]]; then
   if [[ "$ready" != true ]]; then cat "$smoke/server.log"; exit 1; fi
   grep -q app-root "$smoke/index.html"
   test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5808/api/settings/comicvine)" = 401
+  test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5808/api/comicvine/counts)" = 401
   kill "$smoke_pid" 2>/dev/null || true
   wait "$smoke_pid" 2>/dev/null || true
   trap - EXIT

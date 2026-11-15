@@ -16,6 +16,8 @@ export class MetadataProviderTitlePipe implements PipeTransform {
         return translate('metadata-provider-title-pipe.mangabaka');
       case MetadataProvider.ComicBookRoundup:
         return translate('metadata-provider-title-pipe.cbr');
+      case MetadataProvider.ComicVine:
+        return translate('metadata-provider-title-pipe.comicvine');
       default:
         return '';
     }

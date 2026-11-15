@@ -286,6 +286,7 @@ export class PreferenceNavComponent implements AfterViewInit {
         title: SettingSectionId.ImportSection,
         children: [
           new SideNavItem(SettingsTabId.ComicVine, [Role.Admin]),
+          new SideNavItem(SettingsTabId.MatchedMetadata, [Role.Admin]),
           new SideNavItem(SettingsTabId.MappingsImport, [Role.Admin]),
           new SideNavItem(SettingsTabId.CBLImport, [], undefined, [Role.ReadOnly]),
           SideNavItem.kPlusOnly(SettingsTabId.MALStackImport),
@@ -306,7 +307,6 @@ export class PreferenceNavComponent implements AfterViewInit {
           SideNavItem.kPlusOnly(SettingsTabId.Connections),
           SideNavItem.kPlusOnly(SettingsTabId.ManageUserTokens, [Role.Admin]),
           SideNavItem.kPlusOnly(SettingsTabId.Metadata, [Role.Admin]),
-          SideNavItem.kPlusOnly(SettingsTabId.MatchedMetadata, [Role.Admin], this.matchedMetadataBadgeCount),
           SideNavItem.kPlusOnly(SettingsTabId.ManageKavitaPlusActivity),
           SideNavItem.kPlusOnly(SettingsTabId.MyActivity, [], this.scrobblingFailuresBadgeCount),
           SideNavItem.kPlusOnly(SettingsTabId.ScrobblingHolds),

@@ -102,6 +102,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<ICoverDbService, CoverDbService>();
 
         services.AddScoped<IComicVineSettingsService, ComicVineSettingsService>();
+        services.AddScoped<IComicVineMatchingService, ComicVineMatchingService>();
         // The query-string API key must never pass through HttpClientFactory's URI logging.
         services.AddSingleton<IComicVineService>(sp => new ComicVineService(
             new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })

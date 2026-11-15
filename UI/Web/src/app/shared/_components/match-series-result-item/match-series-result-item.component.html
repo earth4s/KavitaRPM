@@ -45,6 +45,9 @@
     </div>
 
     <div class="match-result-providers d-flex align-items-center flex-wrap gap-1">
+      @if (item().series.comicVineId) {
+        <span class="badge bg-secondary">Comic Vine #{{item().series.comicVineId}}</span>
+      }
       @if (item().series.mangabakaId) {
         <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.MangaBaka" [id]="item().series.mangabakaId" />
       }
@@ -119,7 +122,9 @@
   </div>
 
   <div class="match-result-rail d-flex flex-column flex-shrink-0 align-items-end">
-    <app-confidence-chip [pct]="pct()" />
+    @if (!item().series.comicVineId) {
+      <app-confidence-chip [pct]="pct()" />
+    }
   </div>
 
 </div>

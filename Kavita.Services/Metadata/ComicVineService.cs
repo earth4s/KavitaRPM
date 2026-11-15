@@ -10,6 +10,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
 using Kavita.API.Services.Metadata;
+using Kavita.Common;
+using Kavita.Common.Helpers;
+using Kavita.Models.DTOs.Metadata.Matching;
+using Kavita.Models.DTOs.KavitaPlus.Metadata;
+using Kavita.Models.Entities.Enums.KavitaPlus;
 using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Metadata;
@@ -46,7 +51,7 @@ public sealed class ComicVineService(
     public async Task<bool> EnrichAsync(IList<ParserInfo> infos, LibraryType libraryType, bool enableMetadata,
         CancellationToken ct = default)
     {
-        if (!enableMetadata || libraryType != LibraryType.ComicVine) return false;
+        if (!enableMetadata || libraryType is not (LibraryType.ComicVine or LibraryType.Comic)) return false;
         var key = await GetApiKey(ct);
         if (string.IsNullOrWhiteSpace(key)) return false;
 
@@ -92,6 +97,87 @@ public sealed class ComicVineService(
 
     private Task<string?> GetApiKey(CancellationToken ct) =>
         resolveApiKey == null ? Task.FromResult(apiKey) : resolveApiKey(ct);
+
+    public async Task<MatchSeriesResultDto> SearchVolumesAsync(string query, CancellationToken ct = default)
+    {
+        query = query.Trim();
+        if (query.Length is 0 or > 200) throw new KavitaException("Enter a comic title or Comic Vine volume ID.");
+        var key = await RequireApiKey(ct);
+        var result = new MatchSeriesResultDto { Provider = MetadataProvider.ComicVine };
+        var directId = ParseId(query.StartsWith("comicvine:", StringComparison.OrdinalIgnoreCase) ? query[10..] : query);
+        var (linkedId, isVolume) = ExternalIdParser.GetComicVineId(query);
+        if (linkedId != null)
+        {
+            if (!isVolume) throw new KavitaException("Select a Comic Vine series/volume URL (4050), rather than an issue URL (4000).");
+            directId = ParseId(linkedId);
+        }
+
+        if (directId.HasValue)
+        {
+            var volume = await GetVolumeAsync(directId.Value, ct);
+            if (volume != null) result.Matches.Add(new ExternalSeriesMatchDto { Series = volume });
+            return result;
+        }
+        if (Uri.TryCreate(query, UriKind.Absolute, out _))
+            throw new KavitaException("Enter a Comic Vine series/volume URL, volume ID, or comic title.");
+
+        var response = await GetResponse("search/",
+            "resources=volume&limit=20&field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases&query="
+            + Uri.EscapeDataString(query), key, ct);
+        if (response == null) throw ProviderUnavailable();
+        foreach (var volume in Items(response.Value, "results"))
+        {
+            var detail = VolumeDetail(volume);
+            if (detail != null) result.Matches.Add(new ExternalSeriesMatchDto { Series = detail });
+        }
+        return result;
+    }
+
+    public async Task<ExternalSeriesDetailDto?> GetVolumeAsync(int volumeId, CancellationToken ct = default)
+    {
+        if (volumeId <= 0) return null;
+        var key = await RequireApiKey(ct);
+        var response = await GetResponse($"volume/4050-{volumeId}/",
+            "field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases", key, ct);
+        if (response == null) throw ProviderUnavailable();
+        if (!response.Value.TryGetProperty("results", out var volume) || Int(volume, "id") != volumeId) return null;
+        return VolumeDetail(volume);
+    }
+
+    private async Task<string> RequireApiKey(CancellationToken ct)
+    {
+        var key = await GetApiKey(ct);
+        return string.IsNullOrWhiteSpace(key)
+            ? throw new KavitaException("Configure your API key in Settings > Import > Comic Vine first.") : key;
+    }
+
+    private static KavitaException ProviderUnavailable() =>
+        new("Comic Vine is unavailable or its request limit was reached. Check your API key or try again later.");
+
+    private static ExternalSeriesDetailDto? VolumeDetail(JsonElement volume)
+    {
+        var id = Int(volume, "id");
+        if (id is not > 0 || string.IsNullOrWhiteSpace(Text(volume, "name"))) return null;
+        DateTime? start = int.TryParse(Text(volume, "start_year"), out var year) && year is > 0 and <= 9999
+            ? new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc) : null;
+        var publisher = volume.TryGetProperty("publisher", out var p) ? PlainText(Text(p, "name")) : string.Empty;
+        var image = volume.TryGetProperty("image", out var i) ? SafeComicVineUrl(Text(i, "small_url")) : null;
+        return new ExternalSeriesDetailDto
+        {
+            Name = PlainText(Text(volume, "name")), ComicVineId = id,
+            Summary = PlainText(Fill(Text(volume, "description"), Text(volume, "deck"))),
+            SiteUrl = SafeComicVineUrl(Text(volume, "site_detail_url")), CoverUrl = image,
+            StartDate = start, Publisher = publisher, Chapters = Int(volume, "count_of_issues") ?? 0,
+            Genres = [], Staff = [], Tags = [], Editions = [], Provider = ScrobbleProvider.Kavita,
+            PlusMediaFormat = PlusMediaFormat.Comic,
+            Synonyms = Text(volume, "aliases").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        };
+    }
+
+    private static string? SafeComicVineUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+        && uri.Host == "comicvine.gamespot.com" && string.IsNullOrEmpty(uri.UserInfo)
+            ? uri.GetLeftPart(UriPartial.Path) : null;
 
     private async Task EnrichIssue(ParserInfo info, string key, CancellationToken ct)
     {

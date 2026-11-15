@@ -8,6 +8,47 @@ namespace Kavita.Services.Tests;
 
 public class ComicVineScanTests(ITestOutputHelper output) : AbstractDbTest(output)
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SavedMatch_ResolvesIssuesWithoutEmbeddedIds_AndHonorsDontMatch(bool dontMatch)
+    {
+        var (unitOfWork, context, _) = await CreateDatabase();
+        var helper = new ScannerHelper(unitOfWork, output);
+        var library = await helper.GenerateScannerData("Matched API - ComicVine",
+            ["Example (2020)/Example (2020) #001.cbz"],
+            new Dictionary<string, ComicInfo>
+            {
+                ["Example (2020) #001.cbz"] = new() { Series = "Example", Volume = "2020", Number = "1" }
+            });
+        var firstScan = helper.CreateServices();
+        await firstScan.ScanLibrary(library.Id, forceUpdate: true);
+        var series = await context.Series.SingleAsync(s => s.LibraryId == library.Id);
+        series.ComicVineId = "200";
+        series.MetadataProviderOverride = Kavita.Models.Entities.Enums.MetadataProvider.ComicVine;
+        series.DontMatch = dontMatch;
+        await context.SaveChangesAsync();
+
+        var handler = new ComicVineServiceTests.Handler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/issues/")
+                ? ComicVineServiceTests.Json("""{"status_code":1,"number_of_total_results":1,"results":[{"id":100,"issue_number":"1","volume":{"id":200}}]}""")
+                : ComicVineServiceTests.Json(request.RequestUri.AbsolutePath.Contains("/volume/")
+                    ? """{"status_code":1,"results":{"id":200,"publisher":{"name":"Publisher"}}}"""
+                    : """{"status_code":1,"results":{"id":100,"name":"Matched title","description":"Fetched summary","volume":{"id":200}}}"""));
+        using var comicVine = ComicVineServiceTests.Service(handler);
+        var scanner = helper.CreateServices(comicVineService: comicVine);
+        await scanner.ScanSeries(series.Id, true);
+        var chapter = await context.Chapter.SingleAsync();
+        Assert.Equal("200", series.ComicVineId);
+        if (dontMatch) Assert.Empty(handler.Requests);
+        else
+        {
+            Assert.Equal("Matched title", chapter.TitleName);
+            Assert.Equal("100", chapter.ComicVineId);
+            Assert.Contains(handler.Requests, r => r.AbsolutePath == "/api/issues/");
+        }
+    }
+
     [Fact]
     public async Task Scan_StoresRemoteMetadataAndRespectsChapterLocksOnRescan()
     {

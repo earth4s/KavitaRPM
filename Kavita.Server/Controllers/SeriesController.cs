@@ -741,7 +741,6 @@ public class SeriesController(
     /// </summary>
     /// <param name="seriesId"></param>
     /// <returns></returns>
-    [KPlus]
     [HttpGet("match-info")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<MatchSeriesInfoDto>> GetExistingMatchInfo(int seriesId)
@@ -756,10 +755,12 @@ public class SeriesController(
 
         return Ok(new MatchSeriesInfoDto
         {
-            HasMatch = externalMetadata is {Id: > 0} &&
+            HasMatch = series.GetEffectiveMetadataProvider() == Kavita.Models.Entities.Enums.MetadataProvider.ComicVine
+                       ? !string.IsNullOrEmpty(series.ComicVineId) : externalMetadata is {Id: > 0} &&
                        (series.MangaBakaId > 0 || series.HardcoverId > 0 || series.CbrId > 0 || series.AniListId > 0),
             // MangaBaka will always set AniList if set
-            IsLegacy = series is {AniListId: > 0, MangaBakaId: 0},
+            IsLegacy = series.GetEffectiveMetadataProvider() == Kavita.Models.Entities.Enums.MetadataProvider.Mangabaka && series is {AniListId: > 0, MangaBakaId: 0},
+            ComicVineId = int.TryParse(series.ComicVineId, out var comicVineId) ? comicVineId : null,
             CbrId = series.CbrId,
             HardcoverId = series.HardcoverId,
             MangaBakaId = series.MangaBakaId,

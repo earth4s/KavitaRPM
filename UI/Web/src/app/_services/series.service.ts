@@ -250,10 +250,16 @@ export class SeriesService {
   }
 
   matchSeries(model: MatchSeriesRequest) {
+    if (model.provider === MetadataProvider.ComicVine) {
+      return this.httpClient.post<MatchSeriesResult>(this.baseUrl + `comicvine/search?seriesId=${model.seriesId}`, {query: model.query});
+    }
     return this.httpClient.post<MatchSeriesResult>(this.baseUrl + 'series/match', model);
   }
 
   updateMatch(seriesId: number, series: ExternalSeriesDetail, edition: ExternalEditionDto | null, provider: MetadataProvider | null) {
+    if (provider === MetadataProvider.ComicVine) {
+      return this.httpClient.post<string>(this.baseUrl + `comicvine/match?seriesId=${seriesId}`, {volumeId: series.comicVineId}, TextResonse);
+    }
     const ids = {
       aniListId: series.aniListId ?? null,
       malId: series.malId ?? null,
@@ -272,8 +278,9 @@ export class SeriesService {
     return this.httpClient.post<string>(url, ids, TextResonse);
   }
 
-  updateDontMatch(seriesId: number, dontMatch: boolean) {
-    return this.httpClient.post<string>(this.baseUrl + `series/dont-match?seriesId=${seriesId}&dontMatch=${dontMatch}`, {}, TextResonse);
+  updateDontMatch(seriesId: number, dontMatch: boolean, provider?: MetadataProvider) {
+    const controller = provider === MetadataProvider.ComicVine ? "comicvine" : "series";
+    return this.httpClient.post<string>(this.baseUrl + `${controller}/dont-match?seriesId=${seriesId}&dontMatch=${dontMatch}`, {}, TextResonse);
   }
 
   getSeriesWithAnnotations() {

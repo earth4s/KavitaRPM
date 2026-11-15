@@ -73,6 +73,67 @@ public class ComicVineServiceTests
         ComicVineId = issueId, ComicVineSeriesId = seriesId
     };
 
+    private const string SearchVolumeJson = """
+        {"id":200,"name":"Example &amp; Friends","description":"<p>Series summary</p>",
+         "start_year":"2020","publisher":{"name":"Example Publisher"},"count_of_issues":12,
+         "image":{"small_url":"https://comicvine.gamespot.com/a/uploads/example.jpg"},
+         "site_detail_url":"https://comicvine.gamespot.com/example/4050-200/","aliases":"Other title\nAnother title"}
+        """;
+
+    [Fact]
+    public async Task SearchTitle_UsesVolumeResourceAndMapsResults()
+    {
+        var handler = new Handler(_ => Json("{\"status_code\":1,\"results\":[" + SearchVolumeJson + "]}"));
+        using var service = Service(handler);
+        var result = await service.SearchVolumesAsync("Example & Friends");
+        Assert.Equal(MetadataProvider.ComicVine, result.Provider);
+        var match = Assert.Single(result.Matches);
+        Assert.Equal(200, match.Series.ComicVineId);
+        Assert.Equal("Example & Friends", match.Series.Name);
+        Assert.Equal("Series summary", match.Series.Summary);
+        Assert.Equal(12, match.Series.Chapters);
+        Assert.Equal(2020, match.Series.StartDate!.Value.Year);
+        Assert.Equal(2, match.Series.Synonyms.Count);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("/api/search/", request.AbsolutePath);
+        Assert.Contains("resources=volume", request.Query);
+        Assert.Contains("query=Example%20%26%20Friends", request.Query);
+    }
+
+    [Theory]
+    [InlineData("200")]
+    [InlineData("comicvine:200")]
+    [InlineData("https://comicvine.gamespot.com/example/4050-200/")]
+    public async Task SearchIdOrUrl_UsesVerifiedVolumeLookup(string query)
+    {
+        var handler = new Handler(_ => Json("{\"status_code\":1,\"results\":" + SearchVolumeJson + "}"));
+        using var service = Service(handler);
+        var result = await service.SearchVolumesAsync(query);
+        Assert.Equal(200, Assert.Single(result.Matches).Series.ComicVineId);
+        Assert.Equal("/api/volume/4050-200/", Assert.Single(handler.Requests).AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData("https://comicvine.gamespot.com/example/4000-100/")]
+    [InlineData("https://unrelated.example/4050-200/")]
+    public async Task SearchInvalidUrl_DoesNotCallApi(string query)
+    {
+        var handler = new Handler();
+        using var service = Service(handler);
+        await Assert.ThrowsAsync<Kavita.Common.KavitaException>(() => service.SearchVolumesAsync(query));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task SearchWithoutKey_ReturnsConfigurationHint()
+    {
+        var handler = new Handler();
+        using var service = Service(handler, key: null);
+        var error = await Assert.ThrowsAsync<Kavita.Common.KavitaException>(() => service.SearchVolumesAsync("Example"));
+        Assert.Contains("Settings > Import > Comic Vine", error.Message);
+        Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public async Task IssueId_FillsMetadataWithoutChangingGrouping()
     {
@@ -128,7 +189,7 @@ public class ComicVineServiceTests
     [InlineData("", LibraryType.ComicVine, true)]
     [InlineData("test-key", LibraryType.ComicVine, false)]
     [InlineData("test-key", LibraryType.Manga, true)]
-    [InlineData("test-key", LibraryType.Comic, true)]
+    [InlineData("test-key", LibraryType.Book, true)]
     public async Task Disabled_DoesNotContactApi(string? key, LibraryType type, bool enabled)
     {
         var handler = new Handler();

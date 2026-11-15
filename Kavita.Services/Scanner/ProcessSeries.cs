@@ -137,7 +137,17 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
-            var directComicVineEnabled = await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
+            if ((series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine && !string.IsNullOrEmpty(series.ComicVineId))
+            {
+                // An explicit UI match takes precedence over stale IDs embedded in individual issues.
+                foreach (var info in parsedInfos.Where(i => !i.IsPlaceholder))
+                {
+                    info.ComicVineSeriesId = series.ComicVineId;
+                    info.ComicVineId = null;
+                }
+            }
+            var directComicVineEnabled = !series.DontMatch
+                && await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
 
             // parsedInfos[0] is not the first volume or chapter. We need to find it using a ComicInfo check (as it uses firstParsedInfo for series sort)
             var firstParsedInfo = parsedInfos.FirstOrDefault(p => p.ComicInfo != null, firstInfo);
@@ -474,7 +484,8 @@ public class ProcessSeries(
                 series.MalId = malId.Value;
 
             var (comicVineId, isSeriesLink) = ExternalIdParser.GetComicVineId(series.Metadata.WebLinks);
-            if (comicVineId != null && isSeriesLink)
+            if (comicVineId != null && isSeriesLink
+                && (series.MetadataProviderOverride ?? library.MetadataProvider) != MetadataProvider.ComicVine)
             {
                 series.ComicVineId = comicVineId;
             }

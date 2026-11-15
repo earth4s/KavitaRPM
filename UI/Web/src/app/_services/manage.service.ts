@@ -15,10 +15,10 @@ export class ManageService {
   private readonly httpClient = inject(HttpClient);
   private readonly utilityService = inject(UtilityService);
 
-  getAllKavitaPlusSeries(filter: ManageMatchFilter, pageNum?: number, itemsPerPage?: number) {
+  getAllKavitaPlusSeries(filter: ManageMatchFilter, pageNum?: number, itemsPerPage?: number, comicVine = false) {
     const params = this.utilityService.addPaginationIfExists(new HttpParams(), pageNum, itemsPerPage);
 
-    return this.httpClient.post<Array<ManageMatchSeries>>(this.baseUrl + `manage/series-metadata`, filter,
+    return this.httpClient.post<Array<ManageMatchSeries>>(this.baseUrl + (comicVine ? "comicvine/series" : "manage/series-metadata"), filter,
       {observe: 'response', params}).pipe(
         map(res => {
           return this.utilityService.createPaginatedResult<ManageMatchSeries>(res)
@@ -26,7 +26,7 @@ export class ManageService {
     );
   }
 
-  getMatchedExternalSeriesCount() {
-    return this.httpClient.get<MatchedExternalSeriesCount>(this.baseUrl + 'manage/matched-series-counts');
+  getMatchedExternalSeriesCount(comicVine = false) {
+    return this.httpClient.get<MatchedExternalSeriesCount>(this.baseUrl + (comicVine ? "comicvine/counts" : "manage/matched-series-counts"));
   }
 }

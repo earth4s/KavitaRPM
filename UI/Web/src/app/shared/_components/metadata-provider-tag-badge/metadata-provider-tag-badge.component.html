@@ -1,1 +1,5 @@
-<app-scrobble-provider-tag-badge [provider]="mappedScrobbleProvider()" />
+@if (metadataProvider() === MetadataProvider.ComicVine) {
+  <span class="badge bg-secondary">Comic Vine</span>
+} @else {
+  <app-scrobble-provider-tag-badge [provider]="mappedScrobbleProvider()" />
+}

@@ -182,7 +182,7 @@
           }
 
           @case (SettingsTabId.MatchedMetadata) {
-            @if (accountService.hasAdminRole() && licenseService.hasActiveLicense()) {
+            @if (accountService.hasAdminRole()) {
               @defer {
                 <div class="scale col-md-12">
                   <app-manage-matched-metadata />

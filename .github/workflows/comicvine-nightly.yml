@@ -47,10 +47,10 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - name: Verify Comic Vine, settings, scanning and export behavior
+      - name: Verify Comic Vine matching, settings, scanning and export behavior
         run: |
-          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests'
-          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVineSettingsTests|FullyQualifiedName~EndpointAccessTests'
+          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
+          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
 
   package:
     needs: [frontend, tests]
@@ -123,7 +123,7 @@ jobs:
           cat > release-notes.md <<EOF
           Nightly build of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
 
-          Includes direct Comic Vine metadata and Settings > Import > Comic Vine for saving and testing your own API key. No Kavita+ license is required for direct Comic Vine lookups.
+          Includes direct Comic Vine metadata, Settings > Import > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. No Kavita+ license is required for direct Comic Vine lookups.
 
           Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
 

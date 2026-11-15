@@ -53,6 +53,9 @@
               <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.AniList" [id]="match.aniListId" />
             } @else {
               @switch (match.metadataProvider) {
+                @case (MetadataProvider.ComicVine) {
+                  <a class="badge bg-secondary" target="_blank" rel="noreferrer noopener" [href]="'https://comicvine.gamespot.com/volume/4050-' + match.comicVineId">Comic Vine</a>
+                }
                 @case (MetadataProvider.Mangabaka) {
                   <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.MangaBaka" [id]="match.mangaBakaId" />
                 }
@@ -91,7 +94,7 @@
             }
           </div>
 
-          <app-setting-select inputId="metadata-provider" [formField]="formGroup.provider" [options]="allMetadataProviders" extraClasses="form-select-sm w-auto">
+          <app-setting-select inputId="metadata-provider" [formField]="formGroup.provider" [options]="allMetadataProviders()" extraClasses="form-select-sm w-auto">
             <ng-template #template let-p>
               {{ p | metadataProviderTitle }}
             </ng-template>
@@ -110,6 +113,10 @@
         }
 
       </div>
+    }
+
+    @if (formGroup.provider().value() === MetadataProvider.ComicVine) {
+      <p class="small mt-2">{{t('comicvine-key-hint')}}</p>
     }
 
     <!-- Query bar -->
@@ -145,10 +152,15 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
         <div class="provider-hints d-flex align-items-center flex-wrap gap-1">
           <span class="text-muted">{{ t('try') }}</span>
+          @if (formGroup.provider().value() === MetadataProvider.ComicVine) {
+            <code class="provider-hint">comicvine:796</code>
+            <span class="text-muted">{{t('comicvine-query-hint')}}</span>
+          } @else {
           <code class="provider-hint">anilist:159441</code>
           <code class="provider-hint">mal:20593</code>
           <code class="provider-hint">mangabaka:1331</code>
           <code class="provider-hint">hardcover:flatland</code>
+          }
         </div>
         <div class="form-check form-switch mb-0">
           <input type="checkbox" class="form-check-input" [formField]="formGroup.dontMatch"

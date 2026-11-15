@@ -193,6 +193,7 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
     {
         return await context.Series
             .Where(s => s.Library.AllowMetadataMatching)
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine)
             .WhereIf(includeStaleData, s => s.ExternalSeriesMetadata == null || s.ExternalSeriesMetadata.ValidUntilUtc < DateTime.UtcNow)
 
             .WhereIf(!includeStaleData, s =>
@@ -216,6 +217,7 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
             .Include(s => s.ExternalSeriesMetadata)
             .Where(s => s.Library.AllowMetadataMatching)
             .WhereIf(filter.LibraryType >= 0, s => s.Library.Type == (LibraryType) filter.LibraryType)
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine)
             .FilterMatchState(filter.MatchStateOption)
             .OrderBy(s => s.NormalizedName)
             .ProjectTo<ManageMatchSeriesDto>(mapper.ConfigurationProvider);
@@ -228,7 +230,8 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
         var source = context.Series
             .Include(s => s.Library)
             .Include(s => s.ExternalSeriesMetadata)
-            .Where(s => s.Library.AllowMetadataMatching);
+            .Where(s => s.Library.AllowMetadataMatching)
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine);
 
         return new MatchedExternalSeriesCountDto
         {

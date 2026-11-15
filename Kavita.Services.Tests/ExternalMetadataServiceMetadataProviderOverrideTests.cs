@@ -56,6 +56,22 @@ public class ExternalMetadataServiceMetadataProviderOverrideTests : AbstractDbTe
     }
 
     [Fact]
+    public async Task ComicVineProvider_NeverCallsKavitaPlus()
+    {
+        var (unitOfWork, context, mapper) = await CreateDatabase();
+        var (service, api) = CreateService(unitOfWork, mapper);
+        var series = new SeriesBuilder("Direct comic").WithLibraryId(1)
+            .WithMetadata(new SeriesMetadataBuilder().Build()).Build();
+        series.MetadataProviderOverride = MetadataProvider.ComicVine;
+        series.ComicVineId = "200";
+        context.Series.Add(series);
+        await context.SaveChangesAsync();
+        await service.TryMatchAndLoadMetadataForSeries(series.Id, LibraryType.ComicVine, MetadataFetchTrigger.OnDemand);
+        await api.DidNotReceive().MatchSeriesV3Async(Arg.Any<MatchRequestV3Dto>(), Arg.Any<CancellationToken>());
+        await Assert.ThrowsAsync<Kavita.Common.KavitaException>(() => service.FixSeriesMatch(series.Id, new Kavita.Models.DTOs.KavitaPlus.ExternalMetadata.ExternalMetadataIdsDto()));
+    }
+
+    [Fact]
     public async Task TryMatchAndLoadMetadataForSeries_UsesOverrideId_SkipsReMatch_WhenOverrideAlreadyMatched()
     {
         var (unitOfWork, context, mapper) = await CreateDatabase();
