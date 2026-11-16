@@ -63,7 +63,7 @@ jobs:
           dotnet-version: 10.0.x
       - name: Verify draft-only release guard
         run: python3 scripts/nightly/test-draft-release.py
-      - name: Verify Comic Vine matching, settings, scanning and export behavior
+      - name: Verify Specials grouping, Comic Vine matching, scanning and export behavior
         run: |
           dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
           dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
