@@ -137,10 +137,12 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
-            if ((series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine && !string.IsNullOrEmpty(series.ComicVineId))
+            var hasPinnedComicVineMatch = (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
+                && !string.IsNullOrEmpty(series.ComicVineId);
+            if (hasPinnedComicVineMatch)
             {
                 // An explicit UI match takes precedence over stale IDs embedded in individual issues.
-                foreach (var info in parsedInfos.Where(i => !i.IsPlaceholder))
+                foreach (var info in parsedInfos.Where(i => !i.IsPlaceholder && !i.IsSpecialInfo()))
                 {
                     info.ComicVineSeriesId = series.ComicVineId;
                     info.ComicVineId = null;
@@ -194,8 +196,12 @@ public class ProcessSeries(
             }
 
             // Check if there is a comicvineSeriesId on file
-            var comicVineSeriesIds = parsedInfos.Select(p => p.ComicVineSeriesId).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
-            if (comicVineSeriesIds.Count == 1)
+            // An annual inside Specials can belong to a different Comic Vine volume. Its issue
+            // identity stays on its chapter and must not replace the parent comic's match.
+            var comicVineSeriesIds = parsedInfos
+                .Where(p => !library.Folders.Any(folder => Parser.GetSpecialsOwnerFolder(p.FullFilePath, folder.Path) != null))
+                .Select(p => p.ComicVineSeriesId).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+            if (!hasPinnedComicVineMatch && comicVineSeriesIds.Count == 1)
             {
                 series.ComicVineId =  comicVineSeriesIds[0];
             }

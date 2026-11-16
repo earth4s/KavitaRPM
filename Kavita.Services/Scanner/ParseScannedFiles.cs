@@ -259,10 +259,10 @@ public partial class ParseScannedFiles
                     continue;
                 }
 
-                // Skip directories ending with "Specials", let the parent handle it
-                if (directory.EndsWith("Specials", StringComparison.OrdinalIgnoreCase))
+                // Skip Specials containers, letting their parent comic handle them.
+                if (Parser.IsSpecialsFolder(directory) && !IsDirectChild(directory, folderPath))
                 {
-                    _logger.LogDebug("Skipping {Directory} as it ends with 'Specials'", directory);
+                    _logger.LogDebug("Skipping Specials container {Directory}", directory);
                     skippedSpecials.Add(directory);
                     continue;
                 }
@@ -767,6 +767,8 @@ public partial class ParseScannedFiles
 
         _logger.LogDebug("\t[ScannerService] Library {LibraryName} Step 1.D: Merge any localized series with series {Folder}", library.Name, folderPath);
         stepWatch.Restart();
+        if (library.Type is LibraryType.Comic or LibraryType.ComicVine)
+            GroupComicSpecialsWithParents(scanResults, placeholderOwners, library.Type);
         scanResults = MergeLocalizedSeriesAcrossScanResults(scanResults);
 
         _logger.LogDebug("\t[ScannerService] Library {LibraryName} Step 1.E: Group all parsed data into logical Series", library.Name);
@@ -780,6 +782,56 @@ public partial class ParseScannedFiles
         GroupTime += stepWatch.Elapsed;
 
         return walkResults;
+    }
+
+    /// <summary>
+    /// A Specials folder owns extras, not a new series. Prefer the ordinary files' parsed
+    /// identity (including ComicInfo series/year) over folder-only fallback. Include kept
+    /// files so adding an annual does not require rereading unchanged regular issues.
+    /// </summary>
+    private static void GroupComicSpecialsWithParents(IList<ScanResult> results,
+        Dictionary<ParserInfo, SeriesModified> placeholderOwners, LibraryType type)
+    {
+        var specials = results.SelectMany(result => result.ParserInfos.Where(info => !info.IsPlaceholder)
+            .Select(info => (Info: info, Owner: Parser.GetSpecialsOwnerFolder(info.FullFilePath, result.LibraryRoot), result.LibraryRoot)))
+            .Where(item => item.Owner != null).ToList();
+        if (specials.Count == 0) return;
+        var wanted = specials.Select(item => (item.Owner!, item.Info.Format)).ToHashSet();
+        var candidates = new Dictionary<(string Folder, MangaFormat Format), List<ParserInfo>>();
+        foreach (var result in results)
+        foreach (var info in result.ParserInfos)
+        {
+            IEnumerable<string> paths = info.IsPlaceholder
+                ? placeholderOwners.TryGetValue(info, out var kept)
+                    ? kept.FilesByFolder.Values.SelectMany(files => files).Select(file => file.Path)
+                    : info.UnchangedFiles
+                : [info.FullFilePath];
+            foreach (var path in paths)
+            {
+                if (Parser.GetSpecialsOwnerFolder(path, result.LibraryRoot) != null) continue;
+                var directory = Path.GetDirectoryName(path);
+                while (!string.IsNullOrEmpty(directory) && directory.IsInsideFolder(result.LibraryRoot))
+                {
+                    var key = (directory, info.Format);
+                    if (wanted.Contains(key))
+                    {
+                        if (!candidates.TryGetValue(key, out var names)) candidates[key] = names = [];
+                        if (names.All(other => other.Series.ToNormalized() != info.Series.ToNormalized())) names.Add(info);
+                    }
+                    directory = Path.GetDirectoryName(directory);
+                }
+            }
+        }
+        foreach (var (info, owner, root) in specials)
+        {
+            // PDF and image readers reach the same grouping boundary as archive readers.
+            DefaultParser.ApplyComicSpecialsFolder(info, root, type);
+            // A shared folder with several series is ambiguous; never pick one arbitrarily.
+            if (!candidates.TryGetValue((owner!, info.Format), out var names) || names.Count != 1) continue;
+            info.Series = names[0].Series;
+            info.LocalizedSeries = names[0].LocalizedSeries;
+            info.SeriesSort = names[0].SeriesSort;
+        }
     }
 
     private void AddReadFiles(IList<ScanResult> walkResults)

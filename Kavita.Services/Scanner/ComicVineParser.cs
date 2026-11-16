@@ -90,7 +90,7 @@ public class ComicVineParser(IDirectoryService directoryService) : DefaultParser
         }
 
         // Check if this is a Special/Annual
-        info.IsSpecial = Parser.IsSpecial(info.Filename, type) || Parser.IsSpecial(info.ComicInfo?.Format, type);
+        info.IsSpecial = Parser.IsSpecial(info.Filename, type) || Parser.HasComicInfoSpecial(info.ComicInfo?.Format);
 
         // Patch in other information from ComicInfo
         if (enableMetadata)
@@ -102,6 +102,8 @@ public class ComicVineParser(IDirectoryService directoryService) : DefaultParser
         {
             info.Series = Parser.CleanTitle(directoryName, true);
         }
+
+        ApplyComicSpecialsFolder(info, libraryRoot, type);
 
         FinalizeNumbers(info);
 

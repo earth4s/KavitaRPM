@@ -38,3 +38,17 @@ sudo systemctl enable --now kavita.service
 Use the `aarch64` RPM on ARM64 or the `armv7hl` RPM on supported ARM32 systems.
 The service account needs read/traverse permission on media-library directories.
 Then open **Settings > Kavita+ > Meta API Connections > Comic Vine** to configure your API key.
+
+## Comic Specials folders
+
+Files inside a comic's `Specials/` subtree belong to that parent comic and appear
+in its Specials volume, even when annual filenames or ComicInfo identify a
+separate annual series. This applies to Comic and Comic (Flexible) libraries.
+Folder-name matching is case insensitive and supports nested subfolders. An
+unrelated title such as `Holiday Specials` is not treated as a Specials container.
+
+After installing the fix, run a forced full library scan to regroup files that
+were previously indexed under a bogus `Specials` series. Annuals keep their own
+embedded Comic Vine issue IDs; the parent series match does not replace them
+with the same-numbered ordinary issue. See upstream issue
+[Kareadita/Kavita#3942](https://github.com/Kareadita/Kavita/issues/3942).

@@ -772,9 +772,31 @@ public static partial class Parser
 
     public static int ParseSpecialIndex(string filePath)
     {
-        var match = SpecialMarkerRegex.Match(filePath).Value.Replace("SP", string.Empty);
-        if (string.IsNullOrEmpty(match)) return 0;
-        return int.Parse(match);
+        var match = SpecialMarkerRegex.Match(filePath).Value;
+        return match.Length == 0 ? 0 : int.Parse(match.AsSpan(2));
+    }
+
+    /// <summary>Only an entire path component named Specials is a grouping container.</summary>
+    public static bool IsSpecialsFolder(string path) =>
+        string.Equals(Path.GetFileName(path.Replace('\\', '/').TrimEnd('/')), "Specials", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Finds the comic above a Specials subtree, without climbing above the library root.
+    /// A top-level series actually named Specials has no parent comic and is not a container.
+    /// </summary>
+    public static string? GetSpecialsOwnerFolder(string filePath, string libraryRoot)
+    {
+        var root = NormalizePath(libraryRoot);
+        var directory = Path.GetDirectoryName(NormalizePath(filePath));
+        string? owner = null;
+        while (!string.IsNullOrEmpty(directory) && directory.IsInsideFolder(root))
+        {
+            var parent = Path.GetDirectoryName(directory);
+            if (IsSpecialsFolder(directory) && !string.IsNullOrEmpty(parent) && parent.IsInsideFolder(root))
+                owner = parent;
+            directory = parent;
+        }
+        return owner;
     }
 
     public static bool IsSpecial(string? filePath, LibraryType type)
@@ -1238,9 +1260,10 @@ public static partial class Parser
     /// </summary>
     /// <param name="comicInfoFormat"></param>
     /// <returns></returns>
-    public static bool HasComicInfoSpecial(string comicInfoFormat)
+    public static bool HasComicInfoSpecial(string? comicInfoFormat)
     {
-        return FormatTagSpecialKeywords.Contains(comicInfoFormat);
+        return !string.IsNullOrWhiteSpace(comicInfoFormat)
+            && FormatTagSpecialKeywords.Contains(comicInfoFormat.Trim(), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
