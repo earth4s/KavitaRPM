@@ -79,10 +79,10 @@ export class MatchSeriesModalComponent implements OnInit {
   initialProvider = input<MetadataProvider>();
   private readonly licenseService = inject(LicenseService);
   private searchRequest = 0;
-  protected readonly allMetadataProviders = computed(() => AllMetadataProviders.filter(p =>
-    p === MetadataProvider.ComicVine
-      ? [LibraryType.Comic, LibraryType.ComicVine].includes(this.matchInfo()?.libraryType as LibraryType)
-      : this.licenseService.hasActiveLicense()));
+  protected readonly allMetadataProviders = computed(() => this.licenseService.hasActiveLicense()
+    ? AllMetadataProviders.filter(p => p !== MetadataProvider.ComicVine ||
+        [LibraryType.Comic, LibraryType.ComicVine].includes(this.matchInfo()?.libraryType as LibraryType))
+    : []);
 
   formModel = signal<MatchSeriesFormModel>({
     query: '',

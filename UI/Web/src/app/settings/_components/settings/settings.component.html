@@ -257,7 +257,7 @@
           }
 
           @case (SettingsTabId.MatchedMetadata) {
-            @if (accountService.hasAdminRole()) {
+            @if (hasActiveLicense() && accountService.hasAdminRole()) {
               @defer (on immediate) {
                 <div class="scale col-md-12">
                   <app-manage-matched-metadata />
@@ -299,7 +299,7 @@
           }
 
           @case (SettingsTabId.MetaApiConnections) {
-            @if (accountService.hasAdminRole()) {
+            @if (hasActiveLicense() && accountService.hasAdminRole()) {
               @defer (on immediate) {
                 <div class="scale col-md-12">
                   <app-manage-meta-api-connections />

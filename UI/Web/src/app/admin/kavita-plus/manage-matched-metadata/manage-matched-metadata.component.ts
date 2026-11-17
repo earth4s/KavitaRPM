@@ -72,7 +72,7 @@ export class ManageMatchedMetadataComponent implements OnInit {
     : allMatchStates.filter(m => m !== MatchStateOption.Matched));
   protected readonly licenseService = inject(LicenseService);
   protected readonly sources = computed(() => this.licenseService.hasActiveLicense()
-    ? ["comicvine", "kavitaplus"] : ["comicvine"]);
+    ? ["comicvine", "kavitaplus"] : []);
   protected readonly isComicVine = computed(() => this.formGroup.source().value() === "comicvine");
   private requestNumber = 0;
   private countRequest = 0;

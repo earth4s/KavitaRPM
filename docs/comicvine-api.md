@@ -1,14 +1,15 @@
 # Direct Comic Vine metadata
 
-This fork can enrich a **Comic** library (the `ComicVine` library type, not
-**Comic (Flexible)**) directly through the Comic Vine API. It does not require
-Kavita+. `ComicVineParser` still reads local files and determines grouping; the
+This fork can enrich **Comic** and **Comic (Flexible)** libraries directly through
+the Comic Vine API. An active Kavita+ license is required to view Metadata Providers,
+manage provider API keys, match series, and perform direct lookups. `ComicVineParser` still reads local files and determines grouping; the
 asynchronous enrichment runs in `ProcessSeries` before chapter metadata is saved.
 
 ## Enable
 
 1. Sign in at <https://comicvine.gamespot.com/api/> and obtain your own API key.
-2. As a Kavita administrator, open **Settings > Import > Comic Vine**. Enter the
+2. Activate your Kavita+ license, then as a Kavita administrator open
+   **Settings > Kavita+ > Metadata Providers > Comic Vine**. Enter the
    key, select **Save API key**, then **Test connection**. Changes take effect on
    the next lookup without restarting. The test makes a small, uncached request
    directly to Comic Vine and uses the same request limits as scanning.
@@ -56,7 +57,10 @@ Comic Vine calls a series/run a **volume** (`4050`); an individual issue uses
 only the volume ID is available, then requests `/issue/4000-ID/` and
 `/volume/4050-ID/`. It rejects ambiguous results, mismatched IDs, and ranges.
 An explicit `Number` of `0` is supported; an unknown parser-default `0` is skipped.
-Title-only searches and nonnumeric issue labels are not implemented.
+Use **Settings > Import > Matched Series** to search by title or select a Comic Vine
+volume ID/URL and save a parent series match. Issue enrichment still requires a
+unique issue identifier or a matched volume and numeric issue number; nonnumeric
+issue labels are not implemented.
 
 ## Fields and precedence
 
@@ -86,9 +90,12 @@ issue's web links for attribution.
 - Requests time out after 30 seconds. API keys, request URLs and provider error
   bodies are excluded from this service's logging. Redirects and cookies are
   disabled for the dedicated client.
-- The API key is sent only to the fixed HTTPS Comic Vine API host. No Kavita+
-  license or proxy is involved in these requests. Existing Kavita+ features remain
-  independently controlled by their settings.
+- The API key is sent only to the fixed HTTPS Comic Vine API host. Requests go
+  directly to Comic Vine; Kavita's existing license service verifies Kavita+ access.
+- Without an active Kavita+ license, credential endpoints and direct matching
+  endpoints are restricted, and background scans cannot resolve saved or environment
+  API keys. Saved keys remain protected in the database for later reactivation.
+  Local file parsing and Specials folder grouping continue without a license.
 
 No live API requests are needed for tests: `ComicVineServiceTests` uses a fake HTTP
 handler and clock. Live validation requires a key supplied by the operator.

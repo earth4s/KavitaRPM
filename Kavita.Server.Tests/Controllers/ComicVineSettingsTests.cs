@@ -4,6 +4,7 @@ using Kavita.API.Services.Metadata;
 using Kavita.Models.Constants;
 using Kavita.Models.DTOs.Settings;
 using Kavita.Server.Controllers;
+using Kavita.Server.Attributes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -23,10 +24,11 @@ public class ComicVineSettingsTests
     [InlineData(nameof(SettingsController.SaveComicVineSettings))]
     [InlineData(nameof(SettingsController.RemoveComicVineSettings))]
     [InlineData(nameof(SettingsController.TestComicVineConnection))]
-    public void AllCredentialEndpoints_AreAdminOnlyAndNotCached(string name)
+    public void AllCredentialEndpoints_RequireAdminAndKavitaPlusAndAreNotCached(string name)
     {
         var method = typeof(SettingsController).GetMethod(name)!;
         Assert.Contains(method.GetCustomAttributes<AuthorizeAttribute>(), a => a.Policy == PolicyGroups.AdminPolicy);
+        Assert.NotNull(method.GetCustomAttribute<KPlusAttribute>());
         Assert.True(method.GetCustomAttribute<ResponseCacheAttribute>()!.NoStore);
     }
 

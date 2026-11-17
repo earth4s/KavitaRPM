@@ -276,7 +276,7 @@ export class PreferenceNavComponent implements AfterViewInit {
       {
         title: SettingSectionId.ImportSection,
         children: [
-          new SideNavItem(SettingsTabId.MatchedMetadata, [Role.Admin]),
+          SideNavItem.kPlusOnly(SettingsTabId.MatchedMetadata, [Role.Admin]),
           new SideNavItem(SettingsTabId.MappingsImport, [Role.Admin]),
           new SideNavItem(SettingsTabId.CBLImport, [], undefined, [Role.ReadOnly]),
           SideNavItem.kPlusOnly(SettingsTabId.MALStackImport),
@@ -294,7 +294,7 @@ export class PreferenceNavComponent implements AfterViewInit {
         title: SettingSectionId.KavitaPlusSection,
         children: [
           new SideNavItem(SettingsTabId.KavitaPlusLicense, [Role.Admin]),
-          new SideNavItem(SettingsTabId.MetaApiConnections, [Role.Admin]),
+          SideNavItem.kPlusOnly(SettingsTabId.MetaApiConnections, [Role.Admin]),
           SideNavItem.kPlusOnly(SettingsTabId.Connections),
           SideNavItem.kPlusOnly(SettingsTabId.ManageUserTokens, [Role.Admin]),
           SideNavItem.kPlusOnly(SettingsTabId.Metadata, [Role.Admin]),

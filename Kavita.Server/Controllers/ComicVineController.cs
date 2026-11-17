@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Kavita.Server.Controllers;
 
 [Authorize(Policy = PolicyGroups.AdminPolicy)]
+[KPlus]
 public sealed class ComicVineController(IComicVineMatchingService matching) : BaseApiController
 {
     [SeriesAccess]

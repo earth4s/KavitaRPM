@@ -19,6 +19,7 @@ using Kavita.Models.DTOs.KavitaPlus.Metadata;
 using Kavita.Models.DTOs.Metadata;
 using Kavita.Models.DTOs.Settings;
 using Kavita.Models.Entities.Enums;
+using Kavita.Server.Attributes;
 using Kavita.Server.Extensions;
 using Kavita.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -41,6 +42,7 @@ public class SettingsController(
     IKepubifyConverterService kepubifyConverterService)
     : BaseApiController
 {
+    [KPlus]
     [HttpGet("comicvine")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -50,6 +52,7 @@ public class SettingsController(
         return Ok(await comicVineSettings.GetStatusAsync(HttpContext.RequestAborted));
     }
 
+    [KPlus]
     [HttpPost("comicvine")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -64,6 +67,7 @@ public class SettingsController(
         return Ok(await comicVineSettings.GetStatusAsync(ct));
     }
 
+    [KPlus]
     [HttpDelete("comicvine")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -75,6 +79,7 @@ public class SettingsController(
         return Ok(await comicVineSettings.GetStatusAsync(ct));
     }
 
+    [KPlus]
     [HttpPost("comicvine/test")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]

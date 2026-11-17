@@ -1284,7 +1284,7 @@
         "source-label": "Metadata source",
         "comicvine-source": "Comic Vine (your API key)",
         "kavitaplus-source": "Kavita+",
-        "comicvine-description": "Match comic series directly with Comic Vine using your API key. Supports Comic and Comic (Flexible) libraries. No Kavita+ subscription is required.",
+        "comicvine-description": "Match comic series directly with Comic Vine using your API key. Supports Comic and Comic (Flexible) libraries. An active Kavita+ license is required.",
         "title": "Matched Metadata",
         "description": "All applicable Series that can be matched with External Metadata reside here. Kavita will prefetch or refresh series metadata, 50 series per 24 hours daily.",
         "status-header": "Status",
@@ -1845,7 +1845,7 @@
 
     "match-series-modal": {
         "comicvine-query-hint": "Search by title, volume ID, or Comic Vine volume URL.",
-        "comicvine-key-hint": "Requires your API key in Settings > Kavita+ > Meta API Connections > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
+        "comicvine-key-hint": "Requires an active Kavita+ license and your API key in Settings > Kavita+ > Metadata Providers > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",
         "description": "Pick a match to rewire Kavita+ metadata and regenerate scrobble events. Click an edition to get Volume/Chapter level metadata (if applicable).",
@@ -2735,7 +2735,7 @@
 
 
     "settings": {
-        "admin-meta-api-connections": "Meta API Connections",
+        "admin-meta-api-connections": "Metadata Providers",
         "panel-load-error": "Unable to load this settings panel.",
         "reload-settings": "Reload settings",
         "account-section-title": "Account",
@@ -2788,7 +2788,7 @@
     },
 
     "meta-api-connections": {
-        "description": "Manage API connections for external metadata services. Each service has its own credentials and connection test."
+        "description": "Manage external metadata providers using your own API keys. An active Kavita+ license is required. Each provider has its own credentials and connection test."
     },
     "manage-comicvine": {
         "save": "{{common.save}}",

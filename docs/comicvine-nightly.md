@@ -37,7 +37,7 @@ sudo systemctl enable --now kavita.service
 
 Use the `aarch64` RPM on ARM64 or the `armv7hl` RPM on supported ARM32 systems.
 The service account needs read/traverse permission on media-library directories.
-Then open **Settings > Kavita+ > Meta API Connections > Comic Vine** to configure your API key.
+Activate a Kavita+ license, then open **Settings > Kavita+ > Metadata Providers > Comic Vine** to configure your API key. Provider settings, direct matching, and background API enrichment require an active license.
 
 ## Fork version identity
 
