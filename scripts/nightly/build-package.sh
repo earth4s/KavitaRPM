@@ -25,17 +25,14 @@ case "${BUILD_RID}:${RPM_ARCH}" in
   *) echo 'Unsupported runtime and RPM architecture combination' >&2; exit 1 ;;
 esac
 
-version="$(sed -n 's:.*<AssemblyVersion>\([^<]*\)</AssemblyVersion>.*:\1:p' Kavita.Common/Kavita.Common.csproj)"
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
-date_stamp="$(TZ=America/Chicago date +%Y%m%d)"
-rpm_release="0.nightly.${date_stamp}.${GITHUB_RUN_NUMBER}"
+source scripts/nightly/version.sh
 stage="$PWD/_nightly/${BUILD_RID}"
 payload="$stage/Kavita"
 mkdir -p "$payload" "$PWD/_nightly/dist"
 
 dotnet publish Kavita.Server/Kavita.Server.csproj -c Release -r "$BUILD_RID" --self-contained true \
   -p:PublishSingleFile=false -p:DebugType=None \
-  -p:InformationalVersion="${version}-nightly.${date_stamp}.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}" \
+  -p:InformationalVersion="$informational_version" -p:IncludeSourceRevisionInInformationalVersion=false \
   -o "$payload"
 mv "$payload/Kavita.Server" "$payload/Kavita"
 install -m 0644 INSTALL.txt "$payload/README.txt"
@@ -51,8 +48,9 @@ file "$payload/Kavita" | grep -q "$executable_arch"
 test -f "$payload/wwwroot/index.html"
 grep -rqF --include='*.js' 'admin-comicvine' "$payload/wwwroot"
 grep -rqF --include='*.js' 'comicvine/search?seriesId=' "$payload/wwwroot"
-jq -n --arg commit "$GITHUB_SHA" --arg rid "$BUILD_RID" --arg version "$version" \
-  '{channel:"nightly",commit:$commit,runtime:$rid,version:$version}' > "$payload/BUILD-INFO.json"
+jq -n --arg commit "$GITHUB_SHA" --arg rid "$BUILD_RID" --arg version "$fork_version" \
+  --arg upstream_version "$version" --arg informational_version "$informational_version" \
+  '{distribution:"KavitaRPM",channel:"nightly",commit:$commit,runtime:$rid,version:$version,upstream_version:$upstream_version,informational_version:$informational_version}' > "$payload/BUILD-INFO.json"
 
 if [[ "${SMOKE_TEST:-false}" == true ]]; then
   smoke="$(mktemp -d)"
@@ -81,10 +79,11 @@ if [[ "${SMOKE_TEST:-false}" == true ]]; then
   rm -rf "$smoke"
 fi
 
-tar -C "$stage" -czf "$PWD/_nightly/dist/kavita-${BUILD_RID}.tar.gz" Kavita
+archive="$PWD/_nightly/dist/kavita-${fork_version}-${BUILD_RID}.tar.gz"
+tar -C "$stage" -czf "$archive" Kavita
 topdir="$PWD/_nightly/rpmbuild-${BUILD_RID}"
 mkdir -p "$topdir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-cp "$PWD/_nightly/dist/kavita-${BUILD_RID}.tar.gz" "$topdir/SOURCES/"
+cp "$archive" "$topdir/SOURCES/kavita-${BUILD_RID}.tar.gz"
 cp packaging/rpm/kavita.service "$topdir/SOURCES/"
 
 # The container is only a build tool; the resulting RPM installs a native systemd service.
@@ -100,6 +99,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
       --define "kavita_rid_override $BUILD_RID" \
       packaging/rpm/kavita.spec
     find "_nightly/rpmbuild-$BUILD_RID/RPMS" -name "*.rpm" -exec cp {} _nightly/dist/ \;
+    test "$(rpm -qp --qf "%{VERSION}-%{RELEASE}" _nightly/dist/*.rpm)" = "$RPM_VERSION-$RPM_RELEASE.fc44"
     rpm -K _nightly/dist/*.rpm
     rpm -qpl _nightly/dist/*.rpm | grep -Fx /opt/Kavita/Kavita
     rpm -qpl _nightly/dist/*.rpm | grep -Fx /usr/lib/systemd/system/kavita.service

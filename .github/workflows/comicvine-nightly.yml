@@ -24,6 +24,7 @@ jobs:
       contents: write
     outputs:
       tag: ${{ steps.metadata.outputs.tag }}
+      date: ${{ steps.metadata.outputs.date }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -43,15 +44,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          date_stamp="$(TZ=America/Chicago date +%Y%m%d)"
-          tag="nightly-private-comicvine-${date_stamp}-${GITHUB_SHA:0:7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          source scripts/nightly/version.sh
+          tag="v${fork_version}"
           tar -C UI/Web/dist/browser -czf "$RUNNER_TEMP/nightly-web.tar.gz" .
           gh release create "$tag" "$RUNNER_TEMP/nightly-web.tar.gz" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --draft --prerelease --latest=false \
-            --title "Private Comic Vine nightly $tag" \
+            --title "KavitaRPM $fork_version (private nightly)" \
             --notes 'Build in progress. This draft is restricted to repository writers. Do not publish it.'
           NIGHTLY_TAG="$tag" bash scripts/nightly/draft-release.sh assert
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "date=$date_stamp" >> "$GITHUB_OUTPUT"
 
   tests:
     if: github.repository == 'earth4s/KavitaRPM'
@@ -63,6 +65,12 @@ jobs:
           dotnet-version: 10.0.x
       - name: Verify draft-only release guard
         run: python3 scripts/nightly/test-draft-release.py
+      - name: Verify fork version identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/nightly/version.sh
+          EXPECTED_KAVITARPM_VERSION="$fork_version" dotnet test Kavita.Common.Tests/Kavita.Common.Tests.csproj -c Release --filter 'FullyQualifiedName~BuildInfoTests|FullyQualifiedName~VersionHelperTests' -p:InformationalVersion="$informational_version" -p:IncludeSourceRevisionInInformationalVersion=false
       - name: Verify Specials grouping, Comic Vine matching, scanning and export behavior
         run: |
           dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
@@ -75,6 +83,7 @@ jobs:
       contents: write
     env:
       NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
+      NIGHTLY_DATE: ${{ needs.frontend.outputs.date }}
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +130,7 @@ jobs:
       contents: write
     env:
       NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
+      NIGHTLY_DATE: ${{ needs.frontend.outputs.date }}
     steps:
       - uses: actions/checkout@v5
       - name: Collect packages from private draft
@@ -137,15 +147,18 @@ jobs:
           set -euo pipefail
           test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 3
           test "$(find dist -maxdepth 1 -name '*.rpm' | wc -l)" -eq 3
-          version="$(sed -n 's:.*<AssemblyVersion>\([^<]*\)</AssemblyVersion>.*:\1:p' Kavita.Common/Kavita.Common.csproj)"
+          source scripts/nightly/version.sh
           tag="$NIGHTLY_TAG"
-          jq -n --arg version "$version" --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" \
+          jq -n --arg version "$fork_version" --arg upstream_version "$version" --arg informational_version "$informational_version" \
+            --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" \
             --arg tag "$tag" --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            '{channel:"private-draft-nightly",version:$version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
+            '{distribution:"KavitaRPM",channel:"private-draft-nightly",version:$version,upstream_version:$upstream_version,informational_version:$informational_version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
           (cd dist && sha256sum ./*.tar.gz ./*.rpm SOURCE.json > SHA256SUMS)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           cat > release-notes.md <<EOF
-          Private draft nightly of the Comic Vine feature branch, compiled from commit ${GITHUB_SHA}.
+          KavitaRPM ${fork_version}, based on upstream Kavita ${version}, compiled from commit ${GITHUB_SHA}.
+
+          The server version and archive filenames carry the kavitarpm suffix. RPM releases include kavitarpm; internal numeric versions remain compatible with upstream migrations.
 
           This unpublished release and its downloads are restricted to repository writers. Do not publish it. Source code and workflow logs remain public because the repository is public.
 

@@ -141,7 +141,7 @@ public class StatsService : IStatsService
         return new ServerInfoSlimDto()
         {
             InstallId = serverSettings.InstallId,
-            KavitaVersion = serverSettings.InstallVersion,
+            KavitaVersion = BuildInfo.DisplayVersion,
             IsDocker = OsInfo.IsDocker,
             FirstInstallDate = serverSettings.FirstInstallDate,
             FirstInstallVersion = serverSettings.FirstInstallVersion

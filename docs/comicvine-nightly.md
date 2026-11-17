@@ -39,6 +39,28 @@ Use the `aarch64` RPM on ARM64 or the `armv7hl` RPM on supported ARM32 systems.
 The service account needs read/traverse permission on media-library directories.
 Then open **Settings > Kavita+ > Meta API Connections > Comic Vine** to configure your API key.
 
+## Fork version identity
+
+These builds use a `kavitarpm` suffix to distinguish them from mainline Kavita.
+For example, `0.9.1.23-kavitarpm.nightly.20261116.8.1` appears in the server
+information panel, release title, tag, archive filenames and build manifests.
+The final two numbers are the workflow build number and attempt. The assembly
+informational version also records the short source commit after `+`.
+
+An x64 archive is named
+`kavita-0.9.1.23-kavitarpm.nightly.20261116.8.1-linux-x64.tar.gz`.
+The matching RPM is
+`kavita-0.9.1.23-0.nightly.20261116.8.kavitarpm.1.fc44.x86_64.rpm`.
+Its package name, service and installation paths remain compatible with earlier
+RPMs. The release field preserves chronological upgrade ordering and identifies
+the fork. Previously built releases are not renamed.
+
+Numeric assembly/database versions remain upstream-compatible; the suffix is a
+display/build identity, not a schema version. Local builds default to
+`<upstream-version>-kavitarpm`. The nightly overrides this with its unique build
+version. Both SOURCE.json and BUILD-INFO.json retain `upstream_version`
+separately from the fork's `version`.
+
 ## Comic Specials folders
 
 Files inside a comic's `Specials/` subtree belong to that parent comic and appear
