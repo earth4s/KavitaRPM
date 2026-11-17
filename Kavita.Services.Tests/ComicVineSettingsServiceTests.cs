@@ -114,7 +114,8 @@ public class ComicVineSettingsServiceTests(ITestOutputHelper output) : AbstractD
             NullLogger<ComicVineSettingsService>.Instance, license, () => savedKey ? null : "test-key");
         if (savedKey) await settings.SaveAsync("test-key");
         var before = (await uow.SettingsRepository.GetSettingAsync(ServerSettingKey.ComicVineApiKey))?.Value;
-        var handler = new ComicVineServiceTests.Handler();
+        var handler = new ComicVineServiceTests.Handler(_ => ComicVineServiceTests.Json(
+            """{"status_code":1,"results":{"id":200,"name":"Example","publisher":{"name":"Publisher"}}}"""));
         using var api = new ComicVineService(new HttpClient(handler), "test-key",
             NullLogger<ComicVineService>.Instance, new ComicVineServiceTests.Clock(), settings.GetApiKeyAsync);
         Assert.NotNull(await api.GetVolumeAsync(200));
