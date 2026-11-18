@@ -608,7 +608,7 @@ public class SeriesController(
         if (recommendedSeriesId is > 0 && !await unitOfWork.UserRepository.HasAccessToSeries(UserId, recommendedSeriesId.Value, ct))
             return NotFound();
 
-        var directComic = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct) == MetadataProvider.ComicVine;
+        var directComic = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct) == Models.Entities.Enums.MetadataProvider.ComicVine;
         var cacheKey = $"{CacheKey}-{seriesId}-{aniListId ?? 0}-{malId ?? 0}-{mangaBakaId ?? 0}-{recommendedSeriesId ?? 0}-{hardcoverId ?? 0}";
 
         ExternalSeriesDetailDto? ret;
