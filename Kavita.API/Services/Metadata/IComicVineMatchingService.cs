@@ -14,3 +14,5 @@ public interface IComicVineMatchingService
     Task<PagedList<ManageMatchSeriesDto>> ListAsync(ManageMatchFilterDto filter, UserParams pagination, CancellationToken ct = default);
     Task<MatchedExternalSeriesCountDto> CountsAsync(CancellationToken ct = default);
 }
+
+public interface IGcdMatchingService : IComicVineMatchingService {}

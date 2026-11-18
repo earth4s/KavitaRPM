@@ -29,6 +29,9 @@ public sealed record ExternalSeriesDetailDto
     /// </summary>
     public int? CbrId { get; set; }
     public int? ComicVineId { get; set; }
+    public string? CatalogLanguage { get; set; }
+    public string? CatalogCountry { get; set; }
+    public int? GcdId { get; set; }
     public int? HardcoverId { get; set; }
     public bool IsStandAlone { get; set; }
     public int? MangabakaId { get; set; }

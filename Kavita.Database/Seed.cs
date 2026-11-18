@@ -213,6 +213,7 @@ public static class Seed
                 new() {Key = ServerSettingKey.StatsApiHits, Value = "0"},
                 new() {Key = ServerSettingKey.EnableKobo, Value = "true"},
                 new() {Key = ServerSettingKey.EnableKepubify, Value = "true"},
+                new() {Key = ServerSettingKey.GcdCredentials, Value = string.Empty},
                 new() {Key = ServerSettingKey.ComicVineApiKey, Value = string.Empty},
             }.ToArray()
         ];

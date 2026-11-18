@@ -117,7 +117,7 @@
             }
           </div>
           @if (opt.sourceUrl) {
-            <a [href]="opt.sourceUrl" target="_blank" rel="noopener noreferrer">Comic Vine</a>
+            <a [href]="opt.sourceUrl" target="_blank" rel="noopener noreferrer">{{ opt.sourceUrl?.startsWith('https://www.comics.org/') ? 'GCD' : 'Comic Vine' }}</a>
           }
           </div>
         }

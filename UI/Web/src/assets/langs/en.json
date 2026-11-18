@@ -1140,6 +1140,8 @@
         "last-success": "Last successful request:",
         "last-error": "Last failed request:",
         "retry-at": "Requests can resume at",
+        "gcd-unconfigured": "No GCD account configured.",
+        "gcd-requests": "{{minute}} / 25 requests this minute · {{day}} / 2,000 this day",
         "comicvine-unconfigured": "No Comic Vine API key configured.",
         "title-label": "Upstream Providers",
         "checked-ago-label": "checked {{time}} ago",
@@ -1287,6 +1289,8 @@
 
     "manage-matched-metadata": {
         "source-label": "Metadata source",
+        "gcd-source": "Grand Comics Database (GCD)",
+        "gcd-description": "Match comic series directly with the Grand Comics Database using your saved account.",
         "comicvine-source": "Comic Vine (your API key)",
         "kavitaplus-source": "Kavita+",
         "comicvine-description": "Match comic series directly with Comic Vine using your API key. Supports Comic and Comic (Flexible) libraries. An active Kavita+ license is required.",
@@ -1850,6 +1854,7 @@
     },
 
     "match-series-modal": {
+        "gcd-query-hint": "Search by title, enter a GCD series or issue reference, or paste its comics.org URL.",
         "comicvine-query-hint": "Search by title or volume ID, or paste a Comic Vine volume or issue URL.",
         "comicvine-key-hint": "Requires an active Kavita+ license and your API key in Settings > Kavita+ > Metadata Providers > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
@@ -2795,6 +2800,23 @@
 
     "meta-api-connections": {
         "description": "Manage external metadata providers using your own API keys. An active Kavita+ license is required. Each provider has its own credentials and connection test."
+    },
+    "manage-gcd": {
+        "description": "Use your GCD account to match series and look up issues in comic libraries.",
+        "credit": "Catalog metadata from",
+        "username": "GCD account login",
+        "password": "GCD password",
+        "save": "Save",
+        "test": "Test connection",
+        "remove": "Remove credentials",
+        "configured": "GCD credentials are saved.",
+        "unconfigured": "Enter your GCD credentials to connect.",
+        "replace": "The saved credentials could not be read. Replace or remove them.",
+        "saved": "GCD credentials saved.",
+        "removed": "GCD credentials removed.",
+        "connected": "GCD accepted the saved credentials.",
+        "test-error": "Connection failed. Check the saved credentials and provider health.",
+        "error": "The request failed. Check your connection and Kavita+ license."
     },
     "manage-comicvine": {
         "save": "{{common.save}}",

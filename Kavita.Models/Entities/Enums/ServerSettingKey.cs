@@ -223,4 +223,7 @@ public enum ServerSettingKey
     [Description("ComicVineApiKey")]
     [ExportScrub(ExportScrubKind.Random)]
     ComicVineApiKey = 46,
+    [Description("GcdCredentials")]
+    [ExportScrub(ExportScrubKind.Random)]
+    GcdCredentials = 47,
 }

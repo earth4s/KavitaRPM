@@ -179,6 +179,9 @@ namespace Kavita.Database.Migrations
                     b.Property<bool>("ColoristLocked")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("GcdId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ComicVineId")
                         .HasColumnType("TEXT");
 
@@ -2353,6 +2356,9 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<int>("CbrId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("GcdId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ComicVineId")

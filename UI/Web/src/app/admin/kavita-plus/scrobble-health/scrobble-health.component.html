@@ -19,6 +19,19 @@
       </div>
     </div>
 
+    @if (gcd(); as health) {
+      <div class="provider-row py-2">
+        <div class="fw-semibold">Grand Comics Database</div>
+        @if (health.configured) {
+          <div>{{t('gcd-requests', {minute: health.requestsLastMinute, day: health.requestsLastDay})}}</div>
+          @if (health.lastSuccess) { <div>{{t('last-success')}} {{health.lastSuccess | date:'medium'}}</div> }
+          @if (health.lastFailure) { <div>{{t('last-error')}} {{health.lastFailure | date:'medium'}} ({{health.failure}})</div> }
+          @if (health.retryAt) { <div>{{t('retry-at')}} {{health.retryAt | date:'medium'}}</div> }
+        } @else {
+          <div>{{t('gcd-unconfigured')}}</div>
+        }
+      </div>
+    }
     @if (comicVine(); as health) {
       <div class="provider-row py-2">
         <div class="fw-semibold">Comic Vine</div>
@@ -32,7 +45,7 @@
         }
       </div>
     }
-    @if (!comicVine() && snapshots().length === 0 && !loading()) {
+    @if (!gcd() && !comicVine() && snapshots().length === 0 && !loading()) {
       <p class="text-muted mb-0">{{t('no-data-label')}}</p>
     }
 

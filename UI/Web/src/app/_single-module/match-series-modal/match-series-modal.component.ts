@@ -80,7 +80,7 @@ export class MatchSeriesModalComponent implements OnInit {
   private readonly licenseService = inject(LicenseService);
   private searchRequest = 0;
   protected readonly allMetadataProviders = computed(() => this.licenseService.hasActiveLicense()
-    ? AllMetadataProviders.filter(p => p !== MetadataProvider.ComicVine ||
+    ? AllMetadataProviders.filter(p => ![MetadataProvider.ComicVine, MetadataProvider.Gcd].includes(p) ||
         [LibraryType.Comic, LibraryType.ComicVine].includes(this.matchInfo()?.libraryType as LibraryType))
     : []);
 
@@ -294,6 +294,8 @@ export class MatchSeriesModalComponent implements OnInit {
     }
 
     switch (info.metadataProvider) {
+      case MetadataProvider.Gcd:
+        return !!info.gcdId && s.gcdId === info.gcdId;
       case MetadataProvider.ComicVine:
         return !!info.comicVineId && s.comicVineId === info.comicVineId;
       case MetadataProvider.Mangabaka:

@@ -193,7 +193,7 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
     {
         return await context.Series
             .Where(s => s.Library.AllowMetadataMatching)
-            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine)
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine && (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.Gcd)
             .WhereIf(includeStaleData, s => s.ExternalSeriesMetadata == null || s.ExternalSeriesMetadata.ValidUntilUtc < DateTime.UtcNow)
 
             .WhereIf(!includeStaleData, s =>
@@ -217,7 +217,7 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
             .Include(s => s.ExternalSeriesMetadata)
             .Where(s => s.Library.AllowMetadataMatching)
             .WhereIf(filter.LibraryType >= 0, s => s.Library.Type == (LibraryType) filter.LibraryType)
-            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine)
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine && (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.Gcd)
             .FilterMatchState(filter.MatchStateOption)
             .OrderBy(s => s.NormalizedName)
             .ProjectTo<ManageMatchSeriesDto>(mapper.ConfigurationProvider);
@@ -231,7 +231,7 @@ public class ExternalSeriesMetadataRepository(DataContext context, IMapper mappe
             .Include(s => s.Library)
             .Include(s => s.ExternalSeriesMetadata)
             .Where(s => s.Library.AllowMetadataMatching)
-            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine);
+            .Where(s => (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.ComicVine && (s.MetadataProviderOverride ?? s.Library.MetadataProvider) != MetadataProvider.Gcd);
 
         return new MatchedExternalSeriesCountDto
         {

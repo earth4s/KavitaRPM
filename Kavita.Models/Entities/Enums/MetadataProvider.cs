@@ -6,4 +6,5 @@ public enum MetadataProvider
     Mangabaka = 3,
     ComicBookRoundup = 4,
     ComicVine = 5,
+    Gcd = 6,
 }

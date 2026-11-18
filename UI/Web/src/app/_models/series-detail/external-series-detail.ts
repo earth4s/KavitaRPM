@@ -57,6 +57,9 @@ export interface ExternalSeriesDetail {
   hardcoverId?: number | null;
   isStandAlone: boolean;
   comicVineId?: number | null;
+  catalogLanguage?: string;
+  catalogCountry?: string;
+  gcdId?: number | null;
   cbrId?: number | null;
   publisher?: string;
   characters?: Array<{name: string; url: string}>;

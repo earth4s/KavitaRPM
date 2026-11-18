@@ -45,6 +45,10 @@
     </div>
 
     <div class="match-result-providers d-flex align-items-center flex-wrap gap-1">
+      @if (item().series.gcdId) {
+        <span>{{item().series.publisher}} {{item().series.catalogLanguage}} {{item().series.catalogCountry}}</span>
+        <span class="badge bg-secondary">GCD #{{item().series.gcdId}}</span>
+      }
       @if (item().series.comicVineId) {
         <span class="badge bg-secondary">Comic Vine #{{item().series.comicVineId}}</span>
       }

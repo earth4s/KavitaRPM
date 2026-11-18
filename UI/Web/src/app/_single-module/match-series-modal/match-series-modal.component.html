@@ -53,6 +53,9 @@
               <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.AniList" [id]="match.aniListId" />
             } @else {
               @switch (match.metadataProvider) {
+                @case (MetadataProvider.Gcd) {
+                  <a class="badge bg-secondary" target="_blank" rel="noreferrer noopener" [href]="'https://www.comics.org/series/' + match.gcdId + '/'">GCD</a>
+                }
                 @case (MetadataProvider.ComicVine) {
                   <a class="badge bg-secondary" target="_blank" rel="noreferrer noopener" [href]="'https://comicvine.gamespot.com/volume/4050-' + match.comicVineId">Comic Vine</a>
                 }
@@ -152,7 +155,9 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
         <div class="provider-hints d-flex align-items-center flex-wrap gap-1">
           <span class="text-muted">{{ t('try') }}</span>
-          @if (formGroup.provider().value() === MetadataProvider.ComicVine) {
+          @if (formGroup.provider().value() === MetadataProvider.Gcd) {
+            <code>gcd:series:6139</code> {{t('gcd-query-hint')}}
+          } @else if (formGroup.provider().value() === MetadataProvider.ComicVine) {
             <code class="provider-hint">comicvine:796</code>
             <span class="text-muted">{{t('comicvine-query-hint')}}</span>
           } @else {

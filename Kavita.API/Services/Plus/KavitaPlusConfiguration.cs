@@ -23,6 +23,7 @@ public static class KavitaPlusConfiguration
                 [LibraryType.Comic] = new HashSet<MetadataProvider>
                 {
                     MetadataProvider.ComicVine,
+                    MetadataProvider.Gcd,
                     MetadataProvider.ComicBookRoundup,
                     MetadataProvider.Hardcover
                 },
@@ -44,6 +45,7 @@ public static class KavitaPlusConfiguration
                 [LibraryType.ComicVine] = new HashSet<MetadataProvider>
                 {
                     MetadataProvider.ComicVine,
+                    MetadataProvider.Gcd,
                     MetadataProvider.ComicBookRoundup,
                     MetadataProvider.Hardcover
                 }

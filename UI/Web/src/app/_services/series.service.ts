@@ -250,6 +250,9 @@ export class SeriesService {
   }
 
   matchSeries(model: MatchSeriesRequest) {
+    if (model.provider === MetadataProvider.Gcd) {
+      return this.httpClient.post<MatchSeriesResult>(this.baseUrl + `gcd/search?seriesId=${model.seriesId}`, {query: model.query});
+    }
     if (model.provider === MetadataProvider.ComicVine) {
       return this.httpClient.post<MatchSeriesResult>(this.baseUrl + `comicvine/search?seriesId=${model.seriesId}`, {query: model.query});
     }
@@ -257,6 +260,9 @@ export class SeriesService {
   }
 
   updateMatch(seriesId: number, series: ExternalSeriesDetail, edition: ExternalEditionDto | null, provider: MetadataProvider | null) {
+    if (provider === MetadataProvider.Gcd) {
+      return this.httpClient.post<string>(this.baseUrl + `gcd/match?seriesId=${seriesId}`, {volumeId: series.gcdId}, TextResonse);
+    }
     if (provider === MetadataProvider.ComicVine) {
       return this.httpClient.post<string>(this.baseUrl + `comicvine/match?seriesId=${seriesId}`, {volumeId: series.comicVineId}, TextResonse);
     }
@@ -279,7 +285,7 @@ export class SeriesService {
   }
 
   updateDontMatch(seriesId: number, dontMatch: boolean, provider?: MetadataProvider) {
-    const controller = provider === MetadataProvider.ComicVine ? "comicvine" : "series";
+    const controller = provider === MetadataProvider.Gcd ? "gcd" : provider === MetadataProvider.ComicVine ? "comicvine" : "series";
     return this.httpClient.post<string>(this.baseUrl + `${controller}/dont-match?seriesId=${seriesId}&dontMatch=${dontMatch}`, {}, TextResonse);
   }
 

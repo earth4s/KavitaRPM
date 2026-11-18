@@ -162,24 +162,25 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
         // Due to Json deserialization, I can't use automapper here and need to do in-mem
         var recentEvents = recentRaw.Select(MapToDto).ToList();
 
-        var direct = series.GetEffectiveMetadataProvider() == MetadataProvider.ComicVine;
+        var direct = series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd;
         return new KavitaPlusAuditSeriesInfoDto
         {
             SeriesId = series.Id,
             LibraryId = series.LibraryId,
             SeriesName = series.Name,
-            IsMatched = direct ? !series.DontMatch && !string.IsNullOrWhiteSpace(series.ComicVineId) : !series.IsBlacklisted
+            IsMatched = direct ? !series.DontMatch && (series.GetEffectiveMetadataProvider() == MetadataProvider.Gcd ? series.GcdId.HasValue : !string.IsNullOrWhiteSpace(series.ComicVineId)) : !series.IsBlacklisted
                 && series.ExternalSeriesMetadata != null
                 && series.ExternalSeriesMetadata.ValidUntilUtc > DateTime.MinValue,
             MangaBakaId = series.MangaBakaId != 0 ? series.MangaBakaId : null,
             AniListId = series.AniListId != 0 ? series.AniListId : null,
             HardcoverId = series.HardcoverId != 0 ? series.HardcoverId : null,
             CbrId = series.CbrId != 0 ? series.CbrId : null,
+            GcdId = series.GcdId,
             ComicVineId = series.ComicVineId != string.Empty ? series.ComicVineId : null,
             MalId = series.MalId != 0 ? series.MalId : null,
             MetronId = series.MetronId != 0 ? series.MetronId : null,
             IsStandAlone = series.IsStandAlone,
-            MetadataProvider = direct ? MetadataProvider.ComicVine : series.ExternalSeriesMetadata?.Provider,
+            MetadataProvider = direct ? series.GetEffectiveMetadataProvider() : series.ExternalSeriesMetadata?.Provider,
             NextRefreshUtc = direct ? null : series.ExternalSeriesMetadata?.ValidUntilUtc,
             LastRefreshedUtc = direct ? null : series.ExternalSeriesMetadata?.LastModifiedUtc,
             RecentEvents = recentEvents,

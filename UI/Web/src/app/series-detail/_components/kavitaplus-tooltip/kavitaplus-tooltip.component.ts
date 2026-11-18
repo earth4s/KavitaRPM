@@ -45,7 +45,7 @@ export class KavitaplusTooltipComponent implements OnInit {
   protected readonly MetadataProvider = MetadataProvider;
   private readonly drawer = inject(DrawerService);
 
-  protected showComicVine(info: KavitaPlusAuditSeriesInfo) {
+  protected showCatalogDetails(info: KavitaPlusAuditSeriesInfo) {
     const ref = this.drawer.open(SeriesPreviewDrawerComponent, {position: 'end'});
     ref.setInput('seriesId', info.seriesId);
     ref.setInput('name', info.seriesName);

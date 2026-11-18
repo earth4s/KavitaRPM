@@ -45,6 +45,7 @@ public sealed record AuditLogMatchFailureParamsDto
 public sealed record AuditLogMatchExternalIdsParamsDto
 {
     public int? ComicVineId { get; init; }
+    public int? GcdId { get; set; }
     public int AniListId { get; init; }
     public long MalId { get; init; }
     public long MangaBakaId { get; init; }

@@ -489,7 +489,7 @@ export class EditSeriesModalComponent implements OnInit {
   protected readonly Action = Action;
   protected readonly parseInt = parseInt;
   get AllMetadataProviders() {
-    return AllMetadataProviders.filter(p => p !== MetadataProvider.ComicVine ||
+    return AllMetadataProviders.filter(p => ![MetadataProvider.ComicVine, MetadataProvider.Gcd].includes(p) ||
       [LibraryType.Comic, LibraryType.ComicVine].includes(this.libraryType()));
   }
 }

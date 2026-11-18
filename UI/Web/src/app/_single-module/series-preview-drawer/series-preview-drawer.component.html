@@ -25,7 +25,7 @@
     @let localSeriesValue = localSeries();
 
     @if (externalSeriesValue) {
-      @if (externalSeriesValue.comicVineId && externalSeriesValue.siteUrl?.startsWith('https://comicvine.gamespot.com/')) {
+      @if (externalSeriesValue.gcdId || externalSeriesValue.comicVineId && externalSeriesValue.siteUrl?.startsWith('https://comicvine.gamespot.com/')) {
         <div class="text-muted mb-2">{{externalSeriesValue.publisher}} {{externalSeriesValue.startDate?.slice(0, 4)}}</div>
         @if (externalSeriesValue.chapters) { <div>{{t('common.issue-count', {num: externalSeriesValue.chapters})}}</div> }
         @if (externalSeriesValue.characters?.length) {
@@ -45,7 +45,9 @@
       <div class="row g-0">
         <div class="text-muted muted mb-2 col-auto">
           {{t('series-preview-drawer.provided-by-label')}}
-          @if (externalSeriesValue.comicVineId && externalSeriesValue.siteUrl?.startsWith('https://comicvine.gamespot.com/')) {
+          @if (externalSeriesValue.gcdId) {
+            <a [href]="externalSeriesValue.siteUrl" target="_blank" rel="noopener noreferrer">Grand Comics Database</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
+          } @else if (externalSeriesValue.comicVineId && externalSeriesValue.siteUrl?.startsWith('https://comicvine.gamespot.com/')) {
             <a [href]="externalSeriesValue.siteUrl" target="_blank" rel="noopener noreferrer">Comic Vine</a>
           } @else {
             <img class="ms-1" [ngSrc]="externalSeriesValue.provider | providerImage" width="20" height="20" alt="">

@@ -29,8 +29,17 @@ namespace Kavita.Services.Metadata;
 
 public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineService comicVine, IMapper mapper, IEventHub eventHub,
     IKavitaPlusAuditService audit, IUserContext userContext)
-    : IComicVineMatchingService
+    : ComicMatchingService(unitOfWork, comicVine, mapper, eventHub, audit, userContext, MetadataProvider.ComicVine), IComicVineMatchingService {}
+
+public sealed class GcdMatchingService(IUnitOfWork unitOfWork, IGcdService gcd, IMapper mapper, IEventHub eventHub,
+    IKavitaPlusAuditService audit, IUserContext userContext)
+    : ComicMatchingService(unitOfWork, gcd, mapper, eventHub, audit, userContext, MetadataProvider.Gcd), IGcdMatchingService {}
+
+public abstract class ComicMatchingService(IUnitOfWork unitOfWork, IComicCatalog catalog, IMapper mapper, IEventHub eventHub,
+    IKavitaPlusAuditService audit, IUserContext userContext, MetadataProvider provider)
 {
+    private bool IsGcd => provider == MetadataProvider.Gcd;
+
     private async Task<Series> ComicSeries(int seriesId, CancellationToken ct, bool includeMetadata = false)
     {
         var includes = SeriesIncludes.Library;
@@ -38,7 +47,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, includes, ct);
         if (series == null) throw new KavitaException("Series not found.");
         if (series.Library.Type is not (LibraryType.Comic or LibraryType.ComicVine))
-            throw new KavitaException("Comic Vine matching is available for Comic and Comic (Flexible) libraries.");
+            throw new KavitaException("Direct comic matching is available for Comic and Comic (Flexible) libraries.");
         return series;
     }
 
@@ -46,18 +55,20 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
     {
         var series = await ComicSeries(seriesId, ct);
         if (string.IsNullOrWhiteSpace(query))
-            query = !string.IsNullOrEmpty(series.ComicVineId) ? "comicvine:" + series.ComicVineId : series.Name;
-        return await comicVine.SearchVolumesAsync(query, ct);
+            query = IsGcd ? (series.GcdId.HasValue ? $"gcd:series:{series.GcdId}" : series.Name)
+                : !string.IsNullOrEmpty(series.ComicVineId) ? "comicvine:" + series.ComicVineId : series.Name;
+        return await catalog.SearchVolumesAsync(query, ct);
     }
 
     public async Task ApplyAsync(int seriesId, int volumeId, CancellationToken ct = default)
     {
         var series = await ComicSeries(seriesId, ct, includeMetadata: true);
-        var volume = await comicVine.GetVolumeAsync(volumeId, ct);
-        if (volume?.ComicVineId != volumeId) throw new KavitaException("Comic Vine volume not found.");
-        series.ComicVineId = volumeId.ToString(CultureInfo.InvariantCulture);
-        series.MetadataProviderOverride = series.Library.MetadataProvider == MetadataProvider.ComicVine
-            ? null : MetadataProvider.ComicVine;
+        var volume = await catalog.GetVolumeAsync(volumeId, ct);
+        if (volume == null || (IsGcd ? volume.GcdId : volume.ComicVineId) != volumeId) throw new KavitaException("Series not found in this catalog.");
+        if (IsGcd) series.GcdId = volumeId;
+        else series.ComicVineId = volumeId.ToString(CultureInfo.InvariantCulture);
+        series.MetadataProviderOverride = series.Library.MetadataProvider == provider
+            ? null : provider;
         series.DontMatch = false;
         series.IsBlacklisted = false;
         await ApplyVolumeMetadata(unitOfWork, series, volume, ct);
@@ -76,6 +87,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         var metadata = series.Metadata ??= new SeriesMetadataBuilder().Build();
         if (!metadata.SummaryLocked && !string.IsNullOrWhiteSpace(volume.Summary))
             metadata.Summary = volume.Summary;
+        if (!metadata.LanguageLocked && !string.IsNullOrEmpty(volume.CatalogLanguage)) metadata.Language = volume.CatalogLanguage;
         if (!metadata.ReleaseYearLocked && volume.StartDate.HasValue)
             metadata.ReleaseYear = volume.StartDate.Value.Year;
 
@@ -93,7 +105,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         if (!string.IsNullOrWhiteSpace(volume.SiteUrl))
         {
             var links = metadata.WebLinks.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(link => !IsComicVineVolumeLink(link)).Append(volume.SiteUrl).Distinct(StringComparer.Ordinal);
+                .Where(link => !(volume.GcdId.HasValue ? GcdReference.TryParse(link) is { Issue: false } : IsComicVineVolumeLink(link))).Append(volume.SiteUrl).Distinct(StringComparer.Ordinal);
             metadata.WebLinks = string.Join(',', links);
         }
     }
@@ -124,8 +136,8 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         if (!string.IsNullOrWhiteSpace(filter.SearchTerm)) query = query.Where(s => s.Name.Contains(filter.SearchTerm));
         query = filter.MatchStateOption switch
         {
-            MatchStateOption.Matched => query.Where(s => !s.DontMatch && s.ComicVineId != null && s.ComicVineId != ""),
-            MatchStateOption.NotMatched => query.Where(s => !s.DontMatch && (s.ComicVineId == null || s.ComicVineId == "")),
+            MatchStateOption.Matched => query.Where(s => !s.DontMatch && (IsGcd ? s.GcdId.HasValue : s.ComicVineId != null && s.ComicVineId != "")),
+            MatchStateOption.NotMatched => query.Where(s => !s.DontMatch && (IsGcd ? !s.GcdId.HasValue : s.ComicVineId == null || s.ComicVineId == "")),
             MatchStateOption.DontMatch => query.Where(s => s.DontMatch),
             // A Kavita+ blacklist does not indicate a failed direct Comic Vine match.
             MatchStateOption.Error => query.Where(s => false),
@@ -140,7 +152,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         {
             var dto = mapper.Map<SeriesDto>(s);
             dto.IsBlacklisted = false;
-            return new ManageMatchSeriesDto { Series = dto, IsMatched = !s.DontMatch && !string.IsNullOrEmpty(s.ComicVineId) };
+            return new ManageMatchSeriesDto { Series = dto, IsMatched = !s.DontMatch && (IsGcd ? s.GcdId.HasValue : !string.IsNullOrEmpty(s.ComicVineId)) };
         });
         return PagedList<ManageMatchSeriesDto>.Create(result, total, page, size);
     }
@@ -152,7 +164,7 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         {
             TotalCount = await query.CountAsync(ct),
             DontMatchCount = await query.CountAsync(s => s.DontMatch, ct),
-            NotMatchedCount = await query.CountAsync(s => !s.DontMatch && (s.ComicVineId == null || s.ComicVineId == ""), ct)
+            NotMatchedCount = await query.CountAsync(s => !s.DontMatch && (IsGcd ? !s.GcdId.HasValue : s.ComicVineId == null || s.ComicVineId == ""), ct)
         };
     }
 }

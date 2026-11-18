@@ -31,6 +31,8 @@ export class ScrobbleHealthComponent {
 
   private readonly settingsService = inject(SettingsService);
   private readonly accountService = inject(AccountService);
+  protected readonly gcd = signal<{configured: boolean, requestsLastMinute: number, requestsLastDay: number,
+    lastSuccess?: string, lastFailure?: string, failure?: string, retryAt?: string} | null>(null);
   protected readonly comicVine = signal<ComicVineHealth | null>(null);
   private readonly _snapshots = signal<KavitaPlusProviderHealthSnapshot[]>([]);
   protected readonly snapshots = this._snapshots.asReadonly();
@@ -44,6 +46,7 @@ export class ScrobbleHealthComponent {
   protected load(forceCheck: boolean) {
     this.loading.set(true);
     if (this.accountService.hasAdminRole() && this.licenseService.hasActiveLicense()) {
+      this.settingsService.getGcdHealth().subscribe({next: data => this.gcd.set(data), error: () => this.gcd.set(null)});
       this.settingsService.getComicVineHealth().subscribe({
         next: data => this.comicVine.set(data),
         error: () => this.comicVine.set(null)

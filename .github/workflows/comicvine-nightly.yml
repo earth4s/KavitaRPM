@@ -73,11 +73,11 @@ jobs:
           EXPECTED_KAVITARPM_VERSION="$fork_version" dotnet test Kavita.Common.Tests/Kavita.Common.Tests.csproj -c Release --filter 'FullyQualifiedName~BuildInfoTests|FullyQualifiedName~VersionHelperTests' -p:InformationalVersion="$informational_version" -p:IncludeSourceRevisionInInformationalVersion=false
       - name: Verify licensed endpoints and access restrictions
         run: |
-          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
+          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
       - name: Verify provider licensing, Specials grouping, Comic Vine matching and export
         if: ${{ !cancelled() }}
         run: |
-          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
+          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
 
 
   package:

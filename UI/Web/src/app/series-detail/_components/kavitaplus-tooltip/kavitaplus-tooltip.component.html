@@ -39,14 +39,20 @@
             </div>
           }
 
-          @if (info.comicVineId || info.mangaBakaId || info.hardcoverId || info.cbrId || info.aniListId) {
+          @if (info.gcdId || info.comicVineId || info.mangaBakaId || info.hardcoverId || info.cbrId || info.aniListId) {
             <div class="d-flex flex-column gap-1">
               <span class="text-uppercase fw-semibold" style="font-size: 10px; letter-spacing: 0.06em;">{{t('linked-to')}}</span>
               <div class="d-flex align-items-center flex-wrap gap-2">
+                @if (info.gcdId) {
+                  <a [href]="'https://www.comics.org/series/' + info.gcdId + '/'" target="_blank" rel="noopener noreferrer">GCD #{{info.gcdId}}</a>
+                  @if (info.metadataProvider === MetadataProvider.Gcd) {
+                    <button class="btn btn-sm btn-outline-secondary" type="button" (click)="showCatalogDetails(info)">{{t('view-details')}}</button>
+                  }
+                }
                 @if (info.comicVineId) {
                   <a [href]="'https://comicvine.gamespot.com/volume/4050-' + info.comicVineId + '/'" target="_blank" rel="noopener noreferrer">Comic Vine #{{info.comicVineId}}</a>
                   @if (info.metadataProvider === MetadataProvider.ComicVine) {
-                    <button class="btn btn-sm btn-outline-secondary" type="button" (click)="showComicVine(info)">{{t('view-details')}}</button>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" (click)="showCatalogDetails(info)">{{t('view-details')}}</button>
                   }
                 }
                 @if (info.mangaBakaId) {

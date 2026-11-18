@@ -143,6 +143,7 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
     public int HardcoverId { get; set; }
     public long MetronId { get; set; }
     public string? ComicVineId { get; set; }
+    public int? GcdId { get; set; }
     public int MangaBakaId { get; set; }
     public int CbrId { get; set; }
 

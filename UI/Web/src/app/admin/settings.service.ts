@@ -34,6 +34,27 @@ export class SettingsService {
     return this.http.get<ServerSettings>(this.baseUrl + 'settings');
   }
 
+  getGcdSettings() {
+    return this.http.get<{configured: boolean, requiresReplacement: boolean}>(this.baseUrl + 'gcd/settings');
+  }
+
+  saveGcdCredentials(username: string, password: string) {
+    return this.http.put(this.baseUrl + 'gcd/settings', {username, password});
+  }
+
+  removeGcdCredentials() {
+    return this.http.delete(this.baseUrl + 'gcd/settings');
+  }
+
+  testGcdConnection() {
+    return this.http.post<boolean>(this.baseUrl + 'gcd/test', {});
+  }
+
+  getGcdHealth() {
+    return this.http.get<{configured: boolean, requestsLastMinute: number, requestsLastDay: number,
+      lastSuccess?: string, lastFailure?: string, failure?: string, retryAt?: string}>(this.baseUrl + 'gcd/health');
+  }
+
   getComicVineHealth() {
     return this.http.get<ComicVineHealth>(this.baseUrl + 'comicvine/health');
   }

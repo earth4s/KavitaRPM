@@ -101,6 +101,16 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IImageService, ImageService>();
         services.AddScoped<ICoverDbService, CoverDbService>();
 
+        services.AddScoped<IGcdSettingsService, GcdSettingsService>();
+        services.AddScoped<IGcdMatchingService, GcdMatchingService>();
+        services.AddSingleton<IGcdService>(sp => new GcdService(
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(30) },
+            async ct =>
+            {
+                using var scope = sp.CreateScope();
+                return await scope.ServiceProvider.GetRequiredService<IGcdSettingsService>().GetAuthorizationAsync(ct);
+            }, System.IO.Path.Combine("config", "gcd-cache.db"), TimeProvider.System));
+
         services.AddScoped<IComicVineSettingsService, ComicVineSettingsService>();
         services.AddScoped<IComicVineMatchingService, ComicVineMatchingService>();
         // The query-string API key must never pass through HttpClientFactory's URI logging.

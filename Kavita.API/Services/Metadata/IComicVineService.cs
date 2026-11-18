@@ -9,7 +9,7 @@ using Kavita.Models.DTOs.KavitaPlus.Metadata;
 
 namespace Kavita.API.Services.Metadata;
 
-public interface IComicVineService
+public interface IComicVineService : IComicCatalog
 {
     /// <summary>
     /// Fills missing issue metadata using explicit Comic Vine IDs, without changing file grouping.
@@ -19,9 +19,5 @@ public interface IComicVineService
         CancellationToken ct = default);
 
     Task<ComicVineHealthDto> GetHealthAsync(CancellationToken ct = default);
-    Task<IList<string>> GetCoversAsync(int id, bool issue, CancellationToken ct = default);
-    Task<ExternalSeriesDetailDto?> FindVolumeAsync(string title, int? year, string? publisher, CancellationToken ct = default);
     Task<bool> TestConnectionAsync(CancellationToken ct = default);
-    Task<MatchSeriesResultDto> SearchVolumesAsync(string query, CancellationToken ct = default);
-    Task<ExternalSeriesDetailDto?> GetVolumeAsync(int volumeId, CancellationToken ct = default);
 }

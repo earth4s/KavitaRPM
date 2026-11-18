@@ -28,6 +28,7 @@ public class ComicVineMatchingTests
         var controller = typeof(ComicVineController);
         Assert.Contains(controller.GetCustomAttributes<AuthorizeAttribute>(), a => a.Policy == PolicyGroups.AdminPolicy);
         Assert.NotNull(controller.GetCustomAttribute<KPlusAttribute>());
+        Assert.Contains(typeof(GcdController).GetCustomAttributes<AuthorizeAttribute>(), a => a.Policy == PolicyGroups.AdminPolicy);
     }
 
     [Theory]
@@ -49,7 +50,7 @@ public class ComicVineMatchingTests
         }.Select(name => typeof(SettingsController).GetMethod(name)!);
         var matchingEndpoints = typeof(ComicVineController)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-        foreach (var endpoint in settingsEndpoints.Concat(matchingEndpoints))
+        foreach (var endpoint in settingsEndpoints.Concat(matchingEndpoints).Concat(typeof(GcdController).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)))
         {
             var guard = endpoint.GetCustomAttribute<KPlusAttribute>()
                 ?? endpoint.DeclaringType!.GetCustomAttribute<KPlusAttribute>();

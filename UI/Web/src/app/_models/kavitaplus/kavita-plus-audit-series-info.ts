@@ -12,6 +12,7 @@ export interface KavitaPlusAuditSeriesInfo {
   hardcoverId?: number;
   metronId?: number;
   comicVineId?: string;
+  gcdId?: number | null;
   cbrId?: number;
   metadataProvider?: MetadataProvider;
   nextRefreshUtc: string | null;

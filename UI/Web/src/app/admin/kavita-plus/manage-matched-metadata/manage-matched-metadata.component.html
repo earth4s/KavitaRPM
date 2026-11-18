@@ -1,5 +1,5 @@
 <ng-container *transloco="let t; prefix:'manage-matched-metadata'">
-  <p>{{isComicVine() ? t('comicvine-description') : t('description')}}</p>
+  <p>{{isDirect() ? t(formGroup.source().value() + '-description') : t('description')}}</p>
   <div class="mb-3">
     <label for="matching-source">{{t('source-label')}}</label>
     <select class="form-select" id="matching-source" [formField]="formGroup.source">
@@ -132,7 +132,7 @@
           </ng-template>
         </ngx-datatable-column>
 
-        @if (isMatchedState() && !isComicVine()) {
+        @if (isMatchedState() && !isDirect()) {
           <ngx-datatable-column prop="validUntilUtc" [sortable]="false" [draggable]="false" [resizeable]="false" [flexGrow]="1">
             <ng-template let-column="column" ngx-datatable-header-template>
               {{t('valid-until-header')}}
@@ -209,7 +209,7 @@
               </div>
             </div>
 
-            @if (isMatchedState() && !isComicVine()) {
+            @if (isMatchedState() && !isDirect()) {
               <div class="col-6">
                 <div class="text-muted small">{{t('valid-until-header')}}</div>
                 <div>
