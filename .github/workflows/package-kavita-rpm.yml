@@ -1,0 +1,390 @@
+name: Package Kavita RPM
+
+on:
+  schedule:
+    # GitHub schedules use UTC. Check upstream four times per day.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "Optional Kavita release tag, for example v0.9.1.4"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kavita-rpm-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: Kareadita/Kavita
+
+  # Increment this to rebuild an unchanged Kavita version with revised packaging.
+  RPM_RELEASE: "1"
+
+jobs:
+  prepare:
+    name: Detect upstream release
+    runs-on: ubuntu-24.04
+    outputs:
+      upstream_tag: ${{ steps.detect.outputs.upstream_tag }}
+      rpm_version: ${{ steps.detect.outputs.rpm_version }}
+      rpm_tag: ${{ steps.detect.outputs.rpm_tag }}
+      prerelease: ${{ steps.detect.outputs.prerelease }}
+      should_build: ${{ steps.detect.outputs.should_build }}
+
+    steps:
+      - name: Find release and check whether it is already packaged
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${REQUESTED_TAG:-}" ]]; then
+            release_json="$(
+              gh api "repos/${UPSTREAM_REPOSITORY}/releases/tags/${REQUESTED_TAG}"
+            )"
+          else
+            release_json="$(
+              gh api "repos/${UPSTREAM_REPOSITORY}/releases/latest"
+            )"
+          fi
+
+          upstream_tag="$(jq -r '.tag_name' <<< "${release_json}")"
+          prerelease="$(jq -r '.prerelease' <<< "${release_json}")"
+
+          if [[ -z "${upstream_tag}" || "${upstream_tag}" == "null" ]]; then
+            echo "Could not determine the upstream Kavita release tag." >&2
+            exit 1
+          fi
+
+          # RPM uses ~ for prerelease ordering and does not allow a hyphen in Version.
+          rpm_version="${upstream_tag#v}"
+          rpm_version="${rpm_version//-/~}"
+          rpm_tag="${upstream_tag}-rpm.${RPM_RELEASE}"
+
+          required_assets=(
+            kavita-linux-x64.tar.gz
+            kavita-linux-arm.tar.gz
+            kavita-linux-arm64.tar.gz
+            kavita-linux-musl-x64.tar.gz
+          )
+
+          for asset in "${required_assets[@]}"; do
+            if ! jq -e --arg asset "${asset}" \
+                '.assets[] | select(.name == $asset)' \
+                <<< "${release_json}" >/dev/null; then
+              echo "Upstream release ${upstream_tag} does not contain ${asset}." >&2
+              exit 1
+            fi
+          done
+
+          if gh release view "${rpm_tag}" \
+              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            should_build=false
+            echo "RPM release ${rpm_tag} already exists; nothing to do."
+          else
+            should_build=true
+            echo "Will package Kavita ${upstream_tag} as ${rpm_tag}."
+          fi
+
+          {
+            echo "upstream_tag=${upstream_tag}"
+            echo "rpm_version=${rpm_version}"
+            echo "rpm_tag=${rpm_tag}"
+            echo "prerelease=${prerelease}"
+            echo "should_build=${should_build}"
+          } >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Package ${{ matrix.kavita_rid }} as RPM
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runner }}
+
+    container:
+      image: fedora:44
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Standard glibc x86_64 build.
+          - runner: ubuntu-24.04
+            expected_uname: x86_64
+            rpm_arch: x86_64
+            kavita_rid: linux-x64
+            rpm_name: kavita
+            musl: "0"
+            artifact_id: linux-x64
+
+          # 32-bit ARM package. There is no standard GitHub-hosted ARM32
+          # runner, so this only repackages the already-built upstream binary
+          # on an ARM64 host. The spec disables binary rewriting/stripping.
+          - runner: ubuntu-24.04-arm
+            expected_uname: aarch64
+            rpm_arch: armv7hl
+            kavita_rid: linux-arm
+            rpm_name: kavita
+            musl: "0"
+            artifact_id: linux-arm
+
+          # Standard glibc ARM64 build.
+          - runner: ubuntu-24.04-arm
+            expected_uname: aarch64
+            rpm_arch: aarch64
+            kavita_rid: linux-arm64
+            rpm_name: kavita
+            musl: "0"
+            artifact_id: linux-arm64
+
+          # The musl x64 archive must have a distinct RPM name because it has
+          # the same RPM architecture as the glibc x64 package.
+          - runner: ubuntu-24.04
+            expected_uname: x86_64
+            rpm_arch: x86_64
+            kavita_rid: linux-musl-x64
+            rpm_name: kavita-musl
+            musl: "1"
+            artifact_id: linux-musl-x64
+
+    steps:
+      - name: Install RPM build tools
+        run: |
+          dnf install -y \
+            curl \
+            file \
+            findutils \
+            gzip \
+            jq \
+            rpm-build \
+            rpmlint \
+            shadow-utils \
+            systemd-rpm-macros \
+            tar
+
+      - name: Check out packaging files
+        uses: actions/checkout@v4
+
+      - name: Download and verify upstream Kavita archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
+          KAVITA_RID: ${{ matrix.kavita_rid }}
+          EXPECTED_UNAME: ${{ matrix.expected_uname }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$(uname -m)" != "${EXPECTED_UNAME}" ]]; then
+            echo "Expected ${EXPECTED_UNAME} runner, got $(uname -m)." >&2
+            exit 1
+          fi
+
+          topdir="${GITHUB_WORKSPACE}/rpmbuild"
+          mkdir -p \
+            "${topdir}/BUILD" \
+            "${topdir}/BUILDROOT" \
+            "${topdir}/RPMS" \
+            "${topdir}/SOURCES" \
+            "${topdir}/SPECS" \
+            "${topdir}/SRPMS"
+
+          asset="kavita-${KAVITA_RID}.tar.gz"
+          release_json="$(
+            curl --fail --silent --show-error --location \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${UPSTREAM_REPOSITORY}/releases/tags/${UPSTREAM_TAG}"
+          )"
+
+          asset_url="$(
+            jq -r --arg asset "${asset}" \
+              '.assets[] | select(.name == $asset) | .browser_download_url' \
+              <<< "${release_json}"
+          )"
+          expected_digest="$(
+            jq -r --arg asset "${asset}" \
+              '.assets[] | select(.name == $asset) | .digest // empty' \
+              <<< "${release_json}"
+          )"
+
+          if [[ -z "${asset_url}" ]]; then
+            echo "Could not find ${asset} on release ${UPSTREAM_TAG}." >&2
+            exit 1
+          fi
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "${topdir}/SOURCES/${asset}" \
+            "${asset_url}"
+
+          if [[ "${expected_digest}" == sha256:* ]]; then
+            expected_sha256="${expected_digest#sha256:}"
+            actual_sha256="$(
+              sha256sum "${topdir}/SOURCES/${asset}" | awk '{print $1}'
+            )"
+
+            if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
+              echo "SHA-256 mismatch for ${asset}." >&2
+              exit 1
+            fi
+
+            echo "Verified upstream SHA-256 for ${asset}."
+          else
+            echo "No upstream asset digest is available; HTTPS download completed."
+          fi
+
+          cp packaging/rpm/kavita.service "${topdir}/SOURCES/"
+
+      - name: Build and inspect RPM
+        env:
+          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
+          RPM_ARCH: ${{ matrix.rpm_arch }}
+          KAVITA_RID: ${{ matrix.kavita_rid }}
+          RPM_NAME: ${{ matrix.rpm_name }}
+          KAVITA_MUSL: ${{ matrix.musl }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rpmbuild -bb \
+            --target "${RPM_ARCH}" \
+            --define "_topdir ${GITHUB_WORKSPACE}/rpmbuild" \
+            --define "kavita_version_override ${RPM_VERSION}" \
+            --define "kavita_release_override ${RPM_RELEASE}" \
+            --define "kavita_rid_override ${KAVITA_RID}" \
+            --define "kavita_name_override ${RPM_NAME}" \
+            --define "kavita_musl_override ${KAVITA_MUSL}" \
+            packaging/rpm/kavita.spec
+
+          mkdir -p dist
+          find "${GITHUB_WORKSPACE}/rpmbuild/RPMS" \
+            -type f -name '*.rpm' -exec cp -v '{}' dist/ ';'
+
+          test "$(find dist -maxdepth 1 -type f -name '*.rpm' | wc -l)" -eq 1
+          rpm -Kv dist/*.rpm
+          rpm -qpl dist/*.rpm | tee rpm-files.txt
+          rpm -qpR dist/*.rpm | tee rpm-requires.txt
+          rpm -qp --scripts dist/*.rpm | tee rpm-scripts.txt
+
+          grep -qx '/opt/Kavita/Kavita' rpm-files.txt
+          grep -qx '/usr/lib/systemd/system/kavita.service' rpm-files.txt
+
+          rpm_name="$(rpm -qp --queryformat '%{NAME}\n' dist/*.rpm)"
+          rpm_arch="$(rpm -qp --queryformat '%{ARCH}\n' dist/*.rpm)"
+
+          if [[ "${rpm_name}" != "${RPM_NAME}" ]]; then
+            echo "Expected RPM name ${RPM_NAME}, got ${rpm_name}." >&2
+            exit 1
+          fi
+
+          if [[ "${rpm_arch}" != "${RPM_ARCH}" ]]; then
+            echo "Expected RPM arch ${RPM_ARCH}, got ${rpm_arch}." >&2
+            exit 1
+          fi
+
+          # Keep policy findings visible, but do not block a release solely on
+          # rpmlint opinions about a bundled, self-contained upstream runtime.
+          rpmlint dist/*.rpm || true
+
+      - name: Upload built RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: kavita-rpm-${{ matrix.artifact_id }}
+          path: dist/*.rpm
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish RPM release
+    needs:
+      - prepare
+      - build
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download RPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kavita-rpm-*
+          merge-multiple: true
+          path: dist
+
+      - name: Validate artifacts and create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(find dist -maxdepth 1 -type f -name '*.rpm' | wc -l)" -eq 4
+
+          test "$(find dist -maxdepth 1 -type f -name 'kavita-*.x86_64.rpm' \
+            ! -name 'kavita-musl-*' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -type f -name 'kavita-*.armv7hl.rpm' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -type f -name 'kavita-*.aarch64.rpm' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -type f -name 'kavita-musl-*.x86_64.rpm' | wc -l)" -eq 1
+
+          cd dist
+          sha256sum ./*.rpm | sort -k2 > SHA256SUMS
+
+      - name: Write release notes
+        env:
+          UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
+        shell: bash
+        run: |
+          cat > release-notes.md <<EOF
+          Unofficial RPM repackaging of all Linux archives from Kavita ${UPSTREAM_TAG}.
+
+          Packages:
+          - kavita x86_64: kavita-linux-x64.tar.gz
+          - kavita armv7hl: kavita-linux-arm.tar.gz
+          - kavita aarch64: kavita-linux-arm64.tar.gz
+          - kavita-musl x86_64: kavita-linux-musl-x64.tar.gz
+
+          For Fedora, Rocky Linux, and RHEL on glibc, install the `kavita`
+          package matching the machine architecture. The `kavita-musl` RPM is
+          a separate repackaging of upstream's musl build and is not the normal
+          package for glibc-based Fedora/RHEL systems.
+
+          Install and start a glibc build:
+
+              sudo dnf install ./kavita-*.rpm
+              sudo systemctl enable --now kavita.service
+
+          Kavita runs as the unprivileged kavita user. Grant that user read and
+          traverse access to each media-library directory before adding it in
+          Kavita.
+
+          Application files are installed under /opt/Kavita. Persistent Kavita
+          state remains under /opt/Kavita/config during package upgrades.
+          EOF
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RPM_TAG: ${{ needs.prepare.outputs.rpm_tag }}
+          UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_args=()
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "${RPM_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target develop \
+            --title "Kavita ${UPSTREAM_TAG} RPM packages" \
+            --notes-file release-notes.md \
+            "${release_args[@]}" \
+            dist/*.rpm \
+            dist/SHA256SUMS

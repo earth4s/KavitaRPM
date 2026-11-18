@@ -1,0 +1,22 @@
+[Unit]
+Description=Kavita Server
+Documentation=https://wiki.kavitareader.com/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=kavita
+Group=kavita
+WorkingDirectory=/opt/Kavita
+ExecStart=/opt/Kavita/Kavita
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
+RestartSec=5s
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
