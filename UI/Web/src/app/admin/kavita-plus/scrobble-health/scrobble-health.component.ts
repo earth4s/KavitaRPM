@@ -1,4 +1,8 @@
 import {ChangeDetectionStrategy, Component, computed, inject, signal} from '@angular/core';
+import {DatePipe} from '@angular/common';
+import {SettingsService} from '../../settings.service';
+import {AccountService} from '../../../_services/account.service';
+import {ComicVineHealth} from '../../_models/comicvine-settings';
 import {TranslocoDirective} from '@jsverse/transloco';
 import {LicenseService} from '../../../_services/license.service';
 import {KavitaPlusProviderHealthSnapshot} from '../../../_models/kavitaplus/kavita-plus-provider-health';
@@ -15,7 +19,7 @@ import {ScrobbleProviderMediaTitlePipe} from '../../../_pipes/scrobble-provider-
   styleUrl: './scrobble-health.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    TranslocoDirective,
+    TranslocoDirective, DatePipe,
     ScrobbleProviderImageComponent,
     ScrobbleProviderNamePipe,
     KavitaPlusProviderHealthStatusPipe,
@@ -25,6 +29,9 @@ import {ScrobbleProviderMediaTitlePipe} from '../../../_pipes/scrobble-provider-
 export class ScrobbleHealthComponent {
   private readonly licenseService = inject(LicenseService);
 
+  private readonly settingsService = inject(SettingsService);
+  private readonly accountService = inject(AccountService);
+  protected readonly comicVine = signal<ComicVineHealth | null>(null);
   private readonly _snapshots = signal<KavitaPlusProviderHealthSnapshot[]>([]);
   protected readonly snapshots = this._snapshots.asReadonly();
   protected readonly lastChecked = signal<Date | null>(null);
@@ -36,6 +43,12 @@ export class ScrobbleHealthComponent {
 
   protected load(forceCheck: boolean) {
     this.loading.set(true);
+    if (this.accountService.hasAdminRole() && this.licenseService.hasActiveLicense()) {
+      this.settingsService.getComicVineHealth().subscribe({
+        next: data => this.comicVine.set(data),
+        error: () => this.comicVine.set(null)
+      });
+    }
     this.licenseService.getProviderHealthSnapshot(forceCheck).subscribe({
       next: data => {
         this._snapshots.set(data);

@@ -6,6 +6,9 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Kavita.Models.DTOs.Settings;
+using Kavita.Models.DTOs.Recommendation;
 using System.Threading;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
@@ -29,7 +32,7 @@ namespace Kavita.Services.Metadata;
 /// </summary>
 public sealed class ComicVineService(
     HttpClient client, string? apiKey, ILogger<ComicVineService> logger, TimeProvider timeProvider,
-    Func<CancellationToken, Task<string?>>? resolveApiKey = null)
+    Func<CancellationToken, Task<string?>>? resolveApiKey = null, string? storePath = null)
     : IComicVineService, IDisposable
 {
     private const string ApiBase = "https://comicvine.gamespot.com/api/";
@@ -45,6 +48,70 @@ public sealed class ComicVineService(
     private readonly Dictionary<string, (JsonElement Data, DateTimeOffset Expires)> _cache = new();
     private DateTimeOffset _lastRequest = DateTimeOffset.MinValue;
     private DateTimeOffset _blockedUntil = DateTimeOffset.MinValue;
+
+    private readonly ComicVineStore? _store = storePath == null ? null : new ComicVineStore(storePath);
+    private bool _restored;
+    private DateTimeOffset? _lastSuccess;
+    private DateTimeOffset? _lastFailure;
+    private string? _failure;
+
+    private void Restore()
+    {
+        if (_restored) return;
+        var state = _store?.ReadState();
+        if (state != null)
+        {
+            _credentialFingerprint = state.Fingerprint;
+            _blockedUntil = state.BlockedUntil;
+            foreach (var at in state.Requests) _requests.Enqueue(at);
+            _lastRequest = state.Requests.LastOrDefault();
+            _lastSuccess = state.LastSuccess;
+            _lastFailure = state.LastFailure;
+            _failure = state.Failure;
+        }
+        _restored = true;
+    }
+
+    private void SaveState() => _store?.WriteState(new ComicVineStore.State(
+        _credentialFingerprint, _requests.ToArray(), _blockedUntil, _lastSuccess, _lastFailure, _failure));
+
+    private void RecordFailure(string reason, DateTimeOffset now, DateTimeOffset retry)
+    {
+        _lastFailure = now;
+        _failure = reason;
+        _blockedUntil = retry;
+        SaveState();
+    }
+
+    private void SelectCredential(string key)
+    {
+        Restore();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+        if (_credentialFingerprint == fingerprint) return;
+        _cache.Clear();
+        _blockedUntil = DateTimeOffset.MinValue;
+        _lastSuccess = _lastFailure = null;
+        _failure = null;
+        _store?.WriteState(new ComicVineStore.State(fingerprint, _requests.ToArray(), _blockedUntil, null, null, null), clearCache: true);
+        _credentialFingerprint = fingerprint;
+    }
+
+    public async Task<ComicVineHealthDto> GetHealthAsync(CancellationToken ct = default)
+    {
+        var key = await GetApiKey(ct);
+        if (string.IsNullOrWhiteSpace(key)) return new(false, 0, RequestsPerHour, null, null, null, null);
+        await _gate.WaitAsync(ct);
+        try
+        {
+            SelectCredential(key);
+            var now = timeProvider.GetUtcNow();
+            var recent = _requests.Where(at => at > now.AddHours(-1)).ToArray();
+            var retry = _blockedUntil;
+            if (recent.Length >= RequestsPerHour && recent[0].AddHours(1) > retry) retry = recent[0].AddHours(1);
+            return new(true, recent.Length, RequestsPerHour, _lastSuccess, _lastFailure, _failure, retry > now ? retry : null);
+        }
+        finally { _gate.Release(); }
+    }
 
     private string _credentialFingerprint = string.Empty;
 
@@ -105,11 +172,19 @@ public sealed class ComicVineService(
         var key = await RequireApiKey(ct);
         var result = new MatchSeriesResultDto { Provider = MetadataProvider.ComicVine };
         var directId = ParseId(query.StartsWith("comicvine:", StringComparison.OrdinalIgnoreCase) ? query[10..] : query);
-        var (linkedId, isVolume) = ExternalIdParser.GetComicVineId(query);
-        if (linkedId != null)
+        if (Uri.TryCreate(query, UriKind.Absolute, out var link) && link.Scheme == Uri.UriSchemeHttps
+            && link.Host == "comicvine.gamespot.com" && link.IsDefaultPort && string.IsNullOrEmpty(link.UserInfo))
         {
-            if (!isVolume) throw new KavitaException("Select a Comic Vine series/volume URL (4050), rather than an issue URL (4000).");
-            directId = ParseId(linkedId);
+            var part = link.AbsolutePath.TrimEnd('/').Split('/').Last();
+            var resource = Regex.Match(part, @"\A(4050|4000)-([0-9]+)\z", RegexOptions.CultureInvariant);
+            if (!resource.Success) throw new KavitaException("Enter a Comic Vine issue or volume URL.");
+            directId = ParseId(resource.Groups[2].Value);
+            if (resource.Groups[1].Value == "4000" && directId.HasValue)
+            {
+                var issue = await GetRecord("issue", directId.Value, "id,volume", key, ct);
+                directId = issue.HasValue ? NestedId(issue.Value, "volume") : null;
+                if (!directId.HasValue) return result;
+            }
         }
 
         if (directId.HasValue)
@@ -121,9 +196,7 @@ public sealed class ComicVineService(
         if (Uri.TryCreate(query, UriKind.Absolute, out _))
             throw new KavitaException("Enter a Comic Vine series/volume URL, volume ID, or comic title.");
 
-        var response = await GetResponse("search/",
-            "resources=volume&limit=20&field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases&query="
-            + Uri.EscapeDataString(query), key, ct);
+        var response = await SearchTitle(query, key, ct);
         if (response == null) throw ProviderUnavailable();
         foreach (var volume in Items(response.Value, "results"))
         {
@@ -133,12 +206,71 @@ public sealed class ComicVineService(
         return result;
     }
 
+    private Task<JsonElement?> SearchTitle(string query, string key, CancellationToken ct) =>
+        GetResponse("search/",
+            "resources=volume&limit=20&field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases&query="
+            + Uri.EscapeDataString(query), key, ct);
+
+    private async Task<JsonElement?> GetRecord(string resource, int id, string fields, string key, CancellationToken ct)
+    {
+        var type = resource == "issue" ? 4000 : 4050;
+        var response = await GetResponse($"{resource}/{type}-{id}/", $"field_list={fields}", key, ct);
+        return response.HasValue && response.Value.TryGetProperty("results", out var item) && Int(item, "id") == id ? item : null;
+    }
+
+    public async Task<IList<string>> GetCoversAsync(int id, bool issue, CancellationToken ct = default)
+    {
+        var key = await GetApiKey(ct);
+        if (id <= 0 || string.IsNullOrWhiteSpace(key)) return [];
+        var record = await GetRecord(issue ? "issue" : "volume", id,
+            issue ? "id,image,associated_images" : "id,image", key, ct);
+        if (!record.HasValue) return [];
+        var item = record.Value;
+        var urls = new List<string>();
+        if (item.TryGetProperty("image", out var image))
+        {
+            var main = new[] { "original_url", "super_url", "medium_url", "small_url" }
+                .Select(field => SafeComicVineUrl(Text(image, field))).FirstOrDefault(url => url != null);
+            if (main != null) urls.Add(main);
+        }
+        foreach (var extra in Items(item, "associated_images"))
+        {
+            var url = SafeComicVineUrl(Text(extra, "original_url"));
+            if (url != null && !urls.Contains(url)) urls.Add(url);
+        }
+        return urls;
+    }
+
+    public async Task<ExternalSeriesDetailDto?> FindVolumeAsync(string title, int? year, string? publisher, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 200 || (year == null && string.IsNullOrWhiteSpace(publisher))) return null;
+        var key = await GetApiKey(ct);
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        try
+        {
+            var response = await SearchTitle(title, key, ct);
+            if (!response.HasValue) return null;
+            var candidates = Items(response.Value, "results").ToList();
+            if (Int(response.Value, "number_of_total_results") != candidates.Count) return null;
+            var matches = candidates.Select(VolumeDetail).OfType<ExternalSeriesDetailDto>()
+                .Where(v => v.Synonyms.Append(v.Name).Contains(title, StringComparer.OrdinalIgnoreCase)
+                    && (year == null || v.StartDate?.Year == year)
+                    && (string.IsNullOrWhiteSpace(publisher) || string.Equals(publisher, v.Publisher, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            return matches.Count == 1 ? matches[0] : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     public async Task<ExternalSeriesDetailDto?> GetVolumeAsync(int volumeId, CancellationToken ct = default)
     {
         if (volumeId <= 0) return null;
         var key = await RequireApiKey(ct);
         var response = await GetResponse($"volume/4050-{volumeId}/",
-            "field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases", key, ct);
+            "field_list=id,name,description,deck,start_year,publisher,count_of_issues,image,site_detail_url,aliases,people,characters", key, ct);
         if (response == null) throw ProviderUnavailable();
         if (!response.Value.TryGetProperty("results", out var volume) || Int(volume, "id") != volumeId) return null;
         return VolumeDetail(volume);
@@ -166,9 +298,19 @@ public sealed class ComicVineService(
         {
             Name = PlainText(Text(volume, "name")), ComicVineId = id,
             Summary = PlainText(Fill(Text(volume, "description"), Text(volume, "deck"))),
-            SiteUrl = SafeComicVineUrl(Text(volume, "site_detail_url")), CoverUrl = image,
+            SiteUrl = SafeComicVineUrl(Text(volume, "site_detail_url")) ?? $"https://comicvine.gamespot.com/volume/4050-{id}/",
+            CoverUrl = image,
             StartDate = start, Publisher = publisher, Chapters = Int(volume, "count_of_issues") ?? 0,
-            Genres = [], Staff = [], Tags = [], Editions = [], Provider = ScrobbleProvider.Kavita,
+            Genres = [], Tags = [], Editions = [],
+            Characters = Items(volume, "characters").Select(c => new SeriesCharacter
+            {
+                Name = PlainText(Text(c, "name")), Description = "", Url = SafeComicVineUrl(Text(c, "site_detail_url")) ?? ""
+            }).ToList(),
+            Staff = Items(volume, "people").Select(p => new SeriesStaffDto
+            {
+                Name = PlainText(Text(p, "name")), Role = "", Url = SafeComicVineUrl(Text(p, "site_detail_url")) ?? ""
+            }).ToList(),
+            Provider = ScrobbleProvider.Kavita,
             PlusMediaFormat = PlusMediaFormat.Comic,
             Synonyms = Text(volume, "aliases").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
         };
@@ -176,7 +318,7 @@ public sealed class ComicVineService(
 
     private static string? SafeComicVineUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
-        && uri.Host == "comicvine.gamespot.com" && string.IsNullOrEmpty(uri.UserInfo)
+        && uri.Host == "comicvine.gamespot.com" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo)
             ? uri.GetLeftPart(UriPartial.Path) : null;
 
     private async Task EnrichIssue(ParserInfo info, string key, CancellationToken ct)
@@ -190,12 +332,13 @@ public sealed class ComicVineService(
             // Never turn an unknown issue (the parser's default 0), a range, or a special into a guess.
             var explicitNumber = info.ComicInfo?.Number;
             var number = NormalizeNumber(string.IsNullOrWhiteSpace(explicitNumber) ? info.Chapters : explicitNumber);
+            if (number == null && IsIssueLabel(explicitNumber)) number = explicitNumber!.Trim();
             if (number == null || (number == "0" && string.IsNullOrWhiteSpace(explicitNumber))) return;
 
             var list = await GetResponse("issues/", $"filter={Uri.EscapeDataString($"volume:{volumeId},issue_number:{number}")}&limit=100&field_list=id,issue_number,volume", key, ct);
             if (list == null || Int(list.Value, "number_of_total_results") != 1) return;
             var matches = Items(list.Value, "results").ToList();
-            if (matches.Count != 1 || NormalizeNumber(Text(matches[0], "issue_number")) != number
+            if (matches.Count != 1 || !string.Equals(NormalizeNumber(Text(matches[0], "issue_number")) ?? Text(matches[0], "issue_number").Trim(), number, StringComparison.OrdinalIgnoreCase)
                 || NestedId(matches[0], "volume") != volumeId) return;
             issueId = Int(matches[0], "id");
             if (issueId == null || issueId <= 0) return;
@@ -231,16 +374,10 @@ public sealed class ComicVineService(
         await _gate.WaitAsync(ct);
         try
         {
-            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
-            if (_credentialFingerprint != fingerprint)
-            {
-                _credentialFingerprint = fingerprint;
-                _cache.Clear();
-                _blockedUntil = DateTimeOffset.MinValue;
-                // Preserve request accounting across key changes, including the hourly budget.
-            }
+            SelectCredential(key);
             var now = timeProvider.GetUtcNow();
             if (useCache && _cache.TryGetValue(cacheKey, out var cached) && cached.Expires > now) return cached.Data;
+            if (useCache && _store?.Read(cacheKey, now) is { } stored) return stored;
             if (now < _blockedUntil) return null;
 
             while (_requests.TryPeek(out var sent) && now - sent >= TimeSpan.FromHours(1)) _requests.Dequeue();
@@ -256,6 +393,7 @@ public sealed class ComicVineService(
             now = timeProvider.GetUtcNow();
             _lastRequest = now;
             _requests.Enqueue(now);
+            SaveState();
 
             // Only fixed endpoint paths built from numeric IDs reach this method. The owned client has
             // no request logging handlers, redirects or cookies, so the API key cannot leak through them.
@@ -267,7 +405,8 @@ public sealed class ComicVineService(
             {
                 var retryAfter = response.Headers.RetryAfter;
                 var retryAt = retryAfter?.Date ?? now + (retryAfter?.Delta ?? TimeSpan.FromMinutes(5));
-                _blockedUntil = retryAt < now + TimeSpan.FromMinutes(5) ? now + TimeSpan.FromMinutes(5) : retryAt;
+                RecordFailure($"HTTP {(int)response.StatusCode}", now,
+                    retryAt < now.AddMinutes(5) ? now.AddMinutes(5) : retryAt);
                 logger.LogWarning("[ComicVine] HTTP {StatusCode}; keeping local metadata and pausing lookups", (int)response.StatusCode);
                 return null;
             }
@@ -278,19 +417,33 @@ public sealed class ComicVineService(
             if (root.ValueKind != JsonValueKind.Object || Int(root, "status_code") != 1)
             {
                 // Error text is provider-controlled and may echo credentials. Only log its numeric code.
-                _blockedUntil = now + TimeSpan.FromMinutes(5);
+                RecordFailure($"API {Int(root, "status_code")}", now, now.AddMinutes(5));
                 logger.LogWarning("[ComicVine] API error {StatusCode}; keeping local metadata", Int(root, "status_code"));
                 return null;
             }
 
             var data = root.Clone();
+            _lastSuccess = now;
+            SaveState();
+            _store?.Write(cacheKey, data, now + CacheLifetime, CacheCapacity);
             if (_cache.Count >= CacheCapacity) _cache.Remove(_cache.Keys.First());
             _cache[cacheKey] = (data, now + CacheLifetime);
             return data;
         }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            // A storage outage must not abort a library scan or allow unaccounted network traffic.
+            logger.LogWarning("[ComicVine] Local provider database unavailable; skipping lookup");
+            return null;
+        }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException)
         {
-            if (!ct.IsCancellationRequested) _blockedUntil = timeProvider.GetUtcNow() + TimeSpan.FromMinutes(5);
+            if (!ct.IsCancellationRequested)
+            {
+                var now = timeProvider.GetUtcNow();
+                RecordFailure(ex.GetType().Name, now, now.AddMinutes(5));
+                throw new HttpRequestException("Comic Vine request failed.");
+            }
             throw;
         }
         finally
@@ -413,12 +566,21 @@ public sealed class ComicVineService(
     private static int? ParseId(string? value) =>
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
 
+    // Accept explicit ComicInfo labels only. Keep filter operators and multi-issue ranges out.
+    private static bool IsIssueLabel(string? value)
+    {
+        var label = value?.Trim();
+        return label is { Length: > 0 and <= 32 } && label.Any(c => char.IsLetter(c) || char.GetUnicodeCategory(c) == UnicodeCategory.OtherNumber)
+            && label.All(c => char.IsLetterOrDigit(c) || char.GetUnicodeCategory(c) == UnicodeCategory.OtherNumber || c is ' ' or '.');
+    }
+
     private static string? NormalizeNumber(string? value) =>
         decimal.TryParse(value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var number)
             ? number.ToString("0.############################", CultureInfo.InvariantCulture) : null;
 
     public void Dispose()
     {
+        _store?.Dispose();
         client.Dispose();
         _gate.Dispose();
     }

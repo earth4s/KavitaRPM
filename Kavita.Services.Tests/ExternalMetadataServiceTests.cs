@@ -107,7 +107,7 @@ public class ExternalMetadataServiceTests: AbstractDbTest
            mapper, Substitute.For<ILicenseService>(), Substitute.For<IScrobblingService>(),
            Substitute.For<IEventHub>(), Substitute.For<ICoverDbService>(),
            Substitute.For<IKavitaPlusApiService>(), Substitute.For<IFileCacheService>(),
-           Substitute.For<IKavitaPlusAuditService>());
+           Substitute.For<IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
 
        // Clear tracker so test body starts with a clean slate
        context.ChangeTracker.Clear();

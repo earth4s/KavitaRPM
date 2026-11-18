@@ -164,6 +164,8 @@ jobs:
 
           Includes direct Comic Vine metadata, Settings > Kavita+ > Metadata Providers > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. An active Kavita+ license is required to view Metadata Providers, manage API keys, match series, and run direct Comic Vine lookups. The Metadata Providers panel contains an explicit Save button for Comic Vine keys. Matching persists the selected volume metadata immediately, and settings panels begin loading on selection. Specials subfolders stay under their parent comic in both comic library types, including annuals with their own metadata. Run a forced full library scan to repair previous splits.
 
+          Comic Vine now supplies cover choices and linked series details. Shared matching accepts issue URLs, and the scanner can match a unique run by title plus year or publisher. The Kavita+ health dashboard shows local requests and cooldowns, which survive restarts.
+
           Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
 
           RPM installation: sudo dnf install ./kavita-*.rpm

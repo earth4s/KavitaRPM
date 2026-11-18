@@ -64,6 +64,7 @@ public class ExternalMetadataService : IExternalMetadataService
     private readonly IKavitaPlusApiService _kavitaPlusApiService;
     private readonly IFileCacheService _fileCacheService;
     private readonly IKavitaPlusAuditService _auditService;
+    private readonly IComicVineService _comicVine;
 
     private const int SeriesPerRefresh = 40; // 50 - overhead for scans
     private readonly TimeSpan _externalSeriesMetadataCache = TimeSpan.FromDays(30);
@@ -92,7 +93,8 @@ public class ExternalMetadataService : IExternalMetadataService
 
     public ExternalMetadataService(IUnitOfWork unitOfWork, ILogger<ExternalMetadataService> logger, IMapper mapper,
         ILicenseService licenseService, IScrobblingService scrobblingService, IEventHub eventHub, ICoverDbService coverDbService,
-        IKavitaPlusApiService kavitaPlusApiService, IFileCacheService fileCacheService, IKavitaPlusAuditService auditService)
+        IKavitaPlusApiService kavitaPlusApiService, IFileCacheService fileCacheService, IKavitaPlusAuditService auditService,
+        IComicVineService comicVine)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -104,6 +106,7 @@ public class ExternalMetadataService : IExternalMetadataService
         _kavitaPlusApiService = kavitaPlusApiService;
         _fileCacheService = fileCacheService;
         _auditService = auditService;
+        _comicVine = comicVine;
 
         FlurlConfiguration.ConfigureClientForUrl(Configuration.KavitaPlusApiUrl);
     }
@@ -163,7 +166,12 @@ public class ExternalMetadataService : IExternalMetadataService
 
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library | SeriesIncludes.Chapters | SeriesIncludes.Metadata, ct: ct);
         if (series == null) return null;
-        if (series.GetEffectiveMetadataProvider() == MetadataProvider.ComicVine) return null;
+        if (series.GetEffectiveMetadataProvider() == MetadataProvider.ComicVine)
+        {
+            if (trigger != MetadataFetchTrigger.OnDemand || series.DontMatch) return null;
+            var detail = await ReadComicVineDetail(series, ct);
+            return detail == null ? null : new SeriesDetailPlusDto { Series = detail, Reviews = [], Ratings = [] };
+        }
 
         if (trigger != MetadataFetchTrigger.OnDemand && (!series.WillScrobble() || !series.Library.AllowMetadataMatching)) return null;
 
@@ -582,7 +590,13 @@ public class ExternalMetadataService : IExternalMetadataService
         // This is for the Series drawer. We can get this extra information during the initial SeriesDetail call so it's all coming from the DB
         var metadataProvider = await _unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct);
         if (metadataProvider is null) return null;
-        if (metadataProvider == MetadataProvider.ComicVine) return null;
+        if (metadataProvider == MetadataProvider.ComicVine)
+        {
+            var target = recommendedSeriesId.GetValueOrDefault() > 0 ? recommendedSeriesId!.Value : seriesId;
+            var local = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(target, SeriesIncludes.Library, ct);
+            return local == null || local.DontMatch || local.GetEffectiveMetadataProvider() != MetadataProvider.ComicVine
+                ? null : await ReadComicVineDetail(local, ct);
+        }
 
         var payload = new SeriesDetailRequestV3Dto
         {
@@ -1350,7 +1364,8 @@ public class ExternalMetadataService : IExternalMetadataService
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId,
             SeriesIncludes.Metadata | SeriesIncludes.Chapters | SeriesIncludes.Library, ct: ct);
         if (series == null) throw new KavitaException("Series not found");
-        if (series.GetEffectiveMetadataProvider() == MetadataProvider.ComicVine) return [];
+        if (series.GetEffectiveMetadataProvider() == MetadataProvider.ComicVine)
+            return await GetComicVineCovers(series, volumeId, chapterId, ct);
 
         var libraryType = await _unitOfWork.LibraryRepository.GetLibraryTypeAsync(series.LibraryId, ct);
 
@@ -1405,6 +1420,56 @@ public class ExternalMetadataService : IExternalMetadataService
         }
 
         return result.Data ?? [];
+    }
+
+    private async Task<ExternalSeriesDetailDto?> ReadComicVineDetail(Series series, CancellationToken ct)
+    {
+        if (!int.TryParse(series.ComicVineId, out var id) || id <= 0) return null;
+        try { return await _comicVine.GetVolumeAsync(id, ct); }
+        catch (Exception ex) when (ex is KavitaException or System.Net.Http.HttpRequestException or System.Text.Json.JsonException
+            || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private async Task<IList<ExternalCoverResponseDto>> GetComicVineCovers(Series series, int? volumeId, int? chapterId, CancellationToken ct)
+    {
+        if (series.DontMatch) return [];
+        string? externalId = series.ComicVineId;
+        var type = ExternalCoverImageType.Series;
+        float? number = null;
+        var issue = false;
+        if (chapterId.HasValue)
+        {
+            var chapter = series.Volumes.SelectMany(v => v.Chapters).FirstOrDefault(c => c.Id == chapterId);
+            if (chapter == null) return [];
+            externalId = chapter.ComicVineId;
+            number = chapter.MinNumber;
+            type = ExternalCoverImageType.Issue;
+            issue = true;
+        }
+        else if (volumeId.HasValue)
+        {
+            var volume = series.Volumes.FirstOrDefault(v => v.Id == volumeId);
+            if (volume == null) return [];
+            // Kavita can group multiple local volumes under one Comic Vine run. Use the
+            // first identified issue for a local volume that has no external volume ID.
+            var firstIssue = volume.Chapters.Where(c => !string.IsNullOrEmpty(c.ComicVineId))
+                .OrderBy(c => c.MinNumber).ThenBy(c => c.Id).FirstOrDefault();
+            if (!string.IsNullOrEmpty(volume.ComicVineId)) externalId = volume.ComicVineId;
+            else if (firstIssue != null)
+            {
+                issue = true;
+                externalId = firstIssue.ComicVineId;
+            }
+            number = volume.MinNumber;
+            type = ExternalCoverImageType.Volume;
+        }
+        if (!int.TryParse(externalId, out var id) || id <= 0) return [];
+        var covers = await _comicVine.GetCoversAsync(id, issue, ct);
+        return covers.Select(url => new ExternalCoverResponseDto { Url = url, Number = number, Type = type,
+            SourceUrl = $"https://comicvine.gamespot.com/{(issue ? 4000 : 4050)}-{id}/" }).ToList();
     }
 
     private static string GetCoversCacheKey(int seriesId, int? volumeId = null, int? chapterId = null)

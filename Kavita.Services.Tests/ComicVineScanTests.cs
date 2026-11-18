@@ -15,6 +15,27 @@ namespace Kavita.Services.Tests;
 public class ComicVineScanTests(ITestOutputHelper output) : AbstractDbTest(output)
 {
     [Fact]
+    public async Task AutomaticMatchPersistsCorroboratedRunAndSeriesMetadata()
+    {
+        var (unitOfWork, context, _) = await CreateDatabase();
+        var helper = new ScannerHelper(unitOfWork, output);
+        var library = await helper.GenerateScannerData("Automatic run - ComicVine",
+            ["Example (2020)/Example (2020) #001.cbz"],
+            new Dictionary<string, ComicInfo> { ["Example (2020) #001.cbz"] = new()
+                { Series = "Example", Volume = "2020", Number = "1", Publisher = "Example Publisher" } });
+        library.MetadataProvider = MetadataProvider.ComicVine;
+        await context.SaveChangesAsync();
+        var provider = Substitute.For<IComicVineService>();
+        provider.FindVolumeAsync("Example", 2020, "Example Publisher", Arg.Any<CancellationToken>())
+            .Returns(new ExternalSeriesDetailDto { ComicVineId = 200, Name = "Example", Summary = "Run description" });
+        await helper.CreateServices(comicVineService: provider).ScanLibrary(library.Id, forceUpdate: true);
+        context.ChangeTracker.Clear();
+        var series = await context.Series.Include(s => s.Metadata).SingleAsync(s => s.LibraryId == library.Id);
+        Assert.Equal("200", series.ComicVineId);
+        Assert.Equal("Run description", series.Metadata.Summary);
+    }
+
+    [Fact]
     public async Task ExplicitMatch_AppliesSeriesMetadataImmediately_AndPreservesItAcrossIssueScans()
     {
         var (unitOfWork, context, mapper) = await CreateDatabase();
@@ -39,7 +60,8 @@ public class ComicVineScanTests(ITestOutputHelper output) : AbstractDbTest(outpu
             ComicVineId = 200, Summary = "Volume synopsis", StartDate = new DateTime(1986, 1, 1),
             Publisher = "Volume publisher", SiteUrl = "https://comicvine.gamespot.com/volume/4050-200/"
         });
-        var matching = new ComicVineMatchingService(unitOfWork, api, mapper, Substitute.For<IEventHub>());
+        var matching = new ComicVineMatchingService(unitOfWork, api, mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
         await matching.ApplyAsync(series.Id, 200);
         Assert.Equal("Volume synopsis", series.Metadata.Summary);
         Assert.Equal(1986, series.Metadata.ReleaseYear);

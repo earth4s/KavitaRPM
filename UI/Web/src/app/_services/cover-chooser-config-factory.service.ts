@@ -19,6 +19,7 @@ export interface CoverImageOption {
   url: string;
   title: string;
   subtitle?: string;
+  sourceUrl?: string;
   /** Filename of the image once staged in the temp directory. Populated lazily on selection. */
   fileName?: string;
   /**

@@ -9,6 +9,7 @@ using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services;
 using Kavita.API.Services.Plus;
+using Kavita.API.Services.Metadata;
 using Kavita.Common;
 using Kavita.Common.Extensions;
 using Kavita.Common.Helpers;
@@ -607,11 +608,12 @@ public class SeriesController(
         if (recommendedSeriesId is > 0 && !await unitOfWork.UserRepository.HasAccessToSeries(UserId, recommendedSeriesId.Value, ct))
             return NotFound();
 
-        var cacheKey = $"{CacheKey}-{aniListId ?? 0}-{malId ?? 0}-{mangaBakaId ?? 0}-{recommendedSeriesId ?? 0}-{hardcoverId ?? 0}";
+        var directComic = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct) == MetadataProvider.ComicVine;
+        var cacheKey = $"{CacheKey}-{seriesId}-{aniListId ?? 0}-{malId ?? 0}-{mangaBakaId ?? 0}-{recommendedSeriesId ?? 0}-{hardcoverId ?? 0}";
 
         ExternalSeriesDetailDto? ret;
         var results = await _externalSeriesCacheProvider.GetAsync<ExternalSeriesDetailDto>(cacheKey, ct);
-        if (results.HasValue)
+        if (results.HasValue && !directComic)
         {
             ret = results.Value;
         }
@@ -629,7 +631,7 @@ public class SeriesController(
             try
             {
                 ret = await externalMetadataService.GetExternalSeriesDetail(seriesId, request, recommendedSeriesId, ct);
-                await _externalSeriesCacheProvider.SetAsync(cacheKey, ret, TimeSpan.FromMinutes(15), ct);
+                if (!directComic) await _externalSeriesCacheProvider.SetAsync(cacheKey, ret, TimeSpan.FromMinutes(15), ct);
             }
             catch (Exception)
             {
@@ -681,9 +683,17 @@ public class SeriesController(
     [KPlus]
     [HttpPost("match")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
-    public async Task<ActionResult<MatchSeriesResultDto>> MatchSeries(MatchSeriesDto dto)
+    public async Task<ActionResult<MatchSeriesResultDto>> MatchSeries(MatchSeriesDto dto, [FromServices] IComicVineMatchingService comicVine)
     {
         var ct = HttpContext.RequestAborted;
+
+        if (ExternalIdParser.IsComicVineQuery(dto.Query))
+        {
+            if (!await unitOfWork.UserRepository.HasAccessToSeries(UserId, dto.SeriesId, ct)) return NotFound();
+            try { return Ok(await comicVine.SearchAsync(dto.SeriesId, dto.Query!, ct)); }
+            catch (KavitaException ex) { return BadRequest(ex.Message); }
+            catch (System.Net.Http.HttpRequestException) { return StatusCode(503, "Unable to contact Comic Vine."); }
+        }
 
         var seriesProvider = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(dto.SeriesId, ct);
         if (seriesProvider == null) return NotFound();

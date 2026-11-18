@@ -143,7 +143,7 @@ public class ScannerHelper
             eventHub,
             ds, readingItemService, new FileService(fs),
             Substitute.For<IReadingListService>(),
-            Substitute.For<IExternalMetadataService>(), comicVineService ?? Substitute.For<IComicVineService>());
+            Substitute.For<IExternalMetadataService>(), comicVineService ?? Substitute.For<IComicVineService>(), Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>());
 
         var serviceProvider = Substitute.For<IServiceProvider>();
         serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_unitOfWork);

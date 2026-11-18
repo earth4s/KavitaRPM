@@ -8,6 +8,7 @@ using Kavita.API.Services.Scanner;
 using Kavita.Common;
 using Kavita.Common.Helpers;
 using Kavita.Models.Constants;
+using Kavita.Models.DTOs.Settings;
 using Kavita.Models.DTOs.KavitaPlus.Manage;
 using Kavita.Models.DTOs.Metadata.Matching;
 using Kavita.Server.Attributes;
@@ -55,6 +56,11 @@ public sealed class ComicVineController(IComicVineMatchingService matching) : Ba
         try { await matching.SetDontMatchAsync(seriesId, dontMatch, HttpContext.RequestAborted); return Ok(); }
         catch (KavitaException ex) { return BadRequest(ex.Message); }
     }
+
+    [HttpGet("health")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineHealthDto>> Health([FromServices] IComicVineService service) =>
+        Ok(await service.GetHealthAsync(HttpContext.RequestAborted));
 
     [HttpPost("series")]
     public async Task<ActionResult<PagedList<ManageMatchSeriesDto>>> Series(ManageMatchFilterDto filter, [FromQuery] UserParams pagination)

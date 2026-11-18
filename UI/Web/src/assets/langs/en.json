@@ -1136,6 +1136,11 @@
     },
 
     "scrobble-health": {
+        "local-requests": "Requests from this server in the last hour: {{count}} of {{limit}}",
+        "last-success": "Last successful request:",
+        "last-error": "Last failed request:",
+        "retry-at": "Requests can resume at",
+        "comicvine-unconfigured": "No Comic Vine API key configured.",
         "title-label": "Upstream Providers",
         "checked-ago-label": "checked {{time}} ago",
         "live-label": "live",
@@ -1614,6 +1619,7 @@
     },
 
     "kavitaplus-tooltip": {
+        "view-details": "View metadata",
         "panel-title": "Kavita+: Audit Log",
         "matched": "Matched",
         "unmatched": "Unmatched",
@@ -1844,7 +1850,7 @@
     },
 
     "match-series-modal": {
-        "comicvine-query-hint": "Search by title, volume ID, or Comic Vine volume URL.",
+        "comicvine-query-hint": "Search by title or volume ID, or paste a Comic Vine volume or issue URL.",
         "comicvine-key-hint": "Requires an active Kavita+ license and your API key in Settings > Kavita+ > Metadata Providers > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",

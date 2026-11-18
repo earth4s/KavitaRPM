@@ -43,7 +43,7 @@ Settings and remove the environment variable, then restart.
 
 ## Matching
 
-An explicit identifier is required. Supported inputs in an archive's
+The scanner gives explicit identifiers priority. Supported inputs in an archive's
 `ComicInfo.xml` are the same inputs already recognized by the parser:
 
 - An issue URL in `Web`, for example
@@ -58,9 +58,14 @@ only the volume ID is available, then requests `/issue/4000-ID/` and
 `/volume/4050-ID/`. It rejects ambiguous results, mismatched IDs, and ranges.
 An explicit `Number` of `0` is supported; an unknown parser-default `0` is skipped.
 Use **Settings > Import > Matched Series** to search by title or select a Comic Vine
-volume ID/URL and save a parent series match. Issue enrichment still requires a
-unique issue identifier or a matched volume and numeric issue number; nonnumeric
-issue labels are not implemented.
+volume ID/URL and save a parent series match. Pasting a Comic Vine URL or a
+`comicvine:ID` query selects Comic Vine. An issue URL resolves to its parent run.
+An explicit ComicInfo issue label such as `1AU` must match exactly within that run.
+
+With library metadata and automatic matching enabled and Comic Vine selected,
+the scanner can match an unidentified series by exact title or alias corroborated
+by run year or embedded publisher. Multiple matches and truncated search results
+require manual review. Specials keep their independent issue identities.
 
 ## Fields and precedence
 
@@ -72,15 +77,19 @@ Existing embedded values take priority. The scanner's existing chapter and serie
 field locks still apply. Previously saved values are the final fallback for missing
 fields while the file's Comic Vine IDs still match, so an outage does not erase
 downloaded metadata on a forced rescan. Series names, issue numbers, volume grouping, completion
-counts, and archive contents are not changed. Covers are still handled by the
-existing local-cover workflow. A validated Comic Vine source URL is added to the
+counts, and archive contents are not changed. The cover picker offers the matched run or issue image and available
+associated issue images. A local volume can use its first identified issue.
+The Kavita+ series activity panel links to Comic Vine and opens the metadata drawer.
+Manual and automatic matches appear in Kavita's match history. A validated Comic Vine source URL is added to the
 issue's web links for attribution.
 
 ## Requests and failures
 
-- One singleton shares a bounded in-memory cache, request budget and request gate
-  across concurrent scans. Successful responses are cached for 24 hours, with up
-  to 1,024 entries. Restarting clears this cache and the request accounting.
+- Concurrent scans share a request gate. The provider keeps up to 1,024 successful
+  responses for 24 hours in `config/comicvine-cache.db`. The rolling request count,
+  cooldown, and last success or failure survive a restart. The Kavita+ provider
+  health dashboard shows observations from this server. Refreshing it uses no
+  Comic Vine requests.
 - Requests are spaced at least 1.1 seconds apart and capped at 180 total requests
   in a rolling hour, below Comic Vine's published 200/resource/hour allowance.
   Exhausting the budget skips further lookups instead of holding a scan for an

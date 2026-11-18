@@ -4,6 +4,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
+using Kavita.API.Services.Plus;
+using Kavita.API.Store;
+using Kavita.Models.DTOs.KavitaPlus.Audit;
+using Kavita.Models.Entities.Enums.Audit;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services.Metadata;
@@ -23,7 +27,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kavita.Services.Metadata;
 
-public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineService comicVine, IMapper mapper, IEventHub eventHub)
+public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineService comicVine, IMapper mapper, IEventHub eventHub,
+    IKavitaPlusAuditService audit, IUserContext userContext)
     : IComicVineMatchingService
 {
     private async Task<Series> ComicSeries(int seriesId, CancellationToken ct, bool includeMetadata = false)
@@ -55,13 +60,16 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
             ? null : MetadataProvider.ComicVine;
         series.DontMatch = false;
         series.IsBlacklisted = false;
-        await ApplyVolumeMetadata(series, volume, ct);
+        await ApplyVolumeMetadata(unitOfWork, series, volume, ct);
         unitOfWork.SeriesRepository.Update(series);
         await unitOfWork.CommitAsync(ct);
+        await audit.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesMatchFixed, AuditStatus.Success,
+            AuditSubjectType.Series, seriesId, payload: new AuditLogMatchClearedParamsDto
+            { SeriesName = series.Name, MatchedName = volume.Name }, userId: userContext.GetUserId(), ct: ct);
         await eventHub.SendMessageAsync(MessageFactory.SeriesUpdated, MessageFactory.SeriesUpdatedEvent(series.Id), ct: ct);
     }
 
-    private async Task ApplyVolumeMetadata(Series series, ExternalSeriesDetailDto volume, CancellationToken ct)
+    internal static async Task ApplyVolumeMetadata(IUnitOfWork unitOfWork, Series series, ExternalSeriesDetailDto volume, CancellationToken ct)
     {
         // An explicit match applies series-level data now, even when no issue can be scanned.
         // The scanner preserves these provider values; user locks still take precedence.
@@ -100,6 +108,9 @@ public sealed class ComicVineMatchingService(IUnitOfWork unitOfWork, IComicVineS
         series.DontMatch = dontMatch;
         unitOfWork.SeriesRepository.Update(series);
         await unitOfWork.CommitAsync(ct);
+        await audit.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesDontMatchSet, AuditStatus.Success,
+            AuditSubjectType.Series, seriesId, payload: new AuditLogMatchDontMatchParamsDto
+            { SeriesName = series.Name, DontMatch = dontMatch }, userId: userContext.GetUserId(), ct: ct);
     }
 
     private IQueryable<Series> Comics() => unitOfWork.DataContext.Series

@@ -114,7 +114,7 @@ public static class ApplicationServiceExtensions
             {
                 using var scope = sp.GetRequiredService<IServiceScopeFactory>().CreateScope();
                 return await scope.ServiceProvider.GetRequiredService<IComicVineSettingsService>().GetApiKeyAsync(ct);
-            }));
+            }, System.IO.Path.Combine("config", "comicvine-cache.db")));
 
         services.AddScoped<ILocalizationService, LocalizationService>();
         services.AddScoped<ISettingsService, SettingsService>();

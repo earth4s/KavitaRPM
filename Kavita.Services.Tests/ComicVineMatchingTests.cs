@@ -39,7 +39,8 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
             ComicVineId = 200, Summary = "Selected volume synopsis", StartDate = new DateTime(1986, 1, 1),
             Publisher = "Selected publisher", SiteUrl = "https://comicvine.gamespot.com/example/4050-200/"
         });
-        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
 
         await service.ApplyAsync(series.Id, 200);
         await db.Entry(series).ReloadAsync();
@@ -90,7 +91,8 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
             ComicVineId = 200, Summary = "Remote synopsis", StartDate = new DateTime(2001, 1, 1),
             Publisher = "Remote publisher", SiteUrl = "https://comicvine.gamespot.com/new/4050-200/"
         });
-        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
         await service.ApplyAsync(series.Id, 200);
         Assert.Equal("My synopsis", series.Metadata.Summary);
         Assert.Equal(1999, series.Metadata.ReleaseYear);
@@ -120,7 +122,8 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         db.Series.Add(series);
         await db.SaveChangesAsync();
         var api = Substitute.For<IComicVineService>();
-        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>());
+        var service = new ComicVineMatchingService(uow, api, mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
         await Assert.ThrowsAsync<KavitaException>(() => service.ApplyAsync(series.Id, 200));
         await api.DidNotReceive().GetVolumeAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
 
@@ -150,7 +153,8 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
         }
         db.Series.Add(new SeriesBuilder("Other library").WithLibraryId(1).Build());
         await db.SaveChangesAsync();
-        var service = new ComicVineMatchingService(uow, Substitute.For<IComicVineService>(), mapper, Substitute.For<IEventHub>());
+        var service = new ComicVineMatchingService(uow, Substitute.For<IComicVineService>(), mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
         var counts = await service.CountsAsync();
         Assert.Equal(3, counts.TotalCount);
         Assert.Equal(1, counts.NotMatchedCount);

@@ -101,7 +101,8 @@
     } @else {
       <div class="row g-0 chooser mt-2">
         @for (opt of images; track opt.url) {
-          <div class="clickable col-auto"
+          <div class="col-auto">
+          <div class="clickable"
                tabindex="0"
                role="button"
                [attr.aria-label]="opt.title || t('select-image-alt')"
@@ -114,6 +115,10 @@
             @if (opt.title) {
               <p class="cover-title">{{ opt.title }}</p>
             }
+          </div>
+          @if (opt.sourceUrl) {
+            <a [href]="opt.sourceUrl" target="_blank" rel="noopener noreferrer">Comic Vine</a>
+          }
           </div>
         }
       </div>

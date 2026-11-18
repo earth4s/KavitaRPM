@@ -5,6 +5,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Text.RegularExpressions;
+using Kavita.Models.DTOs.KavitaPlus.Audit;
 using System.Threading.Tasks;
 using Hangfire;
 using Kavita.API.Database;
@@ -85,7 +88,7 @@ public class ProcessSeries(
     IFileService fileService,
     IReadingListService readingListService,
     IExternalMetadataService externalMetadataService,
-    IComicVineService comicVineService)
+    IComicVineService comicVineService, IKavitaPlusAuditService audit)
     : IProcessSeries
 {
 
@@ -137,6 +140,15 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
+            ExternalSeriesDetailDto? automaticMatch = null;
+            if ((series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
+                && library.Type is (LibraryType.Comic or LibraryType.ComicVine) && library.AllowMetadataMatching
+                && library.EnableMetadata && !series.DontMatch && string.IsNullOrEmpty(series.ComicVineId))
+            {
+                automaticMatch = await FindComicVineMatch(series.Name, parsedInfos);
+                if (automaticMatch?.ComicVineId is > 0)
+                    series.ComicVineId = automaticMatch.ComicVineId.Value.ToString(CultureInfo.InvariantCulture);
+            }
             var hasPinnedComicVineMatch = (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
                 && !string.IsNullOrEmpty(series.ComicVineId);
             if (hasPinnedComicVineMatch)
@@ -207,6 +219,8 @@ public class ProcessSeries(
             }
 
             await UpdateSeriesMetadata(databasePeople, settings, series, library);
+            if (automaticMatch != null)
+                await ComicVineMatchingService.ApplyVolumeMetadata(unitOfWork, series, automaticMatch, CancellationToken.None);
 
             // After UpdateSeriesMetadata so the language has updated
             var removePrefix = library.RemovePrefixForSortName;
@@ -267,6 +281,10 @@ public class ProcessSeries(
                 }
 
                 stepWatch.Restart();
+                if (automaticMatch != null)
+                    await audit.LogMatchAsync(KavitaPlusEventType.SeriesMatched, series.Id,
+                        new AuditLogMatchedParamsDto { SeriesName = series.Name, MatchedName = automaticMatch.Name,
+                            After = new() { ComicVineId = series.ComicVineId } });
                 // Process reading list after commit as we need to commit per list
                 if (library.ManageReadingLists)
                 {
@@ -313,6 +331,18 @@ public class ProcessSeries(
 
         return new ProcessSeriesResult(series.Id, seriesAdded,
             chapterChanges.Added, chapterChanges.Updated, chapterChanges.Removed);
+    }
+
+    private async Task<ExternalSeriesDetailDto?> FindComicVineMatch(string title, IList<ParserInfo> infos)
+    {
+        var issues = infos.Where(i => !i.IsSpecialInfo() && !i.IsPlaceholder).ToList();
+        if (issues.Count == 0 || issues.Any(i => !string.IsNullOrEmpty(i.ComicVineId) || !string.IsNullOrEmpty(i.ComicVineSeriesId))) return null;
+        var publishers = issues.Select(i => i.ComicInfo?.Publisher?.Trim()).Where(p => !string.IsNullOrEmpty(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (publishers.Count > 1) return null;
+        var run = Regex.Match(title, @"\s+\((?<year>[0-9]{4})\)$", RegexOptions.CultureInvariant);
+        int? year = run.Success ? int.Parse(run.Groups["year"].Value, CultureInfo.InvariantCulture) : null;
+        return await comicVineService.FindVolumeAsync(run.Success ? title[..run.Index].Trim() : title, year, publishers.FirstOrDefault());
     }
 
     private async Task ReportDuplicateSeriesLookup(Library library, ParserInfo firstInfo, Exception ex)

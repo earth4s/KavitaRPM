@@ -137,7 +137,7 @@ export class ImageService {
             ? label
             : label + langSuffix;
 
-          return { url: d.url, title } as CoverImageOption;
+          return { url: d.url, title, sourceUrl: d.sourceUrl } as CoverImageOption;
       })
       )
     );

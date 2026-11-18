@@ -58,6 +58,8 @@ export interface ExternalSeriesDetail {
   isStandAlone: boolean;
   comicVineId?: number | null;
   cbrId?: number | null;
+  publisher?: string;
+  characters?: Array<{name: string; url: string}>;
   synonyms: Array<string>;
   plusMediaFormat: PlusMediaFormat;
   siteUrl?: string;

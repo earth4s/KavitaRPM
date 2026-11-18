@@ -10,7 +10,7 @@ import {FieldMappingsImportResult, ImportSettings} from "../_models/import-field
 import {AuthorityValidationResult, OidcPublicConfig} from "./_models/oidc-config";
 import {RunMetadataMappingsRequest} from "../_models/metadata/run-metadata-mappings-request";
 import {KepubifyStatus} from "./_models/kepubify-status";
-import {ComicVineConnectionResult, ComicVineSettings} from './_models/comicvine-settings';
+import {ComicVineConnectionResult, ComicVineHealth, ComicVineSettings} from './_models/comicvine-settings';
 
 /**
  * Used only for the Test Email Service call
@@ -32,6 +32,10 @@ export class SettingsService {
 
   getServerSettings() {
     return this.http.get<ServerSettings>(this.baseUrl + 'settings');
+  }
+
+  getComicVineHealth() {
+    return this.http.get<ComicVineHealth>(this.baseUrl + 'comicvine/health');
   }
 
   getComicVineSettings() {

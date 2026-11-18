@@ -114,7 +114,7 @@ public class ComicVineServiceTests
     }
 
     [Theory]
-    [InlineData("https://comicvine.gamespot.com/example/4000-100/")]
+    [InlineData("https://comicvine.gamespot.com/example/4010-100/")]
     [InlineData("https://unrelated.example/4050-200/")]
     public async Task SearchInvalidUrl_DoesNotCallApi(string query)
     {
@@ -122,6 +122,75 @@ public class ComicVineServiceTests
         using var service = Service(handler);
         await Assert.ThrowsAsync<Kavita.Common.KavitaException>(() => service.SearchVolumesAsync(query));
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task IssueLinkResolvesParentVolume()
+    {
+        var handler = new Handler(r => r.RequestUri!.AbsolutePath.Contains("/issue/")
+            ? Json(IssueJson) : Json("{\"status_code\":1,\"results\":" + SearchVolumeJson + "}"));
+        using var service = Service(handler);
+        var result = await service.SearchVolumesAsync("https://comicvine.gamespot.com/example/4000-100/");
+        Assert.Equal(200, Assert.Single(result.Matches).Series.ComicVineId);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("Other title", 2020, 1, 200)]
+    [InlineData("Example & Friends", 2019, 1, null)]
+    [InlineData("Other title", 2020, 21, null)]
+    public async Task AutomaticMatchRequiresCorroborationAndCompleteResults(string title, int year, int total, int? expected)
+    {
+        var handler = new Handler(_ => Json($"{{\"status_code\":1,\"number_of_total_results\":{total},\"results\":[{SearchVolumeJson}]}}"));
+        using var service = Service(handler);
+        Assert.Equal(expected, (await service.FindVolumeAsync(title, year, "Example Publisher"))?.ComicVineId);
+    }
+
+    [Fact]
+    public async Task CoversRejectForeignUrlsAndDeduplicateImages()
+    {
+        var handler = new Handler(_ => Json("""
+            {"status_code":1,"results":{"id":100,"image":{"original_url":"https://comicvine.gamespot.com/a/uploads/main.jpg"},
+            "associated_images":[{"original_url":"https://comicvine.gamespot.com/a/uploads/main.jpg"},
+            {"original_url":"https://other.example/img.jpg"},{"original_url":"https://comicvine.gamespot.com/a/uploads/second.jpg"}]}}
+            """));
+        using var service = Service(handler);
+        Assert.Equal(new[] {"https://comicvine.gamespot.com/a/uploads/main.jpg",
+            "https://comicvine.gamespot.com/a/uploads/second.jpg"}, await service.GetCoversAsync(100, true));
+    }
+
+    [Fact]
+    public async Task CacheBudgetAndCooldownSurviveServiceRestart()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        var path = Path.Combine(directory.FullName, "provider.db");
+        var clock = new Clock();
+        ComicVineService Open(Handler handler) => new(new HttpClient(handler), "test-key",
+            NullLogger<ComicVineService>.Instance, clock, storePath: path);
+        try
+        {
+            var handler = new Handler(_ => Json("{\"status_code\":1,\"results\":" + SearchVolumeJson + "}"));
+            using (var first = Open(handler))
+            {
+                Assert.NotNull(await first.GetVolumeAsync(200));
+                handler.FailureStatus = HttpStatusCode.TooManyRequests;
+                Assert.False(await first.TestConnectionAsync());
+            }
+            var freshHandler = new Handler();
+            using var second = Open(freshHandler);
+            var health = await second.GetHealthAsync();
+            Assert.Equal(2, health.RequestsLastHour);
+            Assert.NotNull(health.LastSuccess);
+            Assert.Equal("HTTP 429", health.Failure);
+            Assert.NotNull(health.RetryAt);
+            Assert.NotNull(await second.GetVolumeAsync(200));
+            Assert.False(await second.TestConnectionAsync());
+            Assert.Empty(freshHandler.Requests);
+            clock.Advance(TimeSpan.FromHours(2));
+            Assert.True(await second.TestConnectionAsync());
+            Assert.Equal(1, (await second.GetHealthAsync()).RequestsLastHour);
+        }
+        finally { directory.Delete(true); }
     }
 
     [Fact]
@@ -237,6 +306,19 @@ public class ComicVineServiceTests
         Assert.NotNull(info.ComicInfo);
         Assert.Equal("100", info.ComicVineId);
         Assert.Contains("volume:200,issue_number:1.5", Uri.UnescapeDataString(handler.Requests[0].Query));
+    }
+
+    [Fact]
+    public async Task ExplicitIssueLabelIsComparedWithinTheMatchedRun()
+    {
+        var handler = new Handler(request => Json(request.RequestUri!.AbsolutePath.EndsWith("/issues/")
+            ? """{"status_code":1,"number_of_total_results":1,"results":[{"id":100,"issue_number":"1AU","volume":{"id":200}}]}"""
+            : request.RequestUri.AbsolutePath.Contains("/volume/") ? VolumeJson : IssueJson));
+        using var service = Service(handler);
+        var info = Info(null, "200");
+        info.ComicInfo = new ComicInfo { Number = "1AU" };
+        await service.EnrichAsync([info], LibraryType.Comic, true);
+        Assert.Equal("100", info.ComicVineId);
     }
 
     [Theory]
