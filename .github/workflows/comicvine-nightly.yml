@@ -74,6 +74,9 @@ jobs:
       - name: Verify provider licensing, Specials grouping, Comic Vine matching and export
         run: |
           dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
+      - name: Verify licensed endpoints and access restrictions
+        if: ${{ !cancelled() }}
+        run: |
           dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
 
   package:

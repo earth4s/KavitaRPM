@@ -582,11 +582,6 @@ public class ExternalMetadataService : IExternalMetadataService
     /// <exception cref="KavitaException"></exception>
     public async Task<ExternalSeriesDetailDto?> GetExternalSeriesDetail(int seriesId, MetadataRequest request, int? recommendedSeriesId, CancellationToken ct = default)
     {
-        if (!request.HasAnyIdsSet() && !recommendedSeriesId.HasValue)
-        {
-            throw new KavitaException("Unable to find valid information from url for External Load");
-        }
-
         // This is for the Series drawer. We can get this extra information during the initial SeriesDetail call so it's all coming from the DB
         var metadataProvider = await _unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct);
         if (metadataProvider is null) return null;
@@ -597,6 +592,9 @@ public class ExternalMetadataService : IExternalMetadataService
             return local == null || local.DontMatch || local.GetEffectiveMetadataProvider() != MetadataProvider.ComicVine
                 ? null : await ReadComicVineDetail(local, ct);
         }
+
+        if (!request.HasAnyIdsSet() && !recommendedSeriesId.HasValue)
+            throw new KavitaException("Unable to find valid information from url for External Load");
 
         var payload = new SeriesDetailRequestV3Dto
         {

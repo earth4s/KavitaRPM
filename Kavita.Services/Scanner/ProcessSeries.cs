@@ -284,7 +284,7 @@ public class ProcessSeries(
                 if (automaticMatch != null)
                     await audit.LogMatchAsync(KavitaPlusEventType.SeriesMatched, series.Id,
                         new AuditLogMatchedParamsDto { SeriesName = series.Name, MatchedName = automaticMatch.Name,
-                            After = new() { ComicVineId = series.ComicVineId } });
+                            After = new() { ComicVineId = automaticMatch.ComicVineId } });
                 // Process reading list after commit as we need to commit per list
                 if (library.ManageReadingLists)
                 {

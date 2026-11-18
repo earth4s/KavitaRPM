@@ -19,6 +19,7 @@ using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
 using Kavita.Models.DTOs.Metadata.Matching;
 using Kavita.Services.Plus;
+using Kavita.Services.Builders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -38,7 +39,7 @@ public class ExternalMetadataServiceMetadataProviderOverrideTests : AbstractDbTe
         GlobalConfiguration.Configuration.UseInMemoryStorage();
     }
 
-    private static (ExternalMetadataService Service, IKavitaPlusApiService KavitaPlusApiService) CreateService(IUnitOfWork unitOfWork, IMapper mapper)
+    private static (ExternalMetadataService Service, IKavitaPlusApiService KavitaPlusApiService) CreateService(IUnitOfWork unitOfWork, IMapper mapper, IComicVineService? direct = null)
     {
         var licenseService = Substitute.For<ILicenseService>();
         licenseService.HasActiveLicense(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(true);
@@ -50,9 +51,33 @@ public class ExternalMetadataServiceMetadataProviderOverrideTests : AbstractDbTe
             mapper, licenseService, Substitute.For<IScrobblingService>(),
             Substitute.For<IEventHub>(), Substitute.For<ICoverDbService>(),
             kavitaPlusApiService, Substitute.For<IFileCacheService>(),
-            Substitute.For<IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
+            Substitute.For<IKavitaPlusAuditService>(), direct ?? Substitute.For<IComicVineService>());
 
         return (service, kavitaPlusApiService);
+    }
+
+    [Fact]
+    public async Task ComicVineCoversUseTheSelectedIssueAndStayWithinTheSeries()
+    {
+        var (uow, db, mapper) = await CreateDatabase();
+        var direct = Substitute.For<IComicVineService>();
+        var (service, _) = CreateService(uow, mapper, direct);
+        var annual = new ChapterBuilder("1").Build();
+        annual.ComicVineId = "901";
+        var series = new SeriesBuilder("Example").WithLibraryId(1)
+            .WithVolume(new VolumeBuilder("1").WithChapter(annual).Build()).Build();
+        series.MetadataProviderOverride = MetadataProvider.ComicVine;
+        series.ComicVineId = "200";
+        db.Series.Add(series);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        direct.GetCoversAsync(901, true, Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "https://comicvine.gamespot.com/a/uploads/annual.jpg" });
+        var cover = Assert.Single(await service.GetExternalCovers(series.Id, chapterId: annual.Id));
+        Assert.EndsWith("/4000-901/", cover.SourceUrl);
+        Assert.Empty(await service.GetExternalCovers(series.Id, chapterId: int.MaxValue));
+        await direct.Received(1).GetCoversAsync(Arg.Any<int>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
