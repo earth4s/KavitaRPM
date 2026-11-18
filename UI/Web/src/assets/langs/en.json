@@ -2801,6 +2801,16 @@
     "meta-api-connections": {
         "description": "Manage external metadata providers using your own API keys. An active Kavita+ license is required. Each provider has its own credentials and connection test."
     },
+    "gcd-issue": {
+        "details": "Show GCD issue details",
+        "error": "GCD issue details are unavailable.",
+        "number": "Issue",
+        "base": "View base issue",
+        "barcode": "Barcode",
+        "publication": "Publication date",
+        "sale": "On-sale date",
+        "key-date": "GCD key date"
+    },
     "manage-gcd": {
         "description": "Use your GCD account to match series and look up issues in comic libraries.",
         "credit": "Catalog metadata from",

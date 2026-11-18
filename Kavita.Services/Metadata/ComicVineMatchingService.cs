@@ -44,6 +44,7 @@ public abstract class ComicMatchingService(IUnitOfWork unitOfWork, IComicCatalog
     {
         var includes = SeriesIncludes.Library;
         if (includeMetadata) includes |= SeriesIncludes.Metadata;
+        if (includeMetadata && IsGcd) includes |= SeriesIncludes.Chapters;
         var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, includes, ct);
         if (series == null) throw new KavitaException("Series not found.");
         if (series.Library.Type is not (LibraryType.Comic or LibraryType.ComicVine))
@@ -65,7 +66,13 @@ public abstract class ComicMatchingService(IUnitOfWork unitOfWork, IComicCatalog
         var series = await ComicSeries(seriesId, ct, includeMetadata: true);
         var volume = await catalog.GetVolumeAsync(volumeId, ct);
         if (volume == null || (IsGcd ? volume.GcdId : volume.ComicVineId) != volumeId) throw new KavitaException("Series not found in this catalog.");
-        if (IsGcd) series.GcdId = volumeId;
+        if (IsGcd)
+        {
+            if (series.GcdId != volumeId)
+                foreach (var chapter in series.Volumes.SelectMany(v => v.Chapters).Where(c => !c.IsSpecial))
+                    chapter.GcdId = null;
+            series.GcdId = volumeId;
+        }
         else series.ComicVineId = volumeId.ToString(CultureInfo.InvariantCulture);
         series.MetadataProviderOverride = series.Library.MetadataProvider == provider
             ? null : provider;

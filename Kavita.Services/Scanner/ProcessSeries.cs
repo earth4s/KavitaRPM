@@ -154,7 +154,26 @@ public class ProcessSeries(
             if (useGcd && gcd != null && !series.DontMatch && !series.GcdId.HasValue && library.EnableMetadata
                 && library.AllowMetadataMatching && library.Type is (LibraryType.Comic or LibraryType.ComicVine))
             {
-                automaticMatch = await FindComicMatch(series.Name, parsedInfos, gcd);
+                var links = parsedInfos.Where(i => !i.IsSpecialInfo() && !i.IsPlaceholder)
+                    .SelectMany(i => (i.ComicInfo?.Web ?? "").Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
+                    .Select(GcdReference.TryParse).OfType<GcdReference>().Distinct().ToList();
+                if (links.Count == 0)
+                    automaticMatch = await FindComicMatch(series.Name, parsedInfos, gcd);
+                else
+                {
+                    try
+                    {
+                        var parents = new HashSet<int?>();
+                        foreach (var link in links)
+                        {
+                            parents.Add(link.Issue ? (await gcd.GetIssueAsync(link.Id))?.SeriesId : link.Id);
+                            if (parents.Count > 1 || parents.Contains(null)) break;
+                        }
+                        if (parents.Count == 1 && parents.Single() is {} parent)
+                            automaticMatch = await gcd.GetVolumeAsync(parent);
+                    }
+                    catch (KavitaException) { /* Defer this match until the next scan. */ }
+                }
                 series.GcdId = automaticMatch?.GcdId;
             }
             var hasPinnedComicVineMatch = (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
@@ -361,7 +380,15 @@ public class ProcessSeries(
         if (publishers.Count > 1) return null;
         var run = Regex.Match(title, @"\s+\((?<year>[0-9]{4})\)$", RegexOptions.CultureInvariant);
         int? year = run.Success ? int.Parse(run.Groups["year"].Value, CultureInfo.InvariantCulture) : null;
-        return await catalog.FindVolumeAsync(run.Success ? title[..run.Index].Trim() : title, year, publishers.FirstOrDefault());
+        var name = run.Success ? title[..run.Index].Trim() : title;
+        if (catalog is IGcdService gcd)
+        {
+            var languages = issues.Select(i => i.ComicInfo?.LanguageISO).Where(l => !string.IsNullOrWhiteSpace(l))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (languages.Count > 1) return null;
+            return await gcd.FindSeriesAsync(name, year, publishers.FirstOrDefault(), languages.FirstOrDefault());
+        }
+        return await catalog.FindVolumeAsync(name, year, publishers.FirstOrDefault());
     }
 
     private async Task ReportDuplicateSeriesLookup(Library library, ParserInfo firstInfo, Exception ex)

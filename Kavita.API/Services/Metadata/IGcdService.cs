@@ -8,6 +8,10 @@ namespace Kavita.API.Services.Metadata;
 
 public interface IGcdService : IComicCatalog
 {
+    Task<Kavita.Models.DTOs.KavitaPlus.Metadata.ExternalSeriesDetailDto?> FindSeriesAsync(string title, int? year,
+        string? publisher, string? language, CancellationToken ct = default);
+    Task<GcdIssueDetailDto?> GetIssueAsync(int id, CancellationToken ct = default);
+    Task<GcdIssueDetailDto?> GetCoverIssueAsync(int id, bool issue, CancellationToken ct = default);
     Task<bool> EnrichAsync(IList<ParserInfo> infos, int? seriesId, CancellationToken ct = default);
     Task<GcdHealthDto> GetHealthAsync(CancellationToken ct = default);
     Task<bool> TestConnectionAsync(CancellationToken ct = default);

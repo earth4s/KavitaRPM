@@ -104,6 +104,69 @@ public class GcdServiceTests(ITestOutputHelper output) : AbstractDbTest(output)
     }
 
     [Fact]
+    public async Task SavedIssueInSpecialsKeepsItsOwnIdentityAndParentRun()
+    {
+        var handler = new Handler(r => ComicVineServiceTests.Json(r.RequestUri!.AbsolutePath == "/api/series/6139/"
+            ? Series : Issue.Replace("api/series/6139/", "api/series/99/")));
+        using var service = new GcdService(new HttpClient(handler), _ => Task.FromResult<string?>("test"), ":memory:", TimeProvider.System);
+        var special = new ParserInfo { Series = "Example", IsSpecial = true, GcdId = 256114, ComicInfo = new ComicInfo() };
+        Assert.True(await service.EnrichAsync([special], 6139));
+        Assert.Equal(256114, special.GcdId);
+        Assert.Equal("The story", special.ComicInfo.Title);
+        Assert.Equal("Example", special.Series);
+        Assert.Equal(2, handler.Count);
+    }
+
+    [Fact]
+    public async Task IssueDetailsKeepPartialDatesAndSequenceTypes()
+    {
+        var handler = new Handler(_ => ComicVineServiceTests.Json(Issue));
+        using var service = new GcdService(new HttpClient(handler), _ => Task.FromResult<string?>("test"), ":memory:", TimeProvider.System);
+        var issue = await service.GetIssueAsync(256114);
+        Assert.Equal("2000-11-00", issue!.KeyDate);
+        Assert.Equal("2000-09-20", issue.OnSaleDate);
+        Assert.Equal(6139, issue.SeriesId);
+        Assert.Equal(new[] { "cover", "comic story", "illustration" }, issue.Stories.Select(s => s.Type));
+    }
+
+    [Fact]
+    public async Task SameTitleOnSecondPagePreventsAutomaticMatch()
+    {
+        var handler = new Handler(r => ComicVineServiceTests.Json(JsonSerializer.Serialize(new
+        {
+            count = 2,
+            next = r.RequestUri!.Query.Length == 0 ? "https://www.comics.org/api/series/name/Example/year/1999/?page=2" : null,
+            results = new[] { new { api_url = r.RequestUri.Query.Length == 0 ? "https://www.comics.org/api/series/6139/" : "https://www.comics.org/api/series/99/",
+                name = "Example", year_began = 1999 } }
+        })));
+        using var service = new GcdService(new HttpClient(handler), _ => Task.FromResult<string?>("test"), ":memory:", TimeProvider.System);
+        Assert.Null(await service.FindVolumeAsync("Example", 1999, null));
+        Assert.Equal(2, handler.Count);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TestConnectionMakesUncachedAuthenticatedRequest(bool accepted)
+    {
+        var handler = new Handler(r =>
+        {
+            Assert.Equal("test", r.Headers.Authorization!.Parameter);
+            return accepted ? ComicVineServiceTests.Json(Series) : new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        });
+        using var service = new GcdService(new HttpClient(handler), _ => Task.FromResult<string?>("test"), ":memory:", TimeProvider.System);
+        Assert.Equal(accepted, await service.TestConnectionAsync());
+        var health = await service.GetHealthAsync();
+        Assert.Equal(1, health.RequestsLastDay);
+        Assert.Equal(accepted, health.LastSuccess.HasValue);
+        if (accepted)
+        {
+            Assert.True(await service.TestConnectionAsync());
+            Assert.Equal(2, handler.Count);
+        }
+    }
+
+    [Fact]
     public async Task CooldownSurvivesRestartAndHealthDoesNotSpendRequests()
     {
         var path = Path.GetTempFileName();

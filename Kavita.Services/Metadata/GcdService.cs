@@ -212,7 +212,10 @@ public sealed class GcdService(HttpClient client, Func<CancellationToken, Task<s
         return matches;
     }
 
-    public async Task<ExternalSeriesDetailDto?> FindVolumeAsync(string title, int? year, string? publisher, CancellationToken ct = default)
+    public Task<ExternalSeriesDetailDto?> FindVolumeAsync(string title, int? year, string? publisher, CancellationToken ct = default) =>
+        FindSeriesAsync(title, year, publisher, null, ct);
+
+    public async Task<ExternalSeriesDetailDto?> FindSeriesAsync(string title, int? year, string? publisher, string? language, CancellationToken ct = default)
     {
         if (!year.HasValue && string.IsNullOrWhiteSpace(publisher)) return null;
         try
@@ -221,30 +224,48 @@ public sealed class GcdService(HttpClient client, Func<CancellationToken, Task<s
             var (rows, complete) = await Search(path, ct);
             if (!complete) return null;
             var candidates = rows.Select(Detail).OfType<ExternalSeriesDetailDto>().Where(s =>
-                string.Equals(s.Name, title, StringComparison.OrdinalIgnoreCase) && (!year.HasValue || s.StartDate?.Year == year)).ToList();
-            if (candidates.Count != 1) return null;
-            var detail = await GetVolumeAsync(candidates[0].GcdId!.Value, ct);
-            return string.IsNullOrWhiteSpace(publisher) || string.Equals(publisher, detail?.Publisher, StringComparison.OrdinalIgnoreCase) ? detail : null;
+                string.Equals(s.Name, title, StringComparison.OrdinalIgnoreCase) && (!year.HasValue || s.StartDate?.Year == year)
+                && (string.IsNullOrEmpty(language) || string.Equals(language, s.CatalogLanguage, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (candidates.Count is 0 or > 8 || (candidates.Count > 1 && string.IsNullOrWhiteSpace(publisher))) return null;
+            ExternalSeriesDetailDto? match = null;
+            foreach (var candidate in candidates)
+            {
+                var detail = await GetVolumeAsync(candidate.GcdId!.Value, ct);
+                if (detail == null) return null;
+                if (!string.IsNullOrWhiteSpace(publisher) && !string.Equals(publisher, detail.Publisher, StringComparison.OrdinalIgnoreCase)) continue;
+                if (match != null) return null;
+                match = detail;
+            }
+            return match;
         }
         catch (KavitaException) { return null; }
     }
 
-    public async Task<IList<string>> GetCoversAsync(int id, bool issue, CancellationToken ct = default)
+    public async Task<GcdIssueDetailDto?> GetIssueAsync(int id, CancellationToken ct = default)
     {
-        if (!issue)
-        {
-            if (await Read($"series/{id}/", ct) is not {} row || Id(row, "api_url", false) != id) return [];
-            var first = Items(row, "active_issues").Where(x => x.ValueKind == JsonValueKind.String)
-                .Select(x => GcdReference.TryParse(x.GetString())).FirstOrDefault(x => x is { Issue: true });
-            if (first == null) return [];
-            id = first.Id;
-        }
-        if (await Read($"issue/{id}/", ct) is not {} record || Id(record, "api_url", true) != id
-            || !Uri.TryCreate(Field(record, "cover"), UriKind.Absolute, out var cover)
-            || cover.Scheme != "https" || !cover.IsDefaultPort || cover.UserInfo.Length > 0
-            || !cover.Host.EndsWith(".comics.org", StringComparison.OrdinalIgnoreCase)) return [];
-        return [cover.AbsoluteUri];
+        if (id <= 0 || await Read($"issue/{id}/", ct) is not {} row || Id(row, "api_url", true) != id
+            || Id(row, "series", false) is not {} parent) return null;
+        var hasCover = Uri.TryCreate(Field(row, "cover"), UriKind.Absolute, out var cover) && cover.Scheme == "https"
+            && cover.IsDefaultPort && cover.UserInfo.Length == 0 && cover.Host.EndsWith(".comics.org", StringComparison.OrdinalIgnoreCase);
+        var stories = Items(row, "story_set").Select(s => new GcdStoryDto(Field(s, "type"), Field(s, "title"), Field(s, "synopsis"))).ToArray();
+        return new(id, parent, Field(row, "number"), Field(row, "variant_name"), Id(row, "variant_of", true),
+            Field(row, "isbn"), Field(row, "barcode"), Field(row, "publication_date"), Field(row, "key_date"),
+            Field(row, "on_sale_date"), hasCover ? cover!.AbsoluteUri : null, stories);
     }
+
+    public async Task<GcdIssueDetailDto?> GetCoverIssueAsync(int id, bool issue, CancellationToken ct = default)
+    {
+        if (issue) return await GetIssueAsync(id, ct);
+        if (await Read($"series/{id}/", ct) is not {} row || Id(row, "api_url", false) != id) return null;
+        var first = Items(row, "active_issues").Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => GcdReference.TryParse(x.GetString())).FirstOrDefault(x => x is { Issue: true });
+        if (first == null) return null;
+        var source = await GetIssueAsync(first.Id, ct);
+        return source?.SeriesId == id ? source : null;
+    }
+
+    public async Task<IList<string>> GetCoversAsync(int id, bool issue, CancellationToken ct = default) =>
+        (await GetCoverIssueAsync(id, issue, ct))?.CoverUrl is {} url ? [url] : [];
 
     public async Task<bool> EnrichAsync(IList<ParserInfo> infos, int? seriesId, CancellationToken ct = default)
     {
@@ -268,6 +289,7 @@ public sealed class GcdService(HttpClient client, Func<CancellationToken, Task<s
                         label = info.Chapters;
                         if (!decimal.TryParse(label, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var n) || n <= 0) continue;
                     }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(label, @"^\d+\s*[-–]\s*\d+$")) continue;
                     expectedNumber = label;
                     var (rows, complete) = await Search($"series/name/{Segment(series.Name)}/issue/{Segment(label)}/", ct);
                     if (!complete) continue;

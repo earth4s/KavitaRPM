@@ -534,6 +534,29 @@
       </div>
 
 
+      @if (chapter().gcdId && accountService.hasAdminRole() && license.hasActiveLicense()) {
+        <section class="mb-3" *transloco="let g; prefix: 'gcd-issue'">
+          <h6><a [href]="'https://www.comics.org/issue/' + chapter().gcdId + '/'" target="_blank" rel="noopener noreferrer">GCD #{{chapter().gcdId}}</a></h6>
+          @if (gcdIssue(); as issue) {
+            <p>{{g('number')}} {{issue.number}} {{issue.variant}}</p>
+            @if (issue.variantOf) { <a [href]="'https://www.comics.org/issue/' + issue.variantOf + '/'">{{g('base')}}</a> }
+            <dl>
+              @if (issue.barcode) { <dt>{{g('barcode')}}</dt><dd>{{issue.barcode}}</dd> }
+              @if (issue.isbn) { <dt>ISBN</dt><dd>{{issue.isbn}}</dd> }
+              @if (issue.publicationDate) { <dt>{{g('publication')}}</dt><dd>{{issue.publicationDate}}</dd> }
+              @if (issue.onSaleDate) { <dt>{{g('sale')}}</dt><dd>{{issue.onSaleDate}}</dd> }
+              @if (issue.keyDate) { <dt>{{g('key-date')}}</dt><dd>{{issue.keyDate}}</dd> }
+            </dl>
+            @for (story of issue.stories; track $index) {
+              <div><strong>{{story.title || story.type}}</strong><p>{{story.synopsis}}</p></div>
+            }
+            <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
+          } @else {
+            <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="gcdStatus() === 'loading'" (click)="loadGcdIssue()">{{g('details')}}</button>
+            @if (gcdStatus() === 'error') { <span role="status">{{g('error')}}</span> }
+          }
+        </section>
+      }
       @if (weblinks().length > 0) {
         <div class="setting-section-break"></div>
 

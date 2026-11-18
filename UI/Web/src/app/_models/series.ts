@@ -7,6 +7,7 @@ import {IHasMetadataIds} from "./common/i-has-metadata-ids";
 import {MetadataProvider} from "./kavitaplus/metadata-provider.enum";
 
 export interface Series extends IHasCover, IHasReadingTime, IHasProgress, IHasMetadataIds {
+  gcdId?: number | null;
   id: number;
   name: string;
   /**

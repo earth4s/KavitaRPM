@@ -65,6 +65,36 @@ public class ComicVineMatchingTests(ITestOutputHelper output) : AbstractDbTest(o
     }
 
     [Fact]
+    public async Task GcdMatchPersistsSeparateIdentityAndHonorsLockedYear()
+    {
+        var (uow, db, mapper) = await CreateDatabase();
+        var library = new LibraryBuilder("Comics", LibraryType.Comic).Build();
+        db.Library.Add(library);
+        await db.SaveChangesAsync();
+        var series = new SeriesBuilder("Example").WithLibraryId(library.Id)
+            .WithMetadata(new SeriesMetadataBuilder().Build()).Build();
+        series.ComicVineId = "6139";
+        series.Metadata.ReleaseYear = 1980;
+        series.Metadata.ReleaseYearLocked = true;
+        db.Series.Add(series);
+        await db.SaveChangesAsync();
+        var catalog = Substitute.For<IGcdService>();
+        catalog.GetVolumeAsync(6139, Arg.Any<CancellationToken>()).Returns(new ExternalSeriesDetailDto
+        { GcdId = 6139, Name = "Example", CatalogLanguage = "en", StartDate = new DateTime(1999, 1, 1), SiteUrl = "https://www.comics.org/series/6139/" });
+        var service = new GcdMatchingService(uow, catalog, mapper, Substitute.For<IEventHub>(),
+            Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>(), Substitute.For<Kavita.API.Store.IUserContext>());
+        await service.ApplyAsync(series.Id, 6139);
+        db.ChangeTracker.Clear();
+        var saved = await db.Series.Include(s => s.Metadata).SingleAsync(s => s.Id == series.Id);
+        Assert.Equal(6139, saved.GcdId);
+        Assert.Equal("6139", saved.ComicVineId);
+        Assert.Equal(1980, saved.Metadata.ReleaseYear);
+        Assert.Equal("en", saved.Metadata.Language);
+        Assert.Contains("comics.org/series/6139", saved.Metadata.WebLinks);
+        Assert.Equal(MetadataProvider.Gcd, saved.MetadataProviderOverride);
+    }
+
+    [Fact]
     public async Task Apply_RespectsUserLocks_AndAllowsRematchingUnlockedFields()
     {
         var (uow, db, mapper) = await CreateDatabase();

@@ -74,7 +74,7 @@ jobs:
       - name: Verify licensed endpoints and access restrictions
         run: |
           dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
-      - name: Verify provider licensing, Specials grouping, Comic Vine matching and export
+      - name: Verify Comic Vine and GCD licensing, matching, Specials grouping and export
         if: ${{ !cancelled() }}
         run: |
           dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
@@ -167,6 +167,8 @@ jobs:
           This unpublished release and its downloads are restricted to repository writers. Do not publish it. Source code and workflow logs remain public because the repository is public.
 
           Includes direct Comic Vine metadata, Settings > Kavita+ > Metadata Providers > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. An active Kavita+ license is required to view Metadata Providers, manage API keys, match series, and run direct Comic Vine lookups. The Metadata Providers panel contains an explicit Save button for Comic Vine keys. Matching persists the selected volume metadata immediately, and settings panels begin loading on selection. Specials subfolders stay under their parent comic in both comic library types, including annuals with their own metadata. Run a forced full library scan to repair previous splits.
+
+          Grand Comics Database (GCD) is available under Settings > Kavita+ > Metadata Providers. Save a registered GCD account, test the connection, and select GCD for a comic library or a single series. GCD supports series and issue references, story credits, issue details, and cover thumbnails. The scanner and provider cache require an active Kavita+ license. GCD request counts and cooldowns appear in provider health.
 
           Comic Vine now supplies cover choices and linked series details. Shared matching accepts issue URLs, and the scanner can match a unique run by title plus year or publisher. The Kavita+ health dashboard shows local requests and cooldowns, which survive restarts.
 

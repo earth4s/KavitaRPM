@@ -1,3 +1,6 @@
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using Kavita.API.Database;
 using System;
 using System.Net.Http;
 using System.Text.Json;
@@ -39,6 +42,21 @@ public sealed class GcdController(IGcdMatchingService matching) : BaseApiControl
     {
         await settings.RemoveAsync(HttpContext.RequestAborted);
         return NoContent();
+    }
+
+    [SeriesAccess]
+    [HttpGet("issue-detail")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<GcdIssueDetailDto>> IssueDetail(int seriesId, int chapterId,
+        [FromServices] IUnitOfWork unitOfWork, [FromServices] IGcdService service)
+    {
+        var ct = HttpContext.RequestAborted;
+        var id = await unitOfWork.DataContext.Chapter.Where(c => c.Id == chapterId && c.Volume.SeriesId == seriesId)
+            .Select(c => c.GcdId).SingleOrDefaultAsync(ct);
+        if (!id.HasValue) return NotFound();
+        var detail = await service.GetIssueAsync(id.Value, ct);
+        if (detail == null) return NotFound();
+        return Ok(detail);
     }
 
     [HttpPost("test")]

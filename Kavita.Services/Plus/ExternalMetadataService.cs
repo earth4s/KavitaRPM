@@ -1472,12 +1472,24 @@ public class ExternalMetadataService : IExternalMetadataService
             number = volume.MinNumber;
             type = ExternalCoverImageType.Volume;
         }
+        else if (useGcd)
+        {
+            var first = series.Volumes.SelectMany(v => v.Chapters).Where(c => c.GcdId.HasValue && !c.IsSpecial)
+                .OrderBy(c => c.Volume.MinNumber).ThenBy(c => c.MinNumber).FirstOrDefault();
+            if (first != null) { externalId = first.GcdId?.ToString(); issue = true; }
+        }
         if (!int.TryParse(externalId, out var id) || id <= 0) return [];
-        IComicCatalog? catalog = useGcd ? _gcd : _comicVine;
-        if (catalog == null) return [];
-        var covers = await catalog.GetCoversAsync(id, issue, ct);
+        if (useGcd)
+        {
+            if (_gcd == null) return [];
+            var source = await _gcd.GetCoverIssueAsync(id, issue, ct);
+            if (source?.CoverUrl == null) return [];
+            return [new ExternalCoverResponseDto { Url = source.CoverUrl, Type = type, Number = number,
+                SourceUrl = $"https://www.comics.org/issue/{source.Id}/" }];
+        }
+        var covers = await _comicVine.GetCoversAsync(id, issue, ct);
         return covers.Select(url => new ExternalCoverResponseDto { Url = url, Number = number, Type = type,
-            SourceUrl = useGcd ? $"https://www.comics.org/{(issue ? "issue" : "series")}/{id}/" : $"https://comicvine.gamespot.com/{(issue ? 4000 : 4050)}-{id}/" }).ToList();
+            SourceUrl = $"https://comicvine.gamespot.com/{(issue ? 4000 : 4050)}-{id}/" }).ToList();
     }
 
     private static string GetCoversCacheKey(int seriesId, int? volumeId = null, int? chapterId = null)

@@ -250,6 +250,10 @@ export class SeriesService {
   }
 
   matchSeries(model: MatchSeriesRequest) {
+    const query = model.query?.trim() ?? '';
+    if (/^(?:gcd:(?:issue|series):[0-9]+|https:\/\/(?:www\.)?comics\.org\/(?:api\/)?(?:issue|series)\/[0-9]+\/?)(?:$|[?#])/i.test(query)) {
+      return this.httpClient.post<MatchSeriesResult>(this.baseUrl + 'series/match', model);
+    }
     if (model.provider === MetadataProvider.Gcd) {
       return this.httpClient.post<MatchSeriesResult>(this.baseUrl + `gcd/search?seriesId=${model.seriesId}`, {query: model.query});
     }
