@@ -1,3 +1,4 @@
+import {MetadataProvider} from "../_models/kavitaplus/metadata-provider.enum";
 import {inject, Injectable} from '@angular/core';
 import {NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
 import {ToastrService} from '@openng/ngx-toastr';
@@ -1538,9 +1539,10 @@ export class ActionService {
     });
   }
 
-  matchSeries(series: Series, callback?: BooleanActionCallback) {
+  matchSeries(series: Series, callback?: BooleanActionCallback, initialProvider?: MetadataProvider) {
    const ref = this.modalService.open(MatchSeriesModalComponent);
      ref.setInput('series', series);
+     ref.setInput('initialProvider', initialProvider);
      ref.closed.subscribe(saved => {
        if (callback) {
          callback(saved);

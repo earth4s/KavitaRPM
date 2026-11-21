@@ -1136,6 +1136,13 @@
     },
 
     "scrobble-health": {
+        "local-requests": "Requests from this server in the last hour: {{count}} of {{limit}}",
+        "last-success": "Last successful request:",
+        "last-error": "Last failed request:",
+        "retry-at": "Requests can resume at",
+        "gcd-unconfigured": "No GCD account configured.",
+        "gcd-requests": "{{minute}} / 25 requests this minute · {{day}} / 2,000 this day",
+        "comicvine-unconfigured": "No Comic Vine API key configured.",
         "title-label": "Upstream Providers",
         "checked-ago-label": "checked {{time}} ago",
         "live-label": "live",
@@ -1281,6 +1288,12 @@
     },
 
     "manage-matched-metadata": {
+        "source-label": "Metadata source",
+        "gcd-source": "Grand Comics Database (GCD)",
+        "gcd-description": "Match comic series directly with the Grand Comics Database using your saved account.",
+        "comicvine-source": "Comic Vine (your API key)",
+        "kavitaplus-source": "Kavita+",
+        "comicvine-description": "Match comic series directly with Comic Vine using your API key. Supports Comic and Comic (Flexible) libraries. An active Kavita+ license is required.",
         "title": "Matched Metadata",
         "description": "All applicable Series that can be matched with External Metadata reside here. Kavita will prefetch or refresh series metadata, 50 series per 24 hours daily.",
         "status-header": "Status",
@@ -1610,6 +1623,7 @@
     },
 
     "kavitaplus-tooltip": {
+        "view-details": "View metadata",
         "panel-title": "Kavita+: Audit Log",
         "matched": "Matched",
         "unmatched": "Unmatched",
@@ -1840,6 +1854,9 @@
     },
 
     "match-series-modal": {
+        "gcd-query-hint": "Search by title, enter a GCD series or issue reference, or paste its comics.org URL.",
+        "comicvine-query-hint": "Search by title or volume ID, or paste a Comic Vine volume or issue URL.",
+        "comicvine-key-hint": "Requires an active Kavita+ license and your API key in Settings > Kavita+ > Metadata Providers > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",
         "description": "Pick a match to rewire Kavita+ metadata and regenerate scrobble events. Click an edition to get Volume/Chapter level metadata (if applicable).",
@@ -1888,6 +1905,7 @@
     },
 
     "metadata-provider-title-pipe": {
+        "comicvine": "Comic Vine",
         "hardcover": "Hardcover",
         "mangabaka": "MangaBaka",
         "cbr": "Comic Book Roundup"
@@ -2729,6 +2747,9 @@
 
 
     "settings": {
+        "admin-meta-api-connections": "Metadata Providers",
+        "panel-load-error": "Unable to load this settings panel.",
+        "reload-settings": "Reload settings",
         "account-section-title": "Account",
         "server-section-title": "Server",
         "insights-section-title": "Insights",
@@ -2756,6 +2777,7 @@
         "admin-manage-tokens": "User Tokens",
         "admin-metadata": "Metadata Controls",
         "admin-mappings-import": "Metadata Controls",
+        "admin-comicvine": "Comic Vine",
         "scrobble-holds": "Scrobble Holds",
         "my-activity": "My Activity",
         "account": "Account",
@@ -2775,6 +2797,67 @@
         "admin-manage-kavitaplus-activity": "Kavita+ Activity",
         "scrobble-settings": "Connections",
         "kobo": "Kobo Sync"
+    },
+
+    "meta-api-connections": {
+        "description": "Manage external metadata providers using your own API keys. An active Kavita+ license is required. Each provider has its own credentials and connection test."
+    },
+    "gcd-issue": {
+        "details": "Show GCD issue details",
+        "error": "GCD issue details are unavailable.",
+        "number": "Issue",
+        "base": "View base issue",
+        "barcode": "Barcode",
+        "publication": "Publication date",
+        "sale": "On-sale date",
+        "key-date": "GCD key date"
+    },
+    "manage-gcd": {
+        "description": "Use your GCD account to match series and look up issues in comic libraries.",
+        "credit": "Catalog metadata from",
+        "username": "GCD account login",
+        "password": "GCD password",
+        "save": "Save",
+        "test": "Test connection",
+        "remove": "Remove credentials",
+        "configured": "GCD credentials are saved.",
+        "unconfigured": "Enter your GCD credentials to connect.",
+        "replace": "The saved credentials could not be read. Replace or remove them.",
+        "saved": "GCD credentials saved.",
+        "removed": "GCD credentials removed.",
+        "connected": "GCD accepted the saved credentials.",
+        "test-error": "Connection failed. Check the saved credentials and provider health.",
+        "error": "The request failed. Check your connection and Kavita+ license."
+    },
+    "manage-comicvine": {
+        "save": "{{common.save}}",
+        "description": "Connect Comic Vine to fill missing comic metadata using your own API key.",
+        "get-api-key": "Get your Comic Vine API key",
+        "api-title": "Comic Vine API",
+        "api-key-label": "API key",
+        "key-placeholder": "Enter your Comic Vine API key",
+        "replace-placeholder": "Enter a new key to replace the saved key",
+        "key-help": "Saved keys are never shown. Save a new key before testing the connection.",
+        "key-configured": "A saved API key is configured.",
+        "environment-configured": "An API key is configured by your server administrator.",
+        "not-configured": "No API key is configured.",
+        "key-unavailable": "The saved key cannot be read. Replace it to reconnect Comic Vine.",
+        "save-key": "Save API key",
+        "replace-key": "Replace API key",
+        "remove-key": "Remove saved key",
+        "show-key": "Show",
+        "hide-key": "Hide",
+        "test-connection": "Test connection",
+        "saved": "API key saved. The change takes effect without restarting.",
+        "removed": "Saved API key removed.",
+        "test-success": "Successfully connected to Comic Vine.",
+        "test-error": "Unable to connect to Comic Vine. Check your API key, or try again later if the service is unavailable or its request limit has been reached.",
+        "save-error": "Unable to save the API key. Try again.",
+        "remove-error": "Unable to remove the saved API key. Try again.",
+        "load-error": "Unable to load Comic Vine settings.",
+        "retry": "Retry",
+        "scan-help": "Use Settings > Import > Matched Series to apply a Comic Vine series match. Enable metadata reading to enrich its issues during the queued scan. Existing Comic Vine issue IDs, or a series ID and issue number, can also be used.",
+        "environment-help": "Saving a key here takes priority over the server's environment key. To disable the environment key, your administrator must remove it from the server configuration."
     },
 
     "scrobble-provider-settings-manager": {

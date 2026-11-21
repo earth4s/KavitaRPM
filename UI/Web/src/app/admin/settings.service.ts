@@ -10,6 +10,7 @@ import {FieldMappingsImportResult, ImportSettings} from "../_models/import-field
 import {AuthorityValidationResult, OidcPublicConfig} from "./_models/oidc-config";
 import {RunMetadataMappingsRequest} from "../_models/metadata/run-metadata-mappings-request";
 import {KepubifyStatus} from "./_models/kepubify-status";
+import {ComicVineConnectionResult, ComicVineHealth, ComicVineSettings} from './_models/comicvine-settings';
 
 /**
  * Used only for the Test Email Service call
@@ -31,6 +32,47 @@ export class SettingsService {
 
   getServerSettings() {
     return this.http.get<ServerSettings>(this.baseUrl + 'settings');
+  }
+
+  getGcdSettings() {
+    return this.http.get<{configured: boolean, requiresReplacement: boolean}>(this.baseUrl + 'gcd/settings');
+  }
+
+  saveGcdCredentials(username: string, password: string) {
+    return this.http.put(this.baseUrl + 'gcd/settings', {username, password});
+  }
+
+  removeGcdCredentials() {
+    return this.http.delete(this.baseUrl + 'gcd/settings');
+  }
+
+  testGcdConnection() {
+    return this.http.post<boolean>(this.baseUrl + 'gcd/test', {});
+  }
+
+  getGcdHealth() {
+    return this.http.get<{configured: boolean, requestsLastMinute: number, requestsLastDay: number,
+      lastSuccess?: string, lastFailure?: string, failure?: string, retryAt?: string}>(this.baseUrl + 'gcd/health');
+  }
+
+  getComicVineHealth() {
+    return this.http.get<ComicVineHealth>(this.baseUrl + 'comicvine/health');
+  }
+
+  getComicVineSettings() {
+    return this.http.get<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  saveComicVineSettings(apiKey: string) {
+    return this.http.post<ComicVineSettings>(this.baseUrl + 'settings/comicvine', {apiKey});
+  }
+
+  removeComicVineSettings() {
+    return this.http.delete<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  testComicVineConnection() {
+    return this.http.post<ComicVineConnectionResult>(this.baseUrl + 'settings/comicvine/test', {});
   }
 
   getPublicOidcConfig() {

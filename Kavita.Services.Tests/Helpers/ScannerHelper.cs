@@ -124,7 +124,8 @@ public class ScannerHelper
 
     /// <param name="wrapScanReader">Replaces the reader used while walking and parsing, ProcessSeries keeps the real one</param>
     public ScannerService CreateServices(DirectoryService? ds = null, IFileSystem? fs = null,
-        Func<IReadingItemService, IReadingItemService>? wrapScanReader = null, IEventHub? eventHub = null)
+        Func<IReadingItemService, IReadingItemService>? wrapScanReader = null, IEventHub? eventHub = null,
+        IComicVineService? comicVineService = null)
     {
         fs ??= new FileSystem();
         ds ??= new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), fs);
@@ -142,7 +143,7 @@ public class ScannerHelper
             eventHub,
             ds, readingItemService, new FileService(fs),
             Substitute.For<IReadingListService>(),
-            Substitute.For<IExternalMetadataService>());
+            Substitute.For<IExternalMetadataService>(), comicVineService ?? Substitute.For<IComicVineService>(), Substitute.For<Kavita.API.Services.Plus.IKavitaPlusAuditService>());
 
         var serviceProvider = Substitute.For<IServiceProvider>();
         serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_unitOfWork);

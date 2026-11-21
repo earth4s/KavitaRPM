@@ -224,4 +224,11 @@ public enum ServerSettingKey
     /// </summary>
     [Description("TaskCompositeCovers")]
     TaskCompositeCovers = 46,
+    /// <summary>The protected direct Comic Vine API key, managed by the Metadata Providers settings.</summary>
+    [Description("ComicVineApiKey")]
+    [ExportScrub(ExportScrubKind.Random)]
+    ComicVineApiKey = 1000,
+    [Description("GcdCredentials")]
+    [ExportScrub(ExportScrubKind.Random)]
+    GcdCredentials = 1001,
 }

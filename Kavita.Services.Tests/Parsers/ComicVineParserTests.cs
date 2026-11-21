@@ -92,6 +92,20 @@ public class ComicVineParserTests : AbstractFsTest
     }
     #endregion
 
+    [Theory]
+    [InlineData("Annual")]
+    [InlineData("annual")]
+    [InlineData(" Annual ")]
+    public void ComicInfoAnnualFormat_UsesSpecialVolume(string format)
+    {
+        var result = _parser.Parse(RootDirectory + "Birds of Prey (2002)/Birds of Prey 001 (2002).cbz",
+            RootDirectory + "Birds of Prey (2002)/", RootDirectory, LibraryType.ComicVine, true,
+            new ComicInfo { Series = "Birds of Prey", Volume = "2002", Number = "1", Format = format });
+        Assert.True(result.Success);
+        Assert.Equal(Parser.SpecialVolume, result.Info!.Volumes);
+        Assert.Equal("Birds of Prey (2002)", result.Info.Series);
+    }
+
     #region IsApplicable
     /// <summary>
     /// Tests that this Parser can only be used on ComicVine type

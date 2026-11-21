@@ -1,0 +1,22 @@
+<ng-container *transloco="let t; prefix: 'manage-gcd'">
+  <p>{{t('description')}}</p>
+  <p>{{t('credit')}} <a href="https://www.comics.org/" target="_blank" rel="noopener noreferrer">Grand Comics Database</a>
+    · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></p>
+  <form #form="ngForm" (ngSubmit)="save()" class="col-xl-7">
+    <fieldset [disabled]="busy()">
+      <label for="gcd-user" class="form-label">{{t('username')}}</label>
+      <input id="gcd-user" class="form-control mb-2" name="username" [(ngModel)]="username" autocomplete="off" maxlength="256" required>
+      <label for="gcd-password" class="form-label">{{t('password')}}</label>
+      <input id="gcd-password" class="form-control mb-2" name="password" [(ngModel)]="password" type="password" autocomplete="new-password" maxlength="512" required>
+      <p class="text-muted">{{t(replacement() ? 'replace' : configured() ? 'configured' : 'unconfigured')}}</p>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-secondary" (click)="test()" [disabled]="!configured() || !!username || !!password">{{t('test')}}</button>
+        @if (configured() || replacement()) {
+          <button type="button" class="btn btn-outline-danger" (click)="remove()">{{t('remove')}}</button>
+        }
+        <button type="submit" class="btn btn-primary ms-auto" [disabled]="!form.valid || !username.trim()">{{t('save')}}</button>
+      </div>
+    </fieldset>
+  </form>
+  @if (message()) { <p role="status" class="mt-2">{{t(message())}}</p> }
+</ng-container>

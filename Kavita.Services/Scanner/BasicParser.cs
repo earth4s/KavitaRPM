@@ -25,7 +25,9 @@ public class BasicParser(IDirectoryService directoryService, IDefaultParser imag
 
         if (Parser.IsImage(filePath))
         {
-            return imageParser.Parse(filePath, rootPath, libraryRoot, LibraryType.Image, enableMetadata, comicInfo);
+            var image = imageParser.Parse(filePath, rootPath, libraryRoot, LibraryType.Image, enableMetadata, comicInfo);
+            if (image.Info != null) ApplyComicSpecialsFolder(image.Info, libraryRoot, type);
+            return image;
         }
 
         var ret = new ParserInfo()
@@ -126,6 +128,8 @@ public class BasicParser(IDirectoryService directoryService, IDefaultParser imag
         {
             ret.Volumes = Parser.SpecialVolume;
         }
+
+        ApplyComicSpecialsFolder(ret, libraryRoot, type);
 
         FinalizeNumbers(ret);
 

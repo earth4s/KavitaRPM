@@ -1,0 +1,215 @@
+name: Comic Vine Private Nightly
+
+on:
+  push:
+    branches: [feature/comicvine-api-metadata]
+    paths:
+      - .github/workflows/comicvine-nightly.yml
+      - scripts/nightly/**
+      - packaging/rpm/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comicvine-nightly-release
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    if: github.repository == 'earth4s/KavitaRPM'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+      date: ${{ steps.metadata.outputs.date }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UI/Web/package-lock.json
+      - name: Build production frontend
+        working-directory: UI/Web
+        run: |
+          npm ci --legacy-peer-deps
+          npm run prod
+      - name: Create private draft and store web build
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/nightly/version.sh
+          tag="v${fork_version}"
+          tar -C UI/Web/dist/browser -czf "$RUNNER_TEMP/nightly-web.tar.gz" .
+          gh release create "$tag" "$RUNNER_TEMP/nightly-web.tar.gz" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+            --title "KavitaRPM $fork_version (private nightly)" \
+            --notes 'Build in progress. This draft is restricted to repository writers. Do not publish it.'
+          NIGHTLY_TAG="$tag" bash scripts/nightly/draft-release.sh assert
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "date=$date_stamp" >> "$GITHUB_OUTPUT"
+
+  tests:
+    if: github.repository == 'earth4s/KavitaRPM'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify draft-only release guard
+        run: python3 scripts/nightly/test-draft-release.py
+      - name: Verify fork version identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/nightly/version.sh
+          EXPECTED_KAVITARPM_VERSION="$fork_version" dotnet test Kavita.Common.Tests/Kavita.Common.Tests.csproj -c Release --filter 'FullyQualifiedName~BuildInfoTests|FullyQualifiedName~VersionHelperTests' -p:InformationalVersion="$informational_version" -p:IncludeSourceRevisionInInformationalVersion=false
+      - name: Verify licensed endpoints and access restrictions
+        run: |
+          dotnet test Kavita.Server.Tests/Kavita.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~EndpointAccessTests'
+      - name: Verify Comic Vine and GCD licensing, matching, Specials grouping and export
+        if: ${{ !cancelled() }}
+        run: |
+          dotnet test Kavita.Services.Tests/Kavita.Services.Tests.csproj -c Release --filter 'FullyQualifiedName~Gcd|FullyQualifiedName~ComicVine|FullyQualifiedName~ComicSpecials|FullyQualifiedName~Parsers|FullyQualifiedName~Parsing|FullyQualifiedName~DebugExport|FullyQualifiedName~ScannerService|FullyQualifiedName~ParseScannedFilesTests|FullyQualifiedName~ExternalMetadataService'
+
+
+  package:
+    needs: [frontend, tests]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    env:
+      NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
+      NIGHTLY_DATE: ${{ needs.frontend.outputs.date }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            arch: x86_64
+            runner: ubuntu-24.04
+            smoke: 'true'
+          - rid: linux-arm64
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            smoke: 'true'
+          - rid: linux-arm
+            arch: armv7hl
+            runner: ubuntu-24.04-arm
+            smoke: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Download web build from private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/nightly/draft-release.sh download "$RUNNER_TEMP" nightly-web.tar.gz
+          mkdir -p Kavita.Server/wwwroot
+          tar -xzf "$RUNNER_TEMP/nightly-web.tar.gz" -C Kavita.Server/wwwroot
+      - name: Publish binaries and build RPM
+        env:
+          BUILD_RID: ${{ matrix.rid }}
+          RPM_ARCH: ${{ matrix.arch }}
+          SMOKE_TEST: ${{ matrix.smoke }}
+        run: bash scripts/nightly/build-package.sh
+      - name: Store packages only in private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/nightly/draft-release.sh upload _nightly/dist/*
+
+  release:
+    needs: [frontend, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      NIGHTLY_TAG: ${{ needs.frontend.outputs.tag }}
+      NIGHTLY_DATE: ${{ needs.frontend.outputs.date }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Collect packages from private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          bash scripts/nightly/draft-release.sh download dist 'kavita-*.tar.gz'
+          bash scripts/nightly/draft-release.sh download dist 'kavita-*.rpm'
+      - name: Verify packages and write release metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 3
+          test "$(find dist -maxdepth 1 -name '*.rpm' | wc -l)" -eq 3
+          source scripts/nightly/version.sh
+          tag="$NIGHTLY_TAG"
+          jq -n --arg version "$fork_version" --arg upstream_version "$version" --arg informational_version "$informational_version" \
+            --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" \
+            --arg tag "$tag" --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{distribution:"KavitaRPM",channel:"private-draft-nightly",version:$version,upstream_version:$upstream_version,informational_version:$informational_version,commit:$commit,branch:$branch,tag:$tag,build:$run}' > dist/SOURCE.json
+          (cd dist && sha256sum ./*.tar.gz ./*.rpm SOURCE.json > SHA256SUMS)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          cat > release-notes.md <<EOF
+          KavitaRPM ${fork_version}, based on upstream Kavita ${version}, compiled from commit ${GITHUB_SHA}.
+
+          The server version and archive filenames carry the kavitarpm suffix. RPM releases include kavitarpm; internal numeric versions remain compatible with upstream migrations.
+
+          This unpublished release and its downloads are restricted to repository writers. Do not publish it. Source code and workflow logs remain public because the repository is public.
+
+          Includes direct Comic Vine metadata, Settings > Kavita+ > Metadata Providers > Comic Vine for your API key, and Settings > Import > Matched Series with direct title/volume searches and saved matches that queue an issue rescan. An active Kavita+ license is required to view Metadata Providers, manage API keys, match series, and run direct Comic Vine lookups. The Metadata Providers panel contains an explicit Save button for Comic Vine keys. Matching persists the selected volume metadata immediately, and settings panels begin loading on selection. Specials subfolders stay under their parent comic in both comic library types, including annuals with their own metadata. Run a forced full library scan to repair previous splits.
+
+          Grand Comics Database (GCD) is available under Settings > Kavita+ > Metadata Providers. Save a registered GCD account, test the connection, and select GCD for a comic library or a single series. GCD supports series and issue references, story credits, issue details, and cover thumbnails. The scanner and provider cache require an active Kavita+ license. GCD request counts and cooldowns appear in provider health.
+
+          Comic Vine now supplies cover choices and linked series details. Shared matching accepts issue URLs, and the scanner can match a unique run by title plus year or publisher. The Kavita+ health dashboard shows local requests and cooldowns, which survive restarts.
+
+          Downloads: self-contained Linux x64, ARM64 and ARM32 archives, plus matching RPMs. SHA256SUMS and SOURCE.json identify and verify this build.
+
+          RPM installation: sudo dnf install ./kavita-*.rpm
+
+          Start the RPM service: sudo systemctl enable --now kavita.service
+
+          Native archives extract into Kavita/ and start with ./Kavita. This is a prerelease from an unmerged feature branch. Back up your existing config directory before upgrading; database migrations may prevent downgrading.
+          EOF
+      - name: Complete private draft without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/nightly/draft-release.sh upload dist/SOURCE.json dist/SHA256SUMS
+          bash scripts/nightly/draft-release.sh notes release-notes.md
+          bash scripts/nightly/draft-release.sh remove-web
+          # Allow GitHub's asset listing to settle after deleting the temporary web archive.
+          for attempt in $(seq 1 10); do
+            gh release view "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,url > draft-state.json
+            if jq -e '.isDraft == true and (.assets | length) == 8' draft-state.json > /dev/null; then break; fi
+            sleep 1
+          done
+          jq -e '.isDraft == true and (.assets | length) == 8' draft-state.json > /dev/null
+          # Fetch by listing, since the tag endpoint is intended for published releases.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | \
+            jq -s --arg tag "$NIGHTLY_TAG" 'add | map(select(.tag_name == $tag)) | if length == 1 then .[0] else error("Draft not found") end' > release-state.json
+          jq -e '.draft == true and .published_at == null and (.assets | length) == 8' release-state.json > /dev/null
+          # curl receives no Authorization header. Browser downloads must be inaccessible;
+          # the anonymous API may return 403 when its shared runner IP is rate limited.
+          check_denied() {
+            local label="$1" api_url="$2" web_url="$3" api_code web_code
+            api_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$api_url")"
+            web_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$web_url")"
+            echo "$label anonymous status: API=$api_code, browser=$web_code"
+            test "$web_code" = 404
+            [[ "$api_code" == 404 || "$api_code" == 403 ]]
+          }
+          check_denied release "$(jq -r '.url' release-state.json)" "$(jq -r '.html_url' release-state.json)"
+          check_denied asset "$(jq -r '.assets[0].url' release-state.json)" "$(jq -r '.assets[0].browser_download_url' release-state.json)"
+          echo "Private draft nightly (repository writers only): $(jq -r '.url' draft-state.json)" >> "$GITHUB_STEP_SUMMARY"

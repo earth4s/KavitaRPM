@@ -109,6 +109,7 @@ public sealed record SeriesDto : IHasReadTimeEstimate, IHasMetadataIds, IHasCove
     public int HardcoverId { get; set; }
     public long MetronId { get; set; }
     public string? ComicVineId { get; set; }
+    public int? GcdId { get; set; }
     public int MangaBakaId { get; set; }
     public string MangaBakaEditionId { get; set; } = string.Empty;
     public int CbrId { get; set; }

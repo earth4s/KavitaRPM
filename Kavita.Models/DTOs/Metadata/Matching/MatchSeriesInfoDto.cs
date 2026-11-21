@@ -24,6 +24,8 @@ public sealed record MatchSeriesInfoDto
     public int? AniListId { get; set; }
     public int? HardcoverId { get; set; }
     public int? CbrId { get; set; }
+    public int? ComicVineId { get; set; }
+    public int? GcdId { get; set; }
     /// <summary>
     /// The currently selected MangaBaka edition, if any
     /// </summary>

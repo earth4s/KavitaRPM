@@ -17,6 +17,8 @@ export interface MatchSeriesInfo {
   hardcoverId?: number;
   /** This is here since pre-v0.9.1 series will only have AniList **/
   aniListId?: number;
+  comicVineId?: number | null;
+  gcdId?: number | null;
   cbrId?: number;
   isStandAlone: boolean;
 }
