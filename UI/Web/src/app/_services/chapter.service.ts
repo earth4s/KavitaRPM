@@ -4,6 +4,20 @@ import {HttpClient} from "@angular/common/http";
 import {Chapter} from "../_models/chapter";
 import {ChapterDetailPlus} from "../_models/chapter-detail-plus";
 
+export interface GcdIssueDetail {
+  id: number;
+  seriesId: number;
+  number: string;
+  variant: string;
+  variantOf?: number;
+  isbn: string;
+  barcode: string;
+  publicationDate: string;
+  keyDate: string;
+  onSaleDate: string;
+  stories: {type: string, title: string, synopsis: string}[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -12,6 +26,10 @@ export class ChapterService {
 
 
   baseUrl = environment.apiUrl;
+
+  getGcdIssue(seriesId: number, chapterId: number) {
+    return this.httpClient.get<GcdIssueDetail>(this.baseUrl + `gcd/issue-detail?seriesId=${seriesId}&chapterId=${chapterId}`);
+  }
 
   getChapterMetadata(chapterId: number) {
     return this.httpClient.get<Chapter>(this.baseUrl + 'chapter?chapterId=' + chapterId);

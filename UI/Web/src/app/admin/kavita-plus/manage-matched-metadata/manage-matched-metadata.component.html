@@ -1,5 +1,13 @@
 <ng-container *transloco="let t; prefix:'manage-matched-metadata'">
-  <p>{{t('description')}}</p>
+  <p>{{isDirect() ? t(formGroup.source().value() + '-description') : t('description')}}</p>
+  <div class="mb-3">
+    <label for="matching-source">{{t('source-label')}}</label>
+    <select class="form-select" id="matching-source" [formField]="formGroup.source">
+      @for (source of sources(); track source) {
+        <option [value]="source">{{t(source + '-source')}}</option>
+      }
+    </select>
+  </div>
 
   <div class="stats-strip d-flex justify-content-between mb-4 gap-3">
 
@@ -55,7 +63,7 @@
     </div>
     <div class="col-12 col-md-auto">
       <label for="match-filter">{{t('matched-state-label')}}</label>
-      <app-setting-select [formField]="formGroup.matchState" inputId="match-filter" [options]="allMatchStates">
+      <app-setting-select [formField]="formGroup.matchState" inputId="match-filter" [options]="allMatchStates()">
         <ng-template #template let-state>
           {{state | matchStateOption}}
         </ng-template>
@@ -124,7 +132,7 @@
           </ng-template>
         </ngx-datatable-column>
 
-        @if (isMatchedState()) {
+        @if (isMatchedState() && !isDirect()) {
           <ngx-datatable-column prop="validUntilUtc" [sortable]="false" [draggable]="false" [resizeable]="false" [flexGrow]="1">
             <ng-template let-column="column" ngx-datatable-header-template>
               {{t('valid-until-header')}}
@@ -201,7 +209,7 @@
               </div>
             </div>
 
-            @if (isMatchedState()) {
+            @if (isMatchedState() && !isDirect()) {
               <div class="col-6">
                 <div class="text-muted small">{{t('valid-until-header')}}</div>
                 <div>

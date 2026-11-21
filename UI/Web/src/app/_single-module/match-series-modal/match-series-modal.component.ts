@@ -40,6 +40,9 @@ import {disabled, form, FormField} from "@angular/forms/signals";
 import {MatchSeriesRequest} from "../../_models/kavitaplus/match-series-request";
 import {SettingSelectComponent} from "../../settings/_components/setting-enum-select/setting-select.component";
 
+import {LicenseService} from "../../_services/license.service";
+import {LibraryType} from "../../_models/library/library";
+
 interface MatchSeriesFormModel {
   query: string;
   isStandAlone: boolean;
@@ -73,6 +76,13 @@ export class MatchSeriesModalComponent implements OnInit {
   private readonly imageService = inject(ImageService);
 
   series = input.required<Series>();
+  initialProvider = input<MetadataProvider>();
+  private readonly licenseService = inject(LicenseService);
+  private searchRequest = 0;
+  protected readonly allMetadataProviders = computed(() => this.licenseService.hasActiveLicense()
+    ? AllMetadataProviders.filter(p => ![MetadataProvider.ComicVine, MetadataProvider.Gcd].includes(p) ||
+        [LibraryType.Comic, LibraryType.ComicVine].includes(this.matchInfo()?.libraryType as LibraryType))
+    : []);
 
   formModel = signal<MatchSeriesFormModel>({
     query: '',
@@ -144,7 +154,7 @@ export class MatchSeriesModalComponent implements OnInit {
   });
 
   /** Provider the results came from, falling back to the series' own before the first search lands */
-  protected activeProvider = computed(() => this.resultProvider() ?? this.matchInfo()?.metadataProvider ?? null);
+  protected activeProvider = computed(() => this.resultProvider() ?? this.formGroup.provider().value());
   /** The search ran against another provider than the series own, so applying a match will switch the Series over */
   protected isProviderSwitched = computed(() => {
     const provider = this.resultProvider();
@@ -172,7 +182,7 @@ export class MatchSeriesModalComponent implements OnInit {
       skip(1),
       takeUntilDestroyed(),
       tap(provider => {
-        if (provider === this.lastProvider) return;
+        if (!this.matchInfo() || provider === this.lastProvider) return;
 
         this.lastProvider = provider;
 
@@ -190,13 +200,12 @@ export class MatchSeriesModalComponent implements OnInit {
 
     this.seriesService.getMatchInfo(this.series().id).subscribe(res => {
       this.matchInfo.set(res);
-      this.formGroup.provider().value.set(res.metadataProvider);
-      this.autoSelectExistingMatch(this.matches());
-
-      // Default is MangaBaka so the set above wouldn't trigger the search effect
-      if (res.metadataProvider === MetadataProvider.Mangabaka) {
-        this.search();
-      }
+      const requested = this.initialProvider() ?? res.metadataProvider;
+      const provider = this.allMetadataProviders().includes(requested) ? requested : this.allMetadataProviders()[0];
+      if (provider === undefined) return;
+      this.lastProvider = provider;
+      this.formGroup.provider().value.set(provider);
+      this.search();
     });
 
     this.formGroup.dontMatch().value.set(this.series().dontMatch || false);
@@ -216,7 +225,12 @@ export class MatchSeriesModalComponent implements OnInit {
   }
 
   search() {
-    if (this.isDontMatch()) return;
+    if (this.isDontMatch() || !this.matchInfo()) return;
+    const request = ++this.searchRequest;
+    this.selectedItem.set(null);
+    this.selectedEdition.set(null);
+    this.matches.set([]);
+    this.resultProvider.set(null);
 
     const query = this.queryString();
 
@@ -232,6 +246,7 @@ export class MatchSeriesModalComponent implements OnInit {
 
     this.seriesService.matchSeries(model).pipe(
       tap(res => {
+        if (request !== this.searchRequest) return;
         this.isLoading.set(false);
         this.hasSearched.set(true);
         this.matches.set(res.matches);
@@ -239,11 +254,13 @@ export class MatchSeriesModalComponent implements OnInit {
         // The backend can search against another provider than the one asked for, when the query is a
         // provider specific url/header. Show what the results actually came from
         this.resultProvider.set(res.provider);
+        this.lastProvider = res.provider;
         this.formGroup.provider().value.set(res.provider);
 
         this.autoSelectExistingMatch(res.matches);
       }),
       catchError(() => {
+        if (request !== this.searchRequest) return of(null);
         this.isLoading.set(false);
         this.hasSearched.set(true);
         return of(null);
@@ -277,6 +294,10 @@ export class MatchSeriesModalComponent implements OnInit {
     }
 
     switch (info.metadataProvider) {
+      case MetadataProvider.Gcd:
+        return !!info.gcdId && s.gcdId === info.gcdId;
+      case MetadataProvider.ComicVine:
+        return !!info.comicVineId && s.comicVineId === info.comicVineId;
       case MetadataProvider.Mangabaka:
         return !!info.mangaBakaId && s.mangabakaId === info.mangaBakaId;
       case MetadataProvider.ComicBookRoundup:
@@ -293,7 +314,7 @@ export class MatchSeriesModalComponent implements OnInit {
   }
 
   matchKey(item: ExternalSeriesMatch) {
-    return `${item.series.provider}_${item.series.mangabakaId}_${item.series.hardcoverId}_${item.series.cbrId}_${item.series.aniListId}_${item.series.malId}`;
+    return `${item.series.provider}_${item.series.comicVineId}_${item.series.mangabakaId}_${item.series.hardcoverId}_${item.series.cbrId}_${item.series.aniListId}_${item.series.malId}`;
   }
 
   private findDefaultEdition(item: ExternalSeriesMatch): ExternalEditionDto | null {
@@ -342,12 +363,12 @@ export class MatchSeriesModalComponent implements OnInit {
   }
 
   saveDontMatch() {
-    this.seriesService.updateDontMatch(this.series().id, true).subscribe(() => {
+    this.seriesService.updateDontMatch(this.series().id, true, this.formGroup.provider().value()).subscribe(() => {
       this.modalService.close(true);
     });
   }
 
   protected readonly MetadataProvider = MetadataProvider;
   protected readonly ScrobbleProvider = ScrobbleProvider;
-  protected readonly allMetadataProviders = AllMetadataProviders;
+
 }

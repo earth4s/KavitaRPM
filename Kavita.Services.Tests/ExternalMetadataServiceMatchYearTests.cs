@@ -119,7 +119,8 @@ public class ExternalMetadataServiceMatchYearTests : AbstractDbTest
             mapper, licenseService, Substitute.For<IScrobblingService>(),
             Substitute.For<IEventHub>(), Substitute.For<ICoverDbService>(),
             kavitaPlusApiService, Substitute.For<IFileCacheService>(),
-            Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>());
+            Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>(),
+            Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
 
         return (service, kavitaPlusApiService);
     }

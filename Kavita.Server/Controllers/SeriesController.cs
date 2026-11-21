@@ -9,6 +9,7 @@ using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services;
 using Kavita.API.Services.Plus;
+using Kavita.API.Services.Metadata;
 using Kavita.Common;
 using Kavita.Common.Extensions;
 using Kavita.Common.Helpers;
@@ -602,11 +603,12 @@ public class SeriesController(
         if (recommendedSeriesId is > 0 && !await unitOfWork.UserRepository.HasAccessToSeries(UserId, recommendedSeriesId.Value, ct))
             return NotFound();
 
-        var cacheKey = $"{CacheKey}-{aniListId ?? 0}-{malId ?? 0}-{mangaBakaId ?? 0}-{recommendedSeriesId ?? 0}-{hardcoverId ?? 0}";
+        var directComic = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct) is Models.Entities.Enums.MetadataProvider.ComicVine or Models.Entities.Enums.MetadataProvider.Gcd;
+        var cacheKey = $"{CacheKey}-{seriesId}-{aniListId ?? 0}-{malId ?? 0}-{mangaBakaId ?? 0}-{recommendedSeriesId ?? 0}-{hardcoverId ?? 0}";
 
         ExternalSeriesDetailDto? ret;
         var results = await _externalSeriesCacheProvider.GetAsync<ExternalSeriesDetailDto>(cacheKey, ct);
-        if (results.HasValue)
+        if (results.HasValue && !directComic)
         {
             ret = results.Value;
         }
@@ -624,7 +626,7 @@ public class SeriesController(
             try
             {
                 ret = await externalMetadataService.GetExternalSeriesDetail(seriesId, request, recommendedSeriesId, ct);
-                await _externalSeriesCacheProvider.SetAsync(cacheKey, ret, TimeSpan.FromMinutes(15), ct);
+                if (!directComic) await _externalSeriesCacheProvider.SetAsync(cacheKey, ret, TimeSpan.FromMinutes(15), ct);
             }
             catch (Exception)
             {
@@ -676,9 +678,18 @@ public class SeriesController(
     [KPlus]
     [HttpPost("match")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
-    public async Task<ActionResult<MatchSeriesResultDto>> MatchSeries(MatchSeriesDto dto)
+    public async Task<ActionResult<MatchSeriesResultDto>> MatchSeries(MatchSeriesDto dto, [FromServices] IComicVineMatchingService comicVine, [FromServices] IGcdMatchingService gcd)
     {
         var ct = HttpContext.RequestAborted;
+
+        var gcdQuery = GcdReference.TryParse(dto.Query) != null;
+        if (gcdQuery || ExternalIdParser.IsComicVineQuery(dto.Query))
+        {
+            if (!await unitOfWork.UserRepository.HasAccessToSeries(UserId, dto.SeriesId, ct)) return NotFound();
+            try { return Ok(await (gcdQuery ? gcd : comicVine).SearchAsync(dto.SeriesId, dto.Query!, ct)); }
+            catch (KavitaException ex) { return BadRequest(ex.Message); }
+            catch (System.Net.Http.HttpRequestException) { return StatusCode(503, "Unable to contact the comic catalog."); }
+        }
 
         var seriesProvider = await unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(dto.SeriesId, ct);
         if (seriesProvider == null) return NotFound();
@@ -736,7 +747,6 @@ public class SeriesController(
     /// </summary>
     /// <param name="seriesId"></param>
     /// <returns></returns>
-    [KPlus]
     [HttpGet("match-info")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<MatchSeriesInfoDto>> GetExistingMatchInfo(int seriesId)
@@ -751,10 +761,14 @@ public class SeriesController(
 
         return Ok(new MatchSeriesInfoDto
         {
-            HasMatch = externalMetadata is {Id: > 0} &&
+            HasMatch = series.GetEffectiveMetadataProvider() == Kavita.Models.Entities.Enums.MetadataProvider.Gcd ? series.GcdId.HasValue
+                : series.GetEffectiveMetadataProvider() == Kavita.Models.Entities.Enums.MetadataProvider.ComicVine
+                       ? !string.IsNullOrEmpty(series.ComicVineId) : externalMetadata is {Id: > 0} &&
                        (series.MangaBakaId > 0 || series.HardcoverId > 0 || series.CbrId > 0 || series.AniListId > 0),
             // MangaBaka will always set AniList if set
-            IsLegacy = series is {AniListId: > 0, MangaBakaId: 0},
+            IsLegacy = series.GetEffectiveMetadataProvider() == Kavita.Models.Entities.Enums.MetadataProvider.Mangabaka && series is {AniListId: > 0, MangaBakaId: 0},
+            GcdId = series.GcdId,
+            ComicVineId = int.TryParse(series.ComicVineId, out var comicVineId) ? comicVineId : null,
             CbrId = series.CbrId,
             HardcoverId = series.HardcoverId,
             MangaBakaId = series.MangaBakaId,

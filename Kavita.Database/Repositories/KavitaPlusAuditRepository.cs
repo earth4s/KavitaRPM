@@ -131,6 +131,7 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
         int seriesId, int callingUserId, bool isAdmin, CancellationToken ct = default)
     {
         var series = await context.Series
+            .Include(s => s.Library)
             .Include(s => s.ExternalSeriesMetadata)
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == seriesId, ct);
@@ -161,25 +162,27 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
         // Due to Json deserialization, I can't use automapper here and need to do in-mem
         var recentEvents = recentRaw.Select(MapToDto).ToList();
 
+        var direct = series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd;
         return new KavitaPlusAuditSeriesInfoDto
         {
             SeriesId = series.Id,
             LibraryId = series.LibraryId,
             SeriesName = series.Name,
-            IsMatched = !series.IsBlacklisted
+            IsMatched = direct ? !series.DontMatch && (series.GetEffectiveMetadataProvider() == MetadataProvider.Gcd ? series.GcdId.HasValue : !string.IsNullOrWhiteSpace(series.ComicVineId)) : !series.IsBlacklisted
                 && series.ExternalSeriesMetadata != null
                 && series.ExternalSeriesMetadata.ValidUntilUtc > DateTime.MinValue,
             MangaBakaId = series.MangaBakaId != 0 ? series.MangaBakaId : null,
             AniListId = series.AniListId != 0 ? series.AniListId : null,
             HardcoverId = series.HardcoverId != 0 ? series.HardcoverId : null,
             CbrId = series.CbrId != 0 ? series.CbrId : null,
+            GcdId = series.GcdId,
             ComicVineId = series.ComicVineId != string.Empty ? series.ComicVineId : null,
             MalId = series.MalId != 0 ? series.MalId : null,
             MetronId = series.MetronId != 0 ? series.MetronId : null,
             IsStandAlone = series.IsStandAlone,
-            MetadataProvider = series.ExternalSeriesMetadata?.Provider,
-            NextRefreshUtc = series.ExternalSeriesMetadata?.ValidUntilUtc,
-            LastRefreshedUtc = series.ExternalSeriesMetadata?.LastModifiedUtc,
+            MetadataProvider = direct ? series.GetEffectiveMetadataProvider() : series.ExternalSeriesMetadata?.Provider,
+            NextRefreshUtc = direct ? null : series.ExternalSeriesMetadata?.ValidUntilUtc,
+            LastRefreshedUtc = direct ? null : series.ExternalSeriesMetadata?.LastModifiedUtc,
             RecentEvents = recentEvents,
         };
     }

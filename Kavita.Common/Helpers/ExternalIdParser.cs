@@ -73,6 +73,11 @@ public static partial class ExternalIdParser
     /// </summary>
     /// <param name="weblinks"></param>
     /// <returns></returns>
+    public static bool IsComicVineQuery(string? query) =>
+        query?.Trim().StartsWith("comicvine:", StringComparison.OrdinalIgnoreCase) == true
+        || (Uri.TryCreate(query?.Trim(), UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps && uri.Host == "comicvine.gamespot.com");
+
     public static Tuple<string?, bool> GetComicVineId(string? weblinks)
     {
         var extractedId = ExtractId<string?>(weblinks, ComicVineWeblinkWebsite);

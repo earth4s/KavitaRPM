@@ -159,6 +159,21 @@ public abstract class DefaultParser(IDirectoryService directoryService) : IDefau
 
     }
 
+    /// <summary>Folder placement explicitly groups comic extras with their parent series.</summary>
+    internal static void ApplyComicSpecialsFolder(ParserInfo info, string libraryRoot, LibraryType type)
+    {
+        if (type is not (LibraryType.Comic or LibraryType.ComicVine)) return;
+        var owner = Parser.GetSpecialsOwnerFolder(info.FullFilePath, libraryRoot);
+        if (owner == null) return;
+        var name = System.IO.Path.GetFileName(owner);
+        info.Series = type == LibraryType.ComicVine && Parser.IsSeriesAndYear(name)
+            ? name : Parser.CleanTitle(name, type == LibraryType.Comic);
+        info.IsSpecial = true;
+        info.Volumes = Parser.SpecialVolume;
+        if (Parser.HasSpecialMarker(info.Filename)) info.SpecialIndex = Parser.ParseSpecialIndex(info.Filename);
+        FinalizeNumbers(info);
+    }
+
     public abstract bool IsApplicable(string filePath, LibraryType type);
 
     protected static bool IsEmptyOrDefault(string volumes, string chapters)

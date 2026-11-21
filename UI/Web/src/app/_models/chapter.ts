@@ -14,6 +14,7 @@ export const LooseLeafOrDefaultNumber = -100000;
 export const SpecialVolumeNumber = 100000;
 
 export interface Chapter extends IHasCast, IHasReadingTime, IHasCover, IHasProgress, IHasMetadataIds {
+  gcdId?: number | null;
   id: number;
   range: string;
   minNumber: number;

@@ -17,7 +17,9 @@ import {EVENTS, MessageHubService} from "../../../_services/message-hub.service"
 import {ManageMatchSeries, MatchedExternalSeriesCount} from "../../../_models/kavitaplus/manage-match-series";
 import {Series} from "../../../_models/series";
 import {ManageMatchFilter} from "../../../_models/kavitaplus/manage-match-filter";
-import {debounceTime, distinctUntilChanged, skip, tap} from "rxjs";
+import {catchError, debounceTime, distinctUntilChanged, of, skip, tap} from "rxjs";
+import {LicenseService} from "../../../_services/license.service";
+import {MetadataProvider} from "../../../_models/kavitaplus/metadata-provider.enum";
 import {switchMap} from "rxjs/operators";
 import {ExternalMatchRateLimitErrorEvent} from "../../../_models/events/external-match-rate-limit-error-event";
 import {ToastrService} from '@openng/ngx-toastr';
@@ -35,6 +37,7 @@ import {
 
 
 interface FormModel {
+  source: 'comicvine' | 'gcd' | 'kavitaplus';
   matchState: MatchStateOption;
   libraryType: LibraryType;
 }
@@ -64,7 +67,15 @@ interface FormModel {
 })
 export class ManageMatchedMetadataComponent implements OnInit {
 
-  protected readonly allMatchStates = allMatchStates.filter(m => m !== MatchStateOption.Matched); // Matched will have too many
+  protected readonly allMatchStates = computed(() => this.isDirect()
+    ? allMatchStates.filter(m => m !== MatchStateOption.Error)
+    : allMatchStates.filter(m => m !== MatchStateOption.Matched));
+  protected readonly licenseService = inject(LicenseService);
+  protected readonly sources = computed(() => this.licenseService.hasActiveLicense()
+    ? ["comicvine", "gcd", "kavitaplus"] : []);
+  protected readonly isDirect = computed(() => this.formGroup.source().value() !== "kavitaplus");
+  private requestNumber = 0;
+  private countRequest = 0;
 
   private readonly actionService = inject(ActionService);
   private readonly manageService = inject(ManageService);
@@ -75,7 +86,11 @@ export class ManageMatchedMetadataComponent implements OnInit {
   protected readonly destroyRef = inject(DestroyRef);
   private readonly libraryService = inject(LibraryService);
 
-  metadataEnabledLibraryTypes = signal<EnumOption<LibraryType>[]>([]);
+  private paidLibraryTypes = signal<LibraryType[]>([]);
+  metadataEnabledLibraryTypes = computed<EnumOption<LibraryType>[]>(() => [
+    ...(this.isDirect() ? [LibraryType.Comic, LibraryType.ComicVine] : this.paidLibraryTypes()).map(value => ({value})),
+    {value: -1 as LibraryType}
+  ]);
   isLoading = signal(true);
   data = signal<ManageMatchSeries[]>([]);
   pagination = signal<Pagination>({
@@ -86,7 +101,8 @@ export class ManageMatchedMetadataComponent implements OnInit {
   });
 
   private readonly formModel = signal<FormModel>({
-    matchState: MatchStateOption.Error,
+    source: "comicvine",
+    matchState: MatchStateOption.NotMatched,
     libraryType: -1 as LibraryType // Denotes all
   });
   formGroup = form(this.formModel);
@@ -102,36 +118,42 @@ export class ManageMatchedMetadataComponent implements OnInit {
 
     if (totalItems == 0) return 0;
 
-    return  (totalItems - (matchedCount.dontMatchCount + matchedCount.erroredCount)) / totalItems;
+    return  (totalItems - (matchedCount.dontMatchCount + matchedCount.erroredCount + matchedCount.notMatchedCount)) / totalItems;
   });
   isMatchedState = computed(() => {
     return this.formGroup.matchState().value() === MatchStateOption.Matched;
   });
 
   constructor() {
+    toObservable(this.formGroup.source().value).pipe(skip(1), takeUntilDestroyed()).subscribe(() => {
+      this.formModel.update(value => ({...value, libraryType: -1 as LibraryType, matchState: MatchStateOption.NotMatched}));
+      this.data.set([]);
+      this.matchedCounts.set(null);
+    });
     toObservable(this.formModel).pipe(
       debounceTime(300),
       distinctUntilChanged(),
       skip(1),
-      switchMap(() => this.loadData()),
+      switchMap(() => {
+        this.refreshCounts();
+        return this.loadData();
+      }),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe();
   }
 
   ngOnInit() {
-    this.libraryService.getLibraryTypesWithMetadataSupport().pipe(
+    if (this.licenseService.hasActiveLicense()) this.libraryService.getLibraryTypesWithMetadataSupport().pipe(
       takeUntilDestroyed(this.destroyRef),
-      tap(types => this.metadataEnabledLibraryTypes.set([
-        ...types.map(l => ({value: l})),
-        {value: -1 as LibraryType}
-      ]))
+      tap(types => this.paidLibraryTypes.set(types))
     ).subscribe();
 
     this.messageHub.messages$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(message => {
       if (message.event == EVENTS.ScanSeries) {
         const evt = message.payload as ScanSeriesEvent;
         if (this.data().filter(d => d.series.id === evt.seriesId).length > 0) {
-          this.loadData();
+          this.loadData().subscribe();
+          this.refreshCounts();
         }
       }
 
@@ -141,9 +163,7 @@ export class ManageMatchedMetadataComponent implements OnInit {
       }
     });
 
-    this.manageService.getMatchedExternalSeriesCount().subscribe(res => {
-      this.matchedCounts.set(res);
-    });
+    this.refreshCounts();
 
     this.loadData().subscribe();
   }
@@ -153,6 +173,8 @@ export class ManageMatchedMetadataComponent implements OnInit {
   }
 
   loadData(pageNumber: number = 1) {
+    const request = ++this.requestNumber;
+    const source = this.formGroup.source().value();
     const filter: ManageMatchFilter = {
       matchStateOption: this.formGroup.matchState().value(),
       libraryType: this.formGroup.libraryType().value(),
@@ -161,7 +183,8 @@ export class ManageMatchedMetadataComponent implements OnInit {
 
     this.isLoading.set(true);
 
-    return this.manageService.getAllKavitaPlusSeries(filter, pageNumber, this.pagination().itemsPerPage).pipe(tap(data => {
+    return this.manageService.getAllKavitaPlusSeries(filter, pageNumber, this.pagination().itemsPerPage, source).pipe(tap(data => {
+      if (request !== this.requestNumber || source !== this.formGroup.source().value()) return;
       this.data.set(data.result);
       this.pagination.set({
         itemsPerPage: data.pagination.itemsPerPage,
@@ -171,18 +194,27 @@ export class ManageMatchedMetadataComponent implements OnInit {
       });
       this.isLoading.set(false);
 
+    }), catchError(() => {
+      if (request === this.requestNumber) this.isLoading.set(false);
+      return of(null);
     }));
+  }
+
+  private refreshCounts() {
+    const request = ++this.countRequest;
+    const source = this.formGroup.source().value();
+    this.manageService.getMatchedExternalSeriesCount(source).subscribe(res => {
+      if (request === this.countRequest && source === this.formGroup.source().value()) this.matchedCounts.set(res);
+    });
   }
 
   fixMatch(series: Series) {
     this.actionService.matchSeries(series, result => {
       if (!result) return;
 
-      this.data.update(x => x.filter(s => s.series.id !== series.id));
-      this.manageService.getMatchedExternalSeriesCount().subscribe(res => {
-        this.matchedCounts.set(res);
-      });
-    });
+      this.loadData().subscribe();
+      this.refreshCounts();
+    }, this.formGroup.source().value() === 'gcd' ? MetadataProvider.Gcd : this.isDirect() ? MetadataProvider.ComicVine : undefined);
   }
 
   protected readonly MatchStateOption = MatchStateOption;

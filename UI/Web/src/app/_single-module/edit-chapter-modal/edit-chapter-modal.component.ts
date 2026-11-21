@@ -44,7 +44,8 @@ import {BytesPipe} from "../../_pipes/bytes.pipe";
 import {ImageComponent} from "../../shared/image/image.component";
 import {SafeHtmlPipe} from "../../_pipes/safe-html.pipe";
 import {ReadTimePipe} from "../../_pipes/read-time.pipe";
-import {ChapterService} from "../../_services/chapter.service";
+import {LicenseService} from "../../_services/license.service";
+import {ChapterService, GcdIssueDetail} from "../../_services/chapter.service";
 import {AgeRating} from "../../_models/metadata/age-rating";
 import {ActionItem} from "../../_models/actionables/action-item";
 import {Action} from "../../_models/actionables/action";
@@ -134,6 +135,18 @@ export class EditChapterModalComponent implements OnInit {
   private readonly actionFactoryService = inject(ActionFactoryService);
   private readonly actionService = inject(ActionService);
   private readonly downloadService = inject(DownloadService);
+  protected readonly license = inject(LicenseService);
+  protected readonly gcdIssue = signal<GcdIssueDetail | null>(null);
+  protected readonly gcdStatus = signal<'idle' | 'loading' | 'error'>('idle');
+
+  protected loadGcdIssue() {
+    this.gcdStatus.set('loading');
+    this.chapterService.getGcdIssue(this.seriesId(), this.chapter().id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: issue => { this.gcdIssue.set(issue); this.gcdStatus.set('idle'); },
+      error: () => this.gcdStatus.set('error')
+    });
+  }
+
   private readonly chapterService = inject(ChapterService);
   private readonly coverChooserConfigFactory = inject(CoverChooserConfigFactoryService);
   private readonly typeaheadSettingsFactory = inject(TypeaheadConfigFactoryService);

@@ -476,7 +476,7 @@ export class EditSeriesModalComponent implements OnInit {
   }
 
   get MetadataProvidersEnumOptions(): EnumOption<MetadataProvider | null>[] {
-    const options: EnumOption<MetadataProvider | null>[] = AllMetadataProviders.map(p => ({value: p}));
+    const options: EnumOption<MetadataProvider | null>[] = this.AllMetadataProviders.map(p => ({value: p}));
     options.push({value: null});
 
     return options;
@@ -488,5 +488,8 @@ export class EditSeriesModalComponent implements OnInit {
   protected readonly PersonRole = PersonRole;
   protected readonly Action = Action;
   protected readonly parseInt = parseInt;
-  protected readonly AllMetadataProviders = AllMetadataProviders;
+  get AllMetadataProviders() {
+    return AllMetadataProviders.filter(p => ![MetadataProvider.ComicVine, MetadataProvider.Gcd].includes(p) ||
+      [LibraryType.Comic, LibraryType.ComicVine].includes(this.libraryType()));
+  }
 }

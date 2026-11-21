@@ -5,11 +5,15 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Text.RegularExpressions;
+using Kavita.Models.DTOs.KavitaPlus.Audit;
 using System.Threading.Tasks;
 using Hangfire;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services;
+using Kavita.API.Services.Metadata;
 using Kavita.API.Services.Plus;
 using Kavita.API.Services.Reading;
 using Kavita.API.Services.ReadingLists;
@@ -33,6 +37,7 @@ using Kavita.Models.Parser;
 using Kavita.Services.Builders;
 using Kavita.Services.Extensions;
 using Kavita.Services.Helpers;
+using Kavita.Services.Metadata;
 using Kavita.Services.Plus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -47,6 +52,8 @@ internal sealed record ProcessParserInfosArgs
     public required Dictionary<string, Person> DatabasePeople { get; init; }
     public KeptFiles Kept { get; init; } = KeptFiles.None;
     public bool ForceUpdate { get; init; }
+    public bool PreserveGcdMetadata { get; init; }
+    public bool PreserveMissingComicVineMetadata { get; init; }
 }
 
 internal sealed record UpdateChapterComicInfoArgs
@@ -81,7 +88,8 @@ public class ProcessSeries(
     IReadingItemService readingItemService,
     IFileService fileService,
     IReadingListService readingListService,
-    IExternalMetadataService externalMetadataService)
+    IExternalMetadataService externalMetadataService,
+    IComicVineService comicVineService, IKavitaPlusAuditService audit, IGcdService? gcd = null)
     : IProcessSeries
 {
 
@@ -133,6 +141,65 @@ public class ProcessSeries(
         {
             logger.LogInformation("[ScannerService] Processing series {SeriesName} with {Count} files", series.OriginalName, parsedInfos.Count);
 
+            var useGcd = (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.Gcd;
+            ExternalSeriesDetailDto? automaticMatch = null;
+            if ((series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
+                && library.Type is (LibraryType.Comic or LibraryType.ComicVine) && library.AllowMetadataMatching
+                && library.EnableMetadata && !series.DontMatch && string.IsNullOrEmpty(series.ComicVineId))
+            {
+                automaticMatch = await FindComicMatch(series.Name, parsedInfos, comicVineService);
+                if (automaticMatch?.ComicVineId is > 0)
+                    series.ComicVineId = automaticMatch.ComicVineId.Value.ToString(CultureInfo.InvariantCulture);
+            }
+            if (useGcd && gcd != null && !series.DontMatch && !series.GcdId.HasValue && library.EnableMetadata
+                && library.AllowMetadataMatching && library.Type is (LibraryType.Comic or LibraryType.ComicVine))
+            {
+                var links = parsedInfos.Where(i => !i.IsSpecialInfo() && !i.IsPlaceholder)
+                    .SelectMany(i => (i.ComicInfo?.Web ?? "").Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
+                    .Select(GcdReference.TryParse).OfType<GcdReference>().Distinct().ToList();
+                if (links.Count == 0)
+                    automaticMatch = await FindComicMatch(series.Name, parsedInfos, gcd);
+                else
+                {
+                    try
+                    {
+                        var parents = new HashSet<int?>();
+                        foreach (var link in links)
+                        {
+                            parents.Add(link.Issue ? (await gcd.GetIssueAsync(link.Id))?.SeriesId : link.Id);
+                            if (parents.Count > 1 || parents.Contains(null)) break;
+                        }
+                        if (parents.Count == 1 && parents.Single() is {} parent)
+                            automaticMatch = await gcd.GetVolumeAsync(parent);
+                    }
+                    catch (KavitaException) { /* Defer this match until the next scan. */ }
+                }
+                series.GcdId = automaticMatch?.GcdId;
+            }
+            var hasPinnedComicVineMatch = (series.MetadataProviderOverride ?? library.MetadataProvider) == MetadataProvider.ComicVine
+                && !string.IsNullOrEmpty(series.ComicVineId);
+            if (hasPinnedComicVineMatch)
+            {
+                // An explicit UI match takes precedence over stale IDs embedded in individual issues.
+                foreach (var info in parsedInfos.Where(i => !i.IsPlaceholder && !i.IsSpecialInfo()))
+                {
+                    info.ComicVineSeriesId = series.ComicVineId;
+                    info.ComicVineId = null;
+                }
+            }
+            var directComicVineEnabled = !useGcd && !series.DontMatch
+                && await comicVineService.EnrichAsync(parsedInfos, library.Type, library.EnableMetadata);
+            if (useGcd && !series.DontMatch && library.EnableMetadata)
+            {
+                var savedIssues = series.Volumes.SelectMany(v => v.Chapters).Where(c => c.GcdId.HasValue)
+                    .SelectMany(c => c.Files.Select(f => (f.FilePath, c.GcdId))).ToLookup(x => x.FilePath, x => x.GcdId);
+                foreach (var info in parsedInfos)
+                    info.GcdId = savedIssues[info.FullFilePath].FirstOrDefault();
+            }
+            var directGcdEnabled = useGcd && gcd != null && library.EnableMetadata && !series.DontMatch
+                && library.Type is (LibraryType.Comic or LibraryType.ComicVine)
+                && await gcd.EnrichAsync(parsedInfos, series.GcdId);
+
             // parsedInfos[0] is not the first volume or chapter. We need to find it using a ComicInfo check (as it uses firstParsedInfo for series sort)
             var firstParsedInfo = parsedInfos.FirstOrDefault(p => p.ComicInfo != null, firstInfo);
             stepWatch.Restart();
@@ -153,6 +220,8 @@ public class ProcessSeries(
                 DatabasePeople = databasePeople,
                 Kept = kept,
                 ForceUpdate = args.ForceUpdate,
+                PreserveMissingComicVineMetadata = directComicVineEnabled,
+                PreserveGcdMetadata = directGcdEnabled,
             });
             var chaptersMs = stepWatch.ElapsedMilliseconds;
 
@@ -177,13 +246,19 @@ public class ProcessSeries(
             }
 
             // Check if there is a comicvineSeriesId on file
-            var comicVineSeriesIds = parsedInfos.Select(p => p.ComicVineSeriesId).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
-            if (comicVineSeriesIds.Count == 1)
+            // An annual inside Specials can belong to a different Comic Vine volume. Its issue
+            // identity stays on its chapter and must not replace the parent comic's match.
+            var comicVineSeriesIds = parsedInfos
+                .Where(p => !library.Folders.Any(folder => Parser.GetSpecialsOwnerFolder(p.FullFilePath, folder.Path) != null))
+                .Select(p => p.ComicVineSeriesId).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+            if (!useGcd && !hasPinnedComicVineMatch && comicVineSeriesIds.Count == 1)
             {
                 series.ComicVineId =  comicVineSeriesIds[0];
             }
 
             await UpdateSeriesMetadata(databasePeople, settings, series, library);
+            if (automaticMatch != null)
+                await ComicVineMatchingService.ApplyVolumeMetadata(unitOfWork, series, automaticMatch, CancellationToken.None);
 
             // After UpdateSeriesMetadata so the language has updated
             var removePrefix = library.RemovePrefixForSortName;
@@ -244,6 +319,10 @@ public class ProcessSeries(
                 }
 
                 stepWatch.Restart();
+                if (automaticMatch != null)
+                    await audit.LogMatchAsync(KavitaPlusEventType.SeriesMatched, series.Id,
+                        new AuditLogMatchedParamsDto { SeriesName = series.Name, MatchedName = automaticMatch.Name,
+                            After = new() { ComicVineId = automaticMatch.ComicVineId, GcdId = automaticMatch.GcdId } });
                 // Process reading list after commit as we need to commit per list
                 if (library.ManageReadingLists)
                 {
@@ -290,6 +369,26 @@ public class ProcessSeries(
 
         return new ProcessSeriesResult(series.Id, seriesAdded,
             chapterChanges.Added, chapterChanges.Updated, chapterChanges.Removed);
+    }
+
+    private static async Task<ExternalSeriesDetailDto?> FindComicMatch(string title, IList<ParserInfo> infos, IComicCatalog catalog)
+    {
+        var issues = infos.Where(i => !i.IsSpecialInfo() && !i.IsPlaceholder).ToList();
+        if (issues.Count == 0 || catalog is IComicVineService && issues.Any(i => !string.IsNullOrEmpty(i.ComicVineId) || !string.IsNullOrEmpty(i.ComicVineSeriesId))) return null;
+        var publishers = issues.Select(i => i.ComicInfo?.Publisher?.Trim()).Where(p => !string.IsNullOrEmpty(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (publishers.Count > 1) return null;
+        var run = Regex.Match(title, @"\s+\((?<year>[0-9]{4})\)$", RegexOptions.CultureInvariant);
+        int? year = run.Success ? int.Parse(run.Groups["year"].Value, CultureInfo.InvariantCulture) : null;
+        var name = run.Success ? title[..run.Index].Trim() : title;
+        if (catalog is IGcdService gcd)
+        {
+            var languages = issues.Select(i => i.ComicInfo?.LanguageISO).Where(l => !string.IsNullOrWhiteSpace(l))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (languages.Count > 1) return null;
+            return await gcd.FindSeriesAsync(name, year, publishers.FirstOrDefault(), languages.FirstOrDefault());
+        }
+        return await catalog.FindVolumeAsync(name, year, publishers.FirstOrDefault());
     }
 
     private async Task ReportDuplicateSeriesLookup(Library library, ParserInfo firstInfo, Exception ex)
@@ -423,8 +522,17 @@ public class ProcessSeries(
             .SelectMany(volume => volume.Chapters)
             .ToList();
 
-        // Update Metadata based on Chapter metadata
-        if (!series.Metadata.ReleaseYearLocked)
+        // A manually selected Comic Vine volume owns series-level metadata. Issue aggregation
+        // must not replace its synopsis/year/publisher with those of the first local issue.
+        var hasComicVineMatch = !series.DontMatch && ((series.MetadataProviderOverride ?? library.MetadataProvider) switch
+        {
+            MetadataProvider.Gcd => series.GcdId.HasValue,
+            MetadataProvider.ComicVine => !string.IsNullOrEmpty(series.ComicVineId),
+            _ => false
+        });
+
+        // Use chapter metadata as a fallback when the selected volume has no value.
+        if (!series.Metadata.ReleaseYearLocked && (!hasComicVineMatch || series.Metadata.ReleaseYear == 0))
         {
             series.Metadata.ReleaseYear = chapters.MinimumReleaseYear();
         }
@@ -438,12 +546,12 @@ public class ProcessSeries(
             TryUpdatePublicationStatus(series, chapters);
         }
 
-        if (!series.Metadata.SummaryLocked)
+        if (!series.Metadata.SummaryLocked && (!hasComicVineMatch || string.IsNullOrWhiteSpace(series.Metadata.Summary)))
         {
             series.Metadata.Summary = firstChapter?.Summary ?? string.Empty;
         }
 
-        if (!series.Metadata.LanguageLocked)
+        if (!series.Metadata.LanguageLocked && ((series.MetadataProviderOverride ?? library.MetadataProvider) != MetadataProvider.Gcd || string.IsNullOrEmpty(series.Metadata.Language)))
         {
             if (!string.IsNullOrEmpty(firstChapter?.Language))
             {
@@ -455,7 +563,8 @@ public class ProcessSeries(
             }
         }
 
-        if (!string.IsNullOrEmpty(firstChapter?.WebLinks) && library.InheritWebLinksFromFirstChapter)
+        if (!string.IsNullOrEmpty(firstChapter?.WebLinks) && library.InheritWebLinksFromFirstChapter
+            && (!hasComicVineMatch || string.IsNullOrEmpty(series.Metadata.WebLinks)))
         {
             series.Metadata.WebLinks = firstChapter.WebLinks;
             var aniListId = ExternalIdParser.GetAniListId(series.Metadata.WebLinks);
@@ -467,7 +576,8 @@ public class ProcessSeries(
                 series.MalId = malId.Value;
 
             var (comicVineId, isSeriesLink) = ExternalIdParser.GetComicVineId(series.Metadata.WebLinks);
-            if (comicVineId != null && isSeriesLink)
+            if (comicVineId != null && isSeriesLink
+                && (series.MetadataProviderOverride ?? library.MetadataProvider) != MetadataProvider.ComicVine)
             {
                 series.ComicVineId = comicVineId;
             }
@@ -491,6 +601,8 @@ public class ProcessSeries(
         foreach (var personRole in Enum.GetValues<PersonRole>())
         {
             if (series.Metadata.IsPersonRoleLocked(personRole)) continue;
+            if (hasComicVineMatch && personRole == PersonRole.Publisher
+                && series.Metadata.People.Any(p => p.Role == PersonRole.Publisher)) continue;
 
             var chapterPeople = chapters
                 .SelectMany(c => c.People.Where(p => p.Role == personRole)).ToList();
@@ -1070,6 +1182,19 @@ public class ProcessSeries(
 
     private async Task UpdateChapter(ProcessParserInfosArgs args, Chapter chapter, ParserInfo info, bool fileChanged)
     {
+        // A forced rescan may hit an API outage or the request budget. Keep previously fetched
+        // values as a final fallback, but only while the file still identifies the same comic.
+        if (args.PreserveMissingComicVineMetadata && !string.IsNullOrEmpty(chapter.ComicVineId)
+            && (chapter.ComicVineId == info.ComicVineId
+                || (string.IsNullOrEmpty(info.ComicVineId) && !string.IsNullOrEmpty(info.ComicVineSeriesId)
+                    && info.ComicVineSeriesId == args.Series.ComicVineId)))
+        {
+            ComicVineService.FillFromExistingChapter(info.ComicInfo ??= new ComicInfo(), chapter);
+        }
+
+        if (args.PreserveGcdMetadata && chapter.GcdId.HasValue && (info.GcdId == null || chapter.GcdId == info.GcdId))
+            ComicVineService.FillFromExistingChapter(info.ComicInfo ??= new ComicInfo(), chapter);
+        if (info.GcdId.HasValue) chapter.GcdId = info.GcdId;
         chapter.UpdateFrom(info);
 
         chapter.Number = info.LowestChapter.ToString(CultureInfo.InvariantCulture);

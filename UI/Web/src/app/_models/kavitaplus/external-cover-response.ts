@@ -13,6 +13,7 @@ export enum ExternalCoverImageType
 
 export interface ExternalCoverResponse {
   url: string;
+  sourceUrl?: string;
   /** Only on MangaBaka responses */
   language?: string;
   type: ExternalCoverImageType;

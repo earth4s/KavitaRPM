@@ -127,6 +127,7 @@ public class ParserInfo
     /// Extracted from Notes field, not explicitly part of spec
     /// </summary>
     public string? ComicVineId { get; set; }
+    public int? GcdId { get; set; }
     /// <summary>
     /// If the ComicVine slug starts with 4050, it's a Volume/Series Id
     /// </summary>

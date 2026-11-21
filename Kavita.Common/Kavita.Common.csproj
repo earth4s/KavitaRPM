@@ -4,6 +4,7 @@
         <Company>kavitareader.com</Company>
         <Product>Kavita</Product>
         <AssemblyVersion>0.9.1.24</AssemblyVersion>
+        <InformationalVersion>$(AssemblyVersion)-kavitarpm</InformationalVersion>
         <NeutralLanguage>en</NeutralLanguage>
         <TieredPGO>true</TieredPGO>
     </PropertyGroup>

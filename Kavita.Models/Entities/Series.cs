@@ -147,6 +147,7 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasMetadataIds, IHasLo
     public bool IsStandAlone { get; set; }
     public long MetronId { get; set; }
     public string ComicVineId { get; set; }
+    public int? GcdId { get; set; }
     public int MangaBakaId { get; set; }
     public string MangaBakaEditionId { get; set; }
     public int CbrId { get; set; }

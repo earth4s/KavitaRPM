@@ -110,7 +110,8 @@ public class ExternalMetadataServiceTests: AbstractDbTest
            mapper, Substitute.For<ILicenseService>(), Substitute.For<IScrobblingService>(),
            Substitute.For<IEventHub>(), Substitute.For<ICoverDbService>(),
            Substitute.For<IKavitaPlusApiService>(), Substitute.For<IFileCacheService>(),
-           Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>());
+           Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>(),
+           Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
 
        // Clear tracker so test body starts with a clean slate
        context.ChangeTracker.Clear();
@@ -4396,7 +4397,8 @@ public class ExternalMetadataServiceTests: AbstractDbTest
             mapper, Substitute.For<ILicenseService>(), Substitute.For<IScrobblingService>(),
             Substitute.For<IEventHub>(), coverDbService,
             Substitute.For<IKavitaPlusApiService>(), Substitute.For<IFileCacheService>(),
-            Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>());
+            Substitute.For<IKavitaPlusAuditService>(), Substitute.For<IImageFileService>(),
+            Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
 
         await externalMetadataService.WriteExternalMetadataToSeries(new ExternalSeriesDetailDto
         {
@@ -4551,7 +4553,8 @@ public class ExternalMetadataServiceTests: AbstractDbTest
             mapper, Substitute.For<ILicenseService>(), Substitute.For<IScrobblingService>(),
             Substitute.For<IEventHub>(), coverDbService,
             Substitute.For<IKavitaPlusApiService>(), fileCacheService,
-            Substitute.For<IKavitaPlusAuditService>(), imageFileService);
+            Substitute.For<IKavitaPlusAuditService>(), imageFileService,
+            Substitute.For<Kavita.API.Services.Metadata.IComicVineService>());
     }
 
     private static async Task<MetadataSettingsDto> CoverSettings(IUnitOfWork unitOfWork)

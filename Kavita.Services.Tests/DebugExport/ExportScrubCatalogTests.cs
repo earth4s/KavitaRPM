@@ -53,6 +53,8 @@ public class ExportScrubCatalogTests
     [InlineData("KoboSyncPoint.KoboStoreSyncToken")]
     [InlineData("KoboSyncPoint.KoboDeviceId")]
     [InlineData("ServerSettingKey.LicenseKey")]
+    [InlineData("ServerSettingKey.GcdCredentials")]
+    [InlineData("ServerSettingKey.ComicVineApiKey")]
     [InlineData("OidcConfigDto.Secret")]
     [InlineData("DataProtectionKey.Xml")]
     public void KnownSecretsAreScrubbed(string name)

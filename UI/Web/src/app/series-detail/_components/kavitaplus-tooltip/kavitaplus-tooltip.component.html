@@ -28,7 +28,7 @@
               <span class="text-uppercase fw-semibold" style="font-size: 10px; letter-spacing: 0.06em;">{{t('metadata-source')}}</span>
               <div class="d-flex align-items-center gap-2">
                 <app-metadata-provider-tag-badge [metadataProvider]="info.metadataProvider" />
-                @if (info.lastRefreshedUtc != NULL_DATE) {
+                @if (info.lastRefreshedUtc && info.lastRefreshedUtc != NULL_DATE) {
                   <span class="text-muted" style="font-size: 11px;">
                   <i class="ti ti-refresh" aria-hidden="true"></i> {{info.lastRefreshedUtc | utcToLocalDate | timeDifference}}
                   <span class="dot-separator" aria-hidden="true"></span>
@@ -39,10 +39,22 @@
             </div>
           }
 
-          @if (info.mangaBakaId || info.hardcoverId || info.cbrId || info.aniListId) {
+          @if (info.gcdId || info.comicVineId || info.mangaBakaId || info.hardcoverId || info.cbrId || info.aniListId) {
             <div class="d-flex flex-column gap-1">
               <span class="text-uppercase fw-semibold" style="font-size: 10px; letter-spacing: 0.06em;">{{t('linked-to')}}</span>
               <div class="d-flex align-items-center flex-wrap gap-2">
+                @if (info.gcdId) {
+                  <a [href]="'https://www.comics.org/series/' + info.gcdId + '/'" target="_blank" rel="noopener noreferrer">GCD #{{info.gcdId}}</a>
+                  @if (info.metadataProvider === MetadataProvider.Gcd) {
+                    <button class="btn btn-sm btn-outline-secondary" type="button" (click)="showCatalogDetails(info)">{{t('view-details')}}</button>
+                  }
+                }
+                @if (info.comicVineId) {
+                  <a [href]="'https://comicvine.gamespot.com/volume/4050-' + info.comicVineId + '/'" target="_blank" rel="noopener noreferrer">Comic Vine #{{info.comicVineId}}</a>
+                  @if (info.metadataProvider === MetadataProvider.ComicVine) {
+                    <button class="btn btn-sm btn-outline-secondary" type="button" (click)="showCatalogDetails(info)">{{t('view-details')}}</button>
+                  }
+                }
                 @if (info.mangaBakaId) {
                   <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.MangaBaka" [id]="info.mangaBakaId" />
                 }
