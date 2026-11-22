@@ -2,9 +2,10 @@ name: Comic Vine Private Nightly
 
 on:
   push:
-    branches: [feature/comicvine-api-metadata]
+    branches: [develop]
     paths:
       - .github/workflows/comicvine-nightly.yml
+      - .github/workflows/verify-private-release.yml
       - scripts/nightly/**
       - packaging/rpm/**
   workflow_dispatch:
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   frontend:
-    if: github.repository == 'earth4s/KavitaRPM'
+    if: github.repository == 'earth4s/KavitaRPM' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -56,7 +57,7 @@ jobs:
           echo "date=$date_stamp" >> "$GITHUB_OUTPUT"
 
   tests:
-    if: github.repository == 'earth4s/KavitaRPM'
+    if: github.repository == 'earth4s/KavitaRPM' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -128,6 +129,8 @@ jobs:
         run: bash scripts/nightly/draft-release.sh upload _nightly/dist/*
 
   release:
+    outputs:
+      release_id: ${{ steps.finalize.outputs.release_id }}
     needs: [frontend, package]
     runs-on: ubuntu-24.04
     permissions:
@@ -178,9 +181,10 @@ jobs:
 
           Start the RPM service: sudo systemctl enable --now kavita.service
 
-          Native archives extract into Kavita/ and start with ./Kavita. This is a prerelease from an unmerged feature branch. Back up your existing config directory before upgrading; database migrations may prevent downgrading.
+          Native archives extract into Kavita/ and start with ./Kavita. This prerelease was built from the develop branch. Back up your existing config directory before upgrading; database migrations may prevent downgrading.
           EOF
       - name: Complete private draft without publishing
+        id: finalize
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -200,16 +204,12 @@ jobs:
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | \
             jq -s --arg tag "$NIGHTLY_TAG" 'add | map(select(.tag_name == $tag)) | if length == 1 then .[0] else error("Draft not found") end' > release-state.json
           jq -e '.draft == true and .published_at == null and (.assets | length) == 8' release-state.json > /dev/null
-          # curl receives no Authorization header. Browser downloads must be inaccessible;
-          # the anonymous API may return 403 when its shared runner IP is rate limited.
-          check_denied() {
-            local label="$1" api_url="$2" web_url="$3" api_code web_code
-            api_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$api_url")"
-            web_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$web_url")"
-            echo "$label anonymous status: API=$api_code, browser=$web_code"
-            test "$web_code" = 404
-            [[ "$api_code" == 404 || "$api_code" == 403 ]]
-          }
-          check_denied release "$(jq -r '.url' release-state.json)" "$(jq -r '.html_url' release-state.json)"
-          check_denied asset "$(jq -r '.assets[0].url' release-state.json)" "$(jq -r '.assets[0].browser_download_url' release-state.json)"
-          echo "Private draft nightly (repository writers only): $(jq -r '.url' draft-state.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "release_id=$(jq -er '.id' release-state.json)" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/verify-private-release.yml
+    with:
+      release_id: ${{ needs.release.outputs.release_id }}
