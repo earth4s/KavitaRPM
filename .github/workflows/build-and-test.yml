@@ -1,28 +1,37 @@
-name: Build and Test PR
+name: Pull request CI
 
 on:
   pull_request:
     branches: [ '**' ]
 
 jobs:
-  build:
-    name: Build and Test PR
-    runs-on: windows-latest
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            check: Build and Test PR
+          - runner: ubuntu-latest
+            check: Test PR (linux)
+    name: ${{ matrix.check }}
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v5
         with:
-            fetch-depth: 1
+          fetch-depth: 1
 
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v5
         with:
-            dotnet-version: 10.0.x
+          dotnet-version: 10.0.x
 
       - name: Install dependencies
         run: dotnet restore
 
       - uses: actions/upload-artifact@v5
+        if: runner.os == 'Windows'
         with:
           name: csproj
           path: Kavita.Common/Kavita.Common.csproj
@@ -30,22 +39,62 @@ jobs:
       - name: Test
         run: dotnet test --no-restore --verbosity normal --filter "Category!=Integration"
 
-  test-macos:
-    name: Test PR (linux)
+  build-ui:
+    name: Build UI
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: NodeJS to Compile WebUI
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: |
+          cd UI/Web || exit
+          echo 'Installing web dependencies'
+          npm ci --legacy-peer-deps
+
+          echo 'Building UI'
+          npm run prod
+
+  generate-openapi:
+    name: Generate OpenAPI
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v5
         with:
-            fetch-depth: 1
+          fetch-depth: 1
 
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v5
         with:
-            dotnet-version: 10.0.x
+          dotnet-version: 10.0.x
 
       - name: Install dependencies
         run: dotnet restore
 
-      - name: Test
-        run: dotnet test --no-restore --verbosity normal --filter "Category!=Integration"
+      - name: Build Server
+        run: dotnet build Kavita.Server/Kavita.Server.csproj --configuration Debug --no-restore --output "$RUNNER_TEMP/build"
+
+      - name: Read Swashbuckle version
+        id: swashbuckle
+        run: |
+          version=$(grep -o '<PackageReference Include="Swashbuckle.AspNetCore"[^>]*Version="[^"]*"' Kavita.Services/Kavita.Services.csproj \
+            | grep -o 'Version="[^"]*"' \
+            | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install matching Swashbuckle CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/openapi"
+          cd "$RUNNER_TEMP/openapi"
+          dotnet new tool-manifest
+          dotnet tool install Swashbuckle.AspNetCore.Cli --version "${{ steps.swashbuckle.outputs.version }}"
+
+      - name: Generate spec
+        working-directory: ${{ runner.temp }}/openapi
+        run: dotnet swagger tofile --output "$RUNNER_TEMP/openapi.json" "$RUNNER_TEMP/build/Kavita.Server.dll" v1
