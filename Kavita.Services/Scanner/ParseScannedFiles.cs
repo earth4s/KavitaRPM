@@ -260,7 +260,7 @@ public partial class ParseScannedFiles
                 }
 
                 // Skip Specials containers, letting their parent comic handle them.
-                if (Parser.IsSpecialsFolder(directory) && !IsDirectChild(directory, folderPath))
+                if (Parser.IsSpecialsFolder(directory) && !IsDirectChild(directory, tree.Root))
                 {
                     _logger.LogDebug("Skipping Specials container {Directory}", directory);
                     skippedSpecials.Add(directory);
@@ -443,7 +443,7 @@ public partial class ParseScannedFiles
     private static bool IsDirectChild(string folder, string parent)
     {
         var lastSlash = folder.LastIndexOf('/');
-        return lastSlash > 0 && folder.AsSpan(0, lastSlash).Equals(parent, StringComparison.Ordinal);
+        return lastSlash >= 0 && folder.AsSpan(0, lastSlash).SequenceEqual(parent.AsSpan().TrimEnd('/'));
     }
 
     /// <summary>
