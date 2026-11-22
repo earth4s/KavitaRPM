@@ -1,6 +1,6 @@
 import {HttpClient} from '@angular/common/http';
 import {inject, Injectable} from '@angular/core';
-import {environment} from 'src/environments/environment';
+import {environment} from '../../environments/environment';
 import {Member} from '../_models/auth/member';
 import {UserTokenInfo} from "../_models/kavitaplus/user-token-info";
 import {MemberInfo} from "../_models/user/member-info";
@@ -40,8 +40,8 @@ export class MemberService {
     return this.httpClient.get<boolean>(this.baseUrl + 'admin/exists');
   }
 
-  deleteMember(username: string) {
-    return this.httpClient.delete(this.baseUrl + 'users/delete-user?username=' + encodeURIComponent(username));
+  deleteMember(userId: number) {
+    return this.httpClient.delete(this.baseUrl + 'users/delete-user?userId=' + userId);
   }
 
   hasLibraryAccess(libraryId: number) {

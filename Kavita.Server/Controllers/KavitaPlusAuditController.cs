@@ -3,6 +3,7 @@ using Kavita.API.Database;
 using Kavita.Common.Helpers;
 using Kavita.Models.Constants;
 using Kavita.Models.DTOs.KavitaPlus;
+using Kavita.Models.DTOs.KavitaPlus.Audit;
 using Kavita.Models.Entities.Enums.Audit;
 using Kavita.Server.Attributes;
 using Kavita.Server.Extensions;
@@ -23,9 +24,10 @@ public class KavitaPlusAuditController(IUnitOfWork unitOfWork) : BaseApiControll
     public async Task<ActionResult<PagedList<KavitaPlusAuditEntryDto>>> GetEntries(
         KavitaPlusAuditFilterDto filter, [FromQuery] UserParams? userParams)
     {
+        var ct = HttpContext.RequestAborted;
         userParams ??= UserParams.Default;
 
-        var res = await unitOfWork.KavitaPlusAuditRepository.GetPagedAsync(filter, userParams);
+        var res = await unitOfWork.KavitaPlusAuditRepository.GetPagedAsync(filter, userParams, ct);
         Response.AddPaginationHeader(res);
 
         return Ok(res);
@@ -39,20 +41,31 @@ public class KavitaPlusAuditController(IUnitOfWork unitOfWork) : BaseApiControll
     [SeriesAccess]
     public async Task<ActionResult<KavitaPlusAuditSeriesInfoDto>> GetSeriesInfo(int seriesId)
     {
+        var ct = HttpContext.RequestAborted;
         var isAdmin = User.IsInRole(PolicyConstants.AdminRole);
         var result = await unitOfWork.KavitaPlusAuditRepository
-            .GetSeriesInfoAsync(seriesId, UserId, isAdmin);
+            .GetSeriesInfoAsync(seriesId, UserId, isAdmin, ct);
         return Ok(result);
     }
 
     /// <summary>
-    /// Returns aggregate stats for the admin audit feed header strip.
+    /// Returns aggregate stats for the admin audit feed
     /// </summary>
     [HttpGet("stats")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<KavitaPlusAuditStatsDto>> GetStats()
     {
-        return Ok(await unitOfWork.KavitaPlusAuditRepository.GetStatsAsync());
+        return Ok(await unitOfWork.KavitaPlusAuditRepository.GetStatsAsync(HttpContext.RequestAborted));
+    }
+
+    /// <summary>
+    /// Aggregate stats for my activity audit feed
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("my-stats")]
+    public async Task<ActionResult<KavitaPlusMyAuditStatsDto>> GetMyStats()
+    {
+        return Ok(await unitOfWork.KavitaPlusAuditRepository.GetMyStatsAsync(UserId, HttpContext.RequestAborted));
     }
 
     /// <summary>
@@ -62,10 +75,11 @@ public class KavitaPlusAuditController(IUnitOfWork unitOfWork) : BaseApiControll
     public async Task<ActionResult<PagedList<KavitaPlusAuditEntryDto>>> GetMyActivity(
         KavitaPlusAuditFilterDto filter, [FromQuery] UserParams? userParams)
     {
+        var ct = HttpContext.RequestAborted;
         userParams ??= UserParams.Default;
 
         var res = await unitOfWork.KavitaPlusAuditRepository
-            .GetMyActivityAsync(UserId, filter, userParams);
+            .GetMyActivityAsync(UserId, filter, userParams, ct);
         Response.AddPaginationHeader(res);
 
         return Ok(res);

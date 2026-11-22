@@ -1,8 +1,6 @@
 import {ChangeDetectionStrategy, Component, computed, inject, OnInit, signal} from '@angular/core';
-import {FontService} from "src/app/_services/font.service";
 import {AccountService} from "../../../_services/account.service";
 import {ConfirmService} from "../../../shared/confirm.service";
-import {EpubFont, FontProvider} from 'src/app/_models/preferences/epub-font';
 import {NgxFileDropEntry} from "ngx-file-drop";
 import {DOCUMENT} from "@angular/common";
 import {LoadingComponent} from "../../../shared/loading/loading.component";
@@ -10,15 +8,17 @@ import {SentenceCasePipe} from "../../../_pipes/sentence-case.pipe";
 import {SiteThemeProviderPipe} from "../../../_pipes/site-theme-provider.pipe";
 import {translate, TranslocoDirective} from "@jsverse/transloco";
 import {WikiLink} from "../../../_models/wiki";
-import {ToastrService} from "ngx-toastr";
-import {
-  FileDragAndDropUploadComponent
-} from "src/app/shared/file-drag-and-drop-upload/file-drag-and-drop-upload.component";
+import {ToastrService} from '@openng/ngx-toastr';
 import {NgbCollapse, NgbTooltip} from '@ng-bootstrap/ng-bootstrap';
 import {tap} from "rxjs";
 import {finalize} from "rxjs/operators";
 import {TranslocoInjectComponent} from "../../../shared/_components/transloco-inject/transloco-inject.component";
 import {TranslocoSlotDirective} from "../../../_directives/transloco-slot.directive";
+import {EpubFont, FontProvider} from "../../../_models/preferences/epub-font";
+import {FontService} from "../../../_services/font.service";
+import {
+  FileDragAndDropUploadComponent
+} from "../../../shared/file-drag-and-drop-upload/file-drag-and-drop-upload.component";
 
 /**
  * A family groups every uploaded/system file that shares the same family name (the name the user picks
@@ -66,6 +66,7 @@ export class FontManagerComponent implements OnInit {
   protected readonly fontService = inject(FontService);
 
   protected readonly isReadOnly = this.accountService.hasReadOnlyRole;
+  protected readonly isAdmin = this.accountService.hasAdminRole;
 
   fonts = signal<EpubFont[]>([]);
   hideSystemFonts = signal(false);
@@ -234,7 +235,7 @@ export class FontManagerComponent implements OnInit {
   }
 
   async deleteFamily(group: FontFamilyGroup) {
-    if (group.provider === FontProvider.System) return;
+    if (group.provider === FontProvider.System || !this.isAdmin()) return;
 
     if (!await this.confirmService.confirm(translate('toasts.confirm-delete-font'))) {
       return;

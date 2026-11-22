@@ -1,4 +1,8 @@
+using System;
 using System.IO.Abstractions;
+using System.Net;
+using System.Net.Http;
+using System;
 using Kavita.API.Services;
 using Kavita.API.Services.Helpers;
 using Kavita.API.Services.Metadata;
@@ -8,8 +12,11 @@ using Kavita.API.Services.ReadingLists;
 using Kavita.API.Services.Scanner;
 using Kavita.API.Services.SignalR;
 using Kavita.Models.Entities.Enums;
+using Kavita.Services.DebugExport;
 using Kavita.Services.Helpers;
 using Kavita.Services.HostedServices;
+using Kavita.Services.Images;
+using Kavita.Services.Kobo;
 using Kavita.Services.Metadata;
 using Kavita.Services.Plus;
 using Kavita.Services.Plus.ScrobbleService;
@@ -18,6 +25,7 @@ using Kavita.Services.ReadingLists;
 using Kavita.Services.Scanner;
 using Kavita.Services.SignalR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Kavita.Services.Extensions;
 
@@ -35,9 +43,14 @@ public static class ApplicationServiceExtensions
         services.AddScoped<ICacheService, CacheService>();
         services.AddScoped<IArchiveService, ArchiveService>();
         services.AddScoped<IBackupService, BackupService>();
+        services.AddScoped<IExportDatabaseScrubService, ExportDatabaseScrubService>();
+        services.AddScoped<IExportLogService, ExportLogService>();
+        services.AddScoped<IExportSystemInfoService, ExportSystemInfoService>();
+        services.AddScoped<IDebugExportService, DebugExportService>();
         services.AddScoped<ICleanupService, CleanupService>();
         services.AddScoped<IBookService, BookService>();
         services.AddScoped<IVersionUpdaterService, VersionUpdaterService>();
+        services.AddScoped<IGithubApiService, GithubApiService>();
         services.AddScoped<IDownloadService, DownloadService>();
         services.AddScoped<IReaderService, ReaderService>();
         services.AddScoped<IReadingItemService, ReadingItemService>();
@@ -50,7 +63,6 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IDeviceService, DeviceService>();
         services.AddScoped<IStatisticService, StatisticService>();
         services.AddScoped<IMediaErrorService, MediaErrorService>();
-        services.AddScoped<IMediaConversionService, MediaConversionService>();
         services.AddScoped<IStreamService, StreamService>();
         services.AddScoped<IRatingService, RatingService>();
         services.AddScoped<IPersonService, PersonService>();
@@ -68,10 +80,17 @@ public static class ApplicationServiceExtensions
         services.AddScoped<ICblImportService, CblImportService>();
 
         services.AddScoped<IScannerService, ScannerService>();
+        services.AddScoped<IFolderValidationService, FolderValidationService>();
         services.AddScoped<IProcessSeries, ProcessSeries>();
         services.AddScoped<IMetadataService, MetadataService>();
         services.AddScoped<IWordCountAnalyzerService, WordCountAnalyzerService>();
-        services.AddScoped<ILibraryWatcher, LibraryWatcher>();
+        services.AddScoped<IFolderWatchService, FolderWatchService>();
+        services.AddSingleton<IMountDetectorService, MountDetectorService>();
+        // IFileSystem is scoped; a singleton must not hold a scoped instance, and FileSystem keeps no state
+        services.AddSingleton<INativeFileWatcherService>(sp =>
+            new NativeFileWatcherService(new FileSystem(), sp.GetRequiredService<ILogger<NativeFileWatcherService>>(), TimeProvider.System));
+        services.AddSingleton<IFolderPollerService>(sp =>
+            new FolderPollerService(new FileSystem(), sp.GetRequiredService<ILogger<FolderPollerService>>()));
         services.AddScoped<ITachiyomiService, TachiyomiService>();
         services.AddScoped<ICollectionTagService, CollectionTagService>();
 
@@ -79,8 +98,36 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IDirectoryService, DirectoryService>();
         services.AddScoped<IEventHub, EventHub>();
         services.AddScoped<IPresenceTracker, PresenceTracker>();
-        services.AddScoped<IImageService, ImageService>();
+
+        services.AddSingleton<IImagePipeline, ImagePipeline>();
         services.AddScoped<ICoverDbService, CoverDbService>();
+        services.AddScoped<IImageFileService, ImageFileService>();
+        services.AddScoped<ICompositeCoverService, CompositeCoverService>();
+
+        services.AddScoped<IGcdSettingsService, GcdSettingsService>();
+        services.AddScoped<IGcdMatchingService, GcdMatchingService>();
+        services.AddSingleton<IGcdService>(sp => new GcdService(
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(30) },
+            async ct =>
+            {
+                using var scope = sp.CreateScope();
+                return await scope.ServiceProvider.GetRequiredService<IGcdSettingsService>().GetAuthorizationAsync(ct);
+            }, System.IO.Path.Combine("config", "gcd-cache.db"), TimeProvider.System));
+
+        services.AddScoped<IComicVineSettingsService, ComicVineSettingsService>();
+        services.AddScoped<IComicVineMatchingService, ComicVineMatchingService>();
+        // The query-string API key must never pass through HttpClientFactory's URI logging.
+        services.AddSingleton<IComicVineService>(sp => new ComicVineService(
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            },
+            Environment.GetEnvironmentVariable("KAVITA_COMICVINE_API_KEY"),
+            sp.GetRequiredService<ILogger<ComicVineService>>(), TimeProvider.System, async ct =>
+            {
+                using var scope = sp.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                return await scope.ServiceProvider.GetRequiredService<IComicVineSettingsService>().GetApiKeyAsync(ct);
+            }, System.IO.Path.Combine("config", "comicvine-cache.db")));
 
         services.AddScoped<ILocalizationService, LocalizationService>();
         services.AddScoped<ISettingsService, SettingsService>();
@@ -102,20 +149,45 @@ public static class ApplicationServiceExtensions
 
         services.AddScoped<IOidcService, OidcService>();
 
-
         services.AddScoped<IReadingHistoryService, ReadingHistoryService>();
         services.AddScoped<IClientDeviceService, ClientDeviceService>();
         services.AddScoped<IDeviceTrackingService, DeviceTrackingService>();
 
+        services.AddScoped<IKoboSyncService, KoboSyncService>();
+        services.AddHttpClient("Kobo", builder =>
+        {
+            builder.BaseAddress = new Uri("https://storeapi.kobo.com");
+            builder.Timeout = TimeSpan.FromMinutes(1);
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
+            UseCookies = false
+        });
+        services.AddHttpClient("KoboReadingServices", builder =>
+        {
+            builder.BaseAddress = new Uri("https://readingservices.kobo.com");
+            builder.Timeout = TimeSpan.FromMinutes(1);
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
+            UseCookies = false
+        });
 
+        services.AddScoped<IProcessRunner, ProcessRunner>();
         services.AddScoped<IFileCacheService, FileCacheService>();
+        services.AddSingleton<IKepubifyConverterService, KepubifyConverterService>();
         services.AddSingleton<IReadingSessionService, ReadingSessionService>();
         services.AddSingleton<IEntityNamingService, EntityNamingService>();
+        services.AddSingleton<IProgressThrottle, ProgressThrottle>();
+        services.AddSingleton<IActivityTracker, ActivityTracker>();
         services.AddSingleton<ActiveUserTrackerService>(); // This is required for the below lines. It allows IHostedService.StopAsync() to be called on shutdown
         services.AddSingleton<IActiveUserTrackerService>(sp => sp.GetRequiredService<ActiveUserTrackerService>());
         services.AddHostedService(sp => sp.GetRequiredService<ActiveUserTrackerService>());
 
         services.AddHostedService<StartupTasksHostedService>();
+        services.AddHostedService<KepubifyCheckHostedService>();
     }
 
 }

@@ -1,0 +1,75 @@
+<ng-container *transloco="let t; prefix: 'manage-comicvine'">
+  <p>{{t('description')}}</p>
+  <p>
+    <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noopener noreferrer">{{t('get-api-key')}}</a>
+  </p>
+
+  <app-loading [loading]="loading()" />
+
+  @if (error(); as errorKey) {
+    <div class="alert alert-danger" role="alert">{{t(errorKey)}}</div>
+  }
+  @if (message(); as messageKey) {
+    <div class="alert alert-success" role="status">{{t(messageKey)}}</div>
+  }
+
+  @if (!loading()) {
+    @if (settings(); as status) {
+      <div class="row g-0">
+        <div class="col-12 col-xl-7">
+          <h4>{{t('api-title')}}</h4>
+          <p class="text-muted" role="status">
+            @if (status.requiresReplacement) {
+              {{t('key-unavailable')}}
+            } @else if (status.hasSavedApiKey) {
+              {{t('key-configured')}}
+            } @else if (status.usesEnvironmentKey) {
+              {{t('environment-configured')}}
+            } @else {
+              {{t('not-configured')}}
+            }
+          </p>
+
+          <form #keyForm="ngForm" (ngSubmit)="save()" autocomplete="off">
+            <label for="comicvine-api-key" class="form-label">{{t('api-key-label')}}</label>
+            <div class="input-group mb-2">
+              <input id="comicvine-api-key" name="comicvineApiKey" class="form-control"
+                     [type]="showKey() ? 'text' : 'password'" [ngModel]="apiKey()"
+                     (ngModelChange)="apiKey.set($event)" [disabled]="busy()" maxlength="256" required
+                     pattern="\S+" autocomplete="new-password" autocapitalize="none" spellcheck="false"
+                     aria-describedby="comicvine-api-key-help"
+                     [placeholder]="t(status.hasSavedApiKey ? 'replace-placeholder' : 'key-placeholder')">
+              <button type="button" class="btn btn-outline-secondary" (click)="showKey.set(!showKey())"
+                      [disabled]="busy()" [attr.aria-pressed]="showKey()">
+                {{t(showKey() ? 'hide-key' : 'show-key')}}
+              </button>
+            </div>
+            <p id="comicvine-api-key-help" class="text-muted small">{{t('key-help')}}</p>
+
+            <div class="d-flex flex-wrap gap-2 mt-3 mb-4">
+              <button type="button" class="btn btn-secondary" (click)="testConnection()"
+                      [disabled]="busy() || !status.hasApiKey || !!apiKey()">
+                {{t('test-connection')}}
+              </button>
+              @if (status.hasSavedApiKey) {
+                <button type="button" class="btn btn-outline-danger" (click)="remove()" [disabled]="busy()">
+                  {{t('remove-key')}}
+                </button>
+              }
+              <button id="comicvine-save" type="submit" class="btn btn-primary ms-auto"
+                      [disabled]="busy() || !keyForm.valid || !apiKey().trim()">
+                {{t('save')}}
+              </button>
+            </div>
+          </form>
+          <p class="text-muted">{{t('scan-help')}}</p>
+          @if (status.usesEnvironmentKey) {
+            <p class="text-muted small">{{t('environment-help')}}</p>
+          }
+        </div>
+      </div>
+    } @else {
+      <button type="button" class="btn btn-secondary" (click)="load()">{{t('retry')}}</button>
+    }
+  }
+</ng-container>

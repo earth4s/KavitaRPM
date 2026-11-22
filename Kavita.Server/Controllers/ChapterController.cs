@@ -29,6 +29,7 @@ public class ChapterController(
     IUnitOfWork unitOfWork,
     ILocalizationService localizationService,
     IEventHub eventHub,
+    IEntityNamingService namingService,
     ILogger<ChapterController> logger)
     : BaseApiController
 {
@@ -42,9 +43,79 @@ public class ChapterController(
     [ChapterAccess]
     public async Task<ActionResult<ChapterDto>> GetChapter(int chapterId)
     {
-        var chapter = await unitOfWork.ChapterRepository.GetChapterDtoAsync(chapterId, UserId);
+        var ct = HttpContext.RequestAborted;
+        return Ok(await unitOfWork.ChapterRepository.GetChapterDtoAsync(chapterId, UserId, ct));
+    }
 
-        return Ok(chapter);
+    /// <summary>
+    /// Returns information to restore chapters in the Kobo Sync UI
+    /// </summary>
+    /// <param name="syncPointId"></param>
+    /// <returns></returns>
+    [HttpGet("restore-info")]
+    public async Task<ActionResult<IList<ChapterRestoreInfoDto>>> GetRestoreInfo([FromQuery] int syncPointId)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var syncPoint = await unitOfWork.KoboSyncPointRepository.GetSyncPoint(UserId, syncPointId, ct);
+        if (syncPoint is null)
+        {
+            return NotFound();
+        }
+
+        var chapterIds = syncPoint.RemovedChapterIds.Select(rc => rc.ChapterId).ToList();
+
+        var chapters = await unitOfWork.ChapterRepository.GetChapterDtosAsync(chapterIds, UserId, ct);
+        if (chapters.Count == 0) return Ok(new List<ChapterRestoreInfoDto>());
+
+        if (!await unitOfWork.UserRepository.HasAccessToAllChapters(UserId, chapters.Select(c => c.Id), ct))
+        {
+            return NotFound();
+        }
+
+        var volumeIds = chapters.Select(c => c.VolumeId).ToList();
+        var volumes = await unitOfWork.VolumeRepository.GetVolumesDtosAsync(volumeIds.Distinct(), ct);
+        var volumesById = volumes.ToDictionary(v => v.Id);
+
+        var seriesIds = volumes.Select(v => v.SeriesId).Distinct().ToList();
+        var seriesById = (await unitOfWork.SeriesRepository.GetSeriesByIdsAsync(seriesIds, false, ct))
+            .ToDictionary(s => s.Id);
+        var libraryTypes = await unitOfWork.LibraryRepository.GetLibraryTypesBySeriesIdsAsync(seriesIds, ct);
+
+        var namingContexts = await LocalizedNamingContext
+            .CreateAsync(namingService, localizationService, UserId, [.. libraryTypes.Values]);
+
+        var removedAt = syncPoint.RemovedChapterIds.ToDictionary(rc => rc.ChapterId);
+
+        var result = chapters
+            .OrderByDescending(c => removedAt[c.Id].RemovedAtUtc)
+            .Select(c =>
+            {
+                var volume = volumesById[c.VolumeId];
+
+                var series = seriesById[volume.SeriesId];
+                var namingContext = namingContexts[libraryTypes[series.Id]];
+                var chapterDto = new ChapterDto
+                {
+                    Id = c.Id,
+                    Range = c.Range,
+                    Title = c.Title,
+                    TitleName = c.TitleName,
+                    IsSpecial = c.IsSpecial,
+                };
+
+                return new ChapterRestoreInfoDto
+                {
+                    ChapterId = c.Id,
+                    SeriesId = series.Id,
+                    SeriesTitle = series.Name,
+                    Title = namingContext.BuildChapterTitle(volume, chapterDto),
+                    RemovedAtUtc = removedAt[c.Id].RemovedAtUtc,
+                };
+            })
+            .ToList();
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -57,12 +128,13 @@ public class ChapterController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult<bool>> DeleteChapter(int chapterId)
     {
+        var ct = HttpContext.RequestAborted;
         var chapter = await unitOfWork.ChapterRepository.GetChapterAsync(chapterId,
-            ChapterIncludes.Files | ChapterIncludes.ExternalReviews | ChapterIncludes.ExternalRatings);
+            ChapterIncludes.Files | ChapterIncludes.ExternalReviews | ChapterIncludes.ExternalRatings, ct);
         if (chapter == null)
             return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
 
-        var vol = await unitOfWork.VolumeRepository.GetVolumeByIdAsync(chapter.VolumeId, VolumeIncludes.Chapters);
+        var vol = await unitOfWork.VolumeRepository.GetVolumeByIdAsync(chapter.VolumeId, VolumeIncludes.Chapters, ct);
         if (vol == null) return BadRequest(await localizationService.TranslateAsync(UserId, "volume-doesnt-exist"));
 
         // If there is only 1 chapter within the volume, then we need to remove the volume
@@ -77,7 +149,7 @@ public class ChapterController(
         }
 
         // If we removed the volume, do an additional check if we need to delete the actual series as well or not
-        var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(vol.SeriesId, SeriesIncludes.ExternalData | SeriesIncludes.Volumes);
+        var series = await unitOfWork.SeriesRepository.GetSeriesByIdAsync(vol.SeriesId, SeriesIncludes.ExternalData | SeriesIncludes.Volumes, ct);
         var needToRemoveSeries = needToRemoveVolume && series != null && series.Volumes.Count <= 1;
         if (needToRemoveSeries)
         {
@@ -86,18 +158,18 @@ public class ChapterController(
 
 
 
-        if (!await unitOfWork.CommitAsync()) return Ok(false);
+        if (!await unitOfWork.CommitAsync(ct)) return Ok(false);
 
-        await eventHub.SendMessageAsync(MessageFactory.ChapterRemoved, MessageFactory.ChapterRemovedEvent(chapter.Id, vol.SeriesId), false);
+        await eventHub.SendMessageAsync(MessageFactory.ChapterRemoved, MessageFactory.ChapterRemovedEvent(chapter.Id, vol.SeriesId), false, ct);
         if (needToRemoveVolume)
         {
-            await eventHub.SendMessageAsync(MessageFactory.VolumeRemoved, MessageFactory.VolumeRemovedEvent(chapter.VolumeId, vol.SeriesId), false);
+            await eventHub.SendMessageAsync(MessageFactory.VolumeRemoved, MessageFactory.VolumeRemovedEvent(chapter.VolumeId, vol.SeriesId), false, ct);
         }
 
         if (needToRemoveSeries)
         {
             await eventHub.SendMessageAsync(MessageFactory.SeriesRemoved,
-                MessageFactory.SeriesRemovedEvent(series!.Id, series.Name, series.LibraryId), false);
+                MessageFactory.SeriesRemovedEvent(series!.Id, series.LibraryId), false, ct);
         }
 
         return Ok(true);
@@ -113,6 +185,7 @@ public class ChapterController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<bool>> DeleteMultipleChapters([FromQuery] int seriesId, DeleteChaptersDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         try
         {
             var chapterIds = dto.ChapterIds;
@@ -122,7 +195,7 @@ public class ChapterController(
             }
 
             // Fetch all chapters to be deleted
-            var chapters = (await unitOfWork.ChapterRepository.GetChaptersByIdsAsync(chapterIds)).ToList();
+            var chapters = (await unitOfWork.ChapterRepository.GetChaptersByIdsAsync(chapterIds, ct: ct)).ToList();
 
             // Group chapters by their volume
             var volumesToUpdate = chapters.GroupBy(c => c.VolumeId).ToList();
@@ -134,7 +207,7 @@ public class ChapterController(
                 var chaptersToDelete = volumeGroup.ToList();
 
                 // Fetch the volume
-                var volume = await unitOfWork.VolumeRepository.GetVolumeByIdAsync(volumeId, VolumeIncludes.Chapters);
+                var volume = await unitOfWork.VolumeRepository.GetVolumeByIdAsync(volumeId, VolumeIncludes.Chapters, ct);
                 if (volume == null)
                     return BadRequest(await localizationService.TranslateAsync(UserId, "volume-doesnt-exist"));
 
@@ -153,20 +226,20 @@ public class ChapterController(
                 }
             }
 
-            if (!await unitOfWork.CommitAsync()) return Ok(false);
+            if (!await unitOfWork.CommitAsync(ct)) return Ok(false);
 
             // Send events for removed chapters
             foreach (var chapter in chapters)
             {
                 await eventHub.SendMessageAsync(MessageFactory.ChapterRemoved,
-                    MessageFactory.ChapterRemovedEvent(chapter.Id, seriesId), false);
+                    MessageFactory.ChapterRemovedEvent(chapter.Id, seriesId), false, ct);
             }
 
             // Send events for removed volumes
             foreach (var volumeId in removedVolumes)
             {
                 await eventHub.SendMessageAsync(MessageFactory.VolumeRemoved,
-                    MessageFactory.VolumeRemovedEvent(volumeId, seriesId), false);
+                    MessageFactory.VolumeRemovedEvent(volumeId, seriesId), false, ct);
             }
 
             return Ok(true);
@@ -187,14 +260,15 @@ public class ChapterController(
     /// <returns></returns>
     [HttpPost("update")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
-    public async Task<ActionResult> UpdateChapterMetadata(UpdateChapterDto dto)
+    public async Task<ActionResult<ChapterDto>> UpdateChapterMetadata(UpdateChapterDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var chapter = await unitOfWork.ChapterRepository.GetChapterAsync(dto.Id,
-            ChapterIncludes.People | ChapterIncludes.Genres | ChapterIncludes.Tags, HttpContext.RequestAborted);
+            ChapterIncludes.People | ChapterIncludes.Genres | ChapterIncludes.Tags, ct);
         if (chapter == null)
             return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
 
-        var seriesId = await unitOfWork.ChapterRepository.GetSeriesIdForChapter(chapter.Id, HttpContext.RequestAborted);
+        var seriesId = await unitOfWork.ChapterRepository.GetSeriesIdForChapter(chapter.Id, ct);
 
         if (chapter.AgeRating != dto.AgeRating)
         {
@@ -412,9 +486,9 @@ public class ChapterController(
                 false, HttpContext.RequestAborted);
         }
 
-        await unitOfWork.CommitAsync();
+        await unitOfWork.CommitAsync(ct);
 
-        return Ok();
+        return Ok(await unitOfWork.ChapterRepository.GetChapterDtoAsync(chapter.Id, UserId, ct));
     }
 
 
@@ -427,21 +501,22 @@ public class ChapterController(
     [HttpGet("chapter-detail-plus")]
     public async Task<ActionResult<ChapterDetailPlusDto>> ChapterDetailPlus([FromQuery] int chapterId)
     {
+        var ct = HttpContext.RequestAborted;
         var ret = new ChapterDetailPlusDto();
 
-        var userReviews = (await unitOfWork.UserRepository.GetUserRatingDtosForChapterAsync(chapterId, UserId))
+        var userReviews = (await unitOfWork.UserRepository.GetUserRatingDtosForChapterAsync(chapterId, UserId, ct))
             .Where(r => !string.IsNullOrEmpty(r.Body))
             .OrderByDescending(review => review.Username.Equals(Username!) ? 1 : 0)
             .ToList();
 
-        var ownRating = await unitOfWork.UserRepository.GetUserChapterRatingAsync(UserId, chapterId);
+        var ownRating = await unitOfWork.UserRepository.GetUserChapterRatingAsync(UserId, chapterId, ct);
         if (ownRating != null)
         {
             ret.Rating = ownRating.Rating;
             ret.HasBeenRated = ownRating.HasBeenRated;
         }
 
-        var externalReviews = await unitOfWork.ChapterRepository.GetExternalChapterReviewDtos(chapterId);
+        var externalReviews = await unitOfWork.ChapterRepository.GetExternalChapterReviewDtos(chapterId, ct);
         if (externalReviews.Count > 0)
         {
             userReviews.AddRange(ReviewHelper.SelectSpectrumOfReviews(externalReviews));
@@ -449,7 +524,7 @@ public class ChapterController(
 
         ret.Reviews = userReviews;
 
-        ret.Ratings = await unitOfWork.ChapterRepository.GetExternalChapterRatingDtos(chapterId);
+        ret.Ratings = await unitOfWork.ChapterRepository.GetExternalChapterRatingDtos(chapterId, ct);
 
         return Ok(ret);
     }

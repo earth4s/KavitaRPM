@@ -14,6 +14,7 @@ using Kavita.Models.DTOs.KavitaPlus.Scrobble;
 using Kavita.Models.DTOs.Scrobbling;
 using Kavita.Models.DTOs.Search;
 using Kavita.Models.DTOs.SeriesDetail;
+using Kavita.Models.DTOs.Theme;
 using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Metadata;
@@ -39,6 +40,7 @@ public enum SeriesIncludes
     ExternalRatings = 1 << 7,
     ExternalRecommendations = 1 << 8,
     ExternalMetadata = 1 << 9,
+    CoverImageFile = 1 << 10,
 
     ExternalData = ExternalMetadata | ExternalReviews | ExternalRatings | ExternalRecommendations,
 }
@@ -90,8 +92,6 @@ public interface ISeriesRepository
     Task<PagedList<SeriesDto>> GetSeriesDtoForCollectionAsync(int collectionId, int userId, UserParams userParams, CancellationToken ct = default);
     Task<IList<MangaFile>> GetFilesForSeriesAsync(int seriesId, CancellationToken ct = default);
     Task<IEnumerable<SeriesDto>> GetSeriesDtoForIdsAsync(IEnumerable<int> seriesIds, int userId, CancellationToken ct = default);
-    Task<IList<string>> GetAllCoverImagesAsync(CancellationToken ct = default);
-    Task<IEnumerable<string>> GetLockedCoverImagesAsync(CancellationToken ct = default);
     Task<PagedList<Series>> GetFullSeriesForLibraryIdAsync(int libraryId, UserParams userParams, CancellationToken ct = default);
     Task<Series?> GetFullSeriesForSeriesIdAsync(int seriesId, CancellationToken ct = default);
     Task<Chunk> GetChunkInfoAsync(int libraryId = 0, CancellationToken ct = default);
@@ -103,8 +103,8 @@ public interface ISeriesRepository
     Task<PagedList<SeriesDto>> GetWantToReadDtosForUserAsync(int userId, UserParams userParams, SeriesFilterV2Dto seriesFilter, CancellationToken ct = default);
     Task<IList<Series>> GetWantToReadForUserAsync(int userId, CancellationToken ct = default);
     Task<bool> IsSeriesInWantToRead(int userId, int seriesId, CancellationToken ct = default);
-    Task<Series?> GetSeriesByFolderPathAsync(string folder, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
-    Task<Series?> GetSeriesThatContainsLowestFolderPathAsync(string path, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
+    Task<IList<Series>> GetSeriesByFolderPathAsync(int libraryId, string folder, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
+    Task<IList<Series>> GetSeriesThatContainsLowestFolderPathAsync(int libraryId, string path, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
     Task<IEnumerable<Series>> GetAllSeriesByNameAsync(IList<string> normalizedNames,
         int userId, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
     Task<Series?> GetFullSeriesByAnyName(string seriesName, string localizedName, int libraryId, MangaFormat format, bool withFullIncludes = true, CancellationToken ct = default);
@@ -115,21 +115,38 @@ public interface ISeriesRepository
     /// <see cref="GetFullSeriesByAnyName"/> throw during a scan.
     /// </summary>
     Task<bool> IsSeriesNameUniqueInLibraryAsync(int libraryId, MangaFormat format, string normalizedName, int excludeSeriesId, CancellationToken ct = default);
-    Task<Series?> GetSeriesFromExternalMetadata(IList<string> seriesNames, IList<MangaFormat> formats,
+    Task<HashSet<string>> GetTakenNormalizedNamesInLibraryAsync(int libraryId, MangaFormat format, int excludeSeriesId, CancellationToken ct = default);
+    Task<List<Series>> GetSeriesFromExternalMetadata(IList<string> seriesNames, IList<MangaFormat> formats,
         int userId, ExternalMetadataIdsDto? dto = null, SeriesIncludes includes = SeriesIncludes.None, CancellationToken ct = default);
     public Task<IList<Series>> GetAllSeriesByAnyNameAsync(string seriesName, string localizedName, int libraryId,
         MangaFormat format, CancellationToken ct = default);
     Task<IList<Series>> RemoveSeriesNotInListAsync(IList<ParsedSeries> seenSeries, int libraryId, CancellationToken ct = default);
-    Task<IDictionary<string, IList<SeriesModified>>> GetFolderPathMapAsync(int libraryId, CancellationToken ct = default);
+    /// <param name="seriesId">Only this series' files, for a series scan</param>
+    Task<IDictionary<string, IList<SeriesModified>>> GetFolderPathMapAsync(int libraryId, int? seriesId = null, CancellationToken ct = default);
+    Task<IList<SeriesNameMatch>> GetSeriesNameMatchesAsync(int libraryId, CancellationToken ct = default);
     Task<AgeRating> GetMaxAgeRatingFromSeriesAsyncAsync(IEnumerable<int> seriesIds, CancellationToken ct = default);
     Task<IList<SeriesMetadataDto>> GetSeriesMetadataForIdsAsync(IEnumerable<int> seriesIds, CancellationToken ct = default);
-    Task<IList<Series>> GetAllWithCoversInDifferentEncodingAsync(EncodeFormat encodeFormat, bool customOnly = true, CancellationToken ct = default);
     Task<SeriesDto?> GetSeriesDtoByNamesAndMetadataIdsAsync(IEnumerable<string> names, LibraryType libraryType, MetadataRequest metadataRequest, CancellationToken ct = default);
     Task<int> GetAverageUserRatingAsync(int seriesId, int userId, CancellationToken ct = default);
     Task RemoveFromOnDeckAsync(int seriesId, int userId, CancellationToken ct = default);
     Task ClearOnDeckRemovalAsync(int seriesId, int userId, CancellationToken ct = default);
     Task<PagedList<SeriesDto>> GetSeriesDtoForLibraryIdAsync(int userId, UserParams userParams, SeriesFilterV2Dto seriesFilterDto, QueryContext queryContext = QueryContext.None, CancellationToken ct = default);
     Task<SeriesDetailRequestV3Dto?> GetKavitaPlusSeriesDetailRequestV3Dto(int seriesId, CancellationToken ct = default);
+    /// <summary>
+    /// Returns the <see cref="MetadataProvider"/> the Series matches against (its override, else the Library's default), or null if the Series doesn't exist
+    /// </summary>
+    /// <param name="seriesId"></param>
+    /// <param name="ct"></param>
+    Task<MetadataProvider?> GetEffectiveMetadataProviderAsync(int seriesId, CancellationToken ct = default);
     Task<Series?> MatchSeriesAsync(ExternalSeriesDetailDto externalSeries, CancellationToken ct = default);
     Task<List<Series>> GetSeriesForReadStatusTransitionRuleAsync(int userId, ReadStatusTransitionRule rule, bool requireUnReadChapters, CancellationToken ct);
+    /// <summary>
+    /// Returns the total amount of chapters, if all chapters in the series are specials
+    /// </summary>
+    /// <param name="seriesId"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    Task<int?> GetChapterCountIfAllSpecials(int seriesId, CancellationToken ct = default);
+    Task<int> GetNonSpecialChapterCountAsync(int seriesId, CancellationToken ct = default);
+    Task<ColorScapeDto?> GetColorScapeAsync(int seriesId, CancellationToken ct = default);
 }

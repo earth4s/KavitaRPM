@@ -1,58 +1,55 @@
 import {ChangeDetectionStrategy, Component, inject, input, OnInit, output, signal} from '@angular/core';
-import {NonNullableFormBuilder, ReactiveFormsModule} from '@angular/forms';
-import {ReplaySubject} from 'rxjs';
-import {map} from 'rxjs/operators';
 import {TranslocoDirective} from '@jsverse/transloco';
 import {CblService} from '../../../_services/cbl.service';
-import {SearchService} from '../../../_services/search.service';
-import {UtilityService} from '../../../shared/_services/utility.service';
 import {ImageService} from '../../../_services/image.service';
 import {RemapRule} from '../../../_models/reading-list/cbl/remap-rule';
 import {SearchResult} from '../../../_models/search/search-result';
 import {Chapter} from '../../../_models/chapter';
-import {TypeaheadSettings} from '../../../typeahead/_models/typeahead-settings';
+import {TypeaheadConfig} from '../../../typeahead/_models/typeahead-config';
 import {TypeaheadComponent} from '../../../typeahead/_components/typeahead.component';
 import {ImageComponent} from '../../../shared/image/image.component';
+import {TypeaheadConfigFactoryService} from "../../../typeahead-config-factory.service";
+import {FormFieldDirective} from "../../../_directives/form-field.directive";
+import {form, FormField, required} from "@angular/forms/signals";
 
 @Component({
   selector: 'app-edit-remap-rule',
   templateUrl: './edit-remap-rule.component.html',
   styleUrls: ['./edit-remap-rule.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TranslocoDirective, ReactiveFormsModule, TypeaheadComponent, ImageComponent]
+  imports: [TranslocoDirective, TypeaheadComponent, ImageComponent, FormFieldDirective, FormField]
 })
 export class EditRemapRuleComponent implements OnInit {
 
-  private readonly fb = inject(NonNullableFormBuilder);
   private readonly cblService = inject(CblService);
-  private readonly searchService = inject(SearchService);
-  private readonly utilityService = inject(UtilityService);
+  private readonly typeaheadSettingsFactory = inject(TypeaheadConfigFactoryService);
   protected readonly imageService = inject(ImageService);
 
   rule = input<RemapRule | null>(null);
   saved = output<RemapRule>();
   cancelled = output<void>();
 
-  form = this.fb.group({
+  formModel = signal({
     cblSeriesName: '',
     cblVolume: '',
     cblNumber: '',
   });
+  formGroup = form(this.formModel, path => {
+    required(path.cblSeriesName);
+  });
 
   selectedSeries = signal<SearchResult | null>(null);
   selectedChapter = signal<Chapter | null>(null);
-  chapterSettings = signal<TypeaheadSettings<Chapter> | null>(null);
+  chapterSettings = signal<TypeaheadConfig<Chapter> | null>(null);
 
-  seriesSettings!: TypeaheadSettings<SearchResult>;
-  seriesReset = new ReplaySubject<boolean>(1);
-  chapterReset = new ReplaySubject<boolean>(1);
+  seriesSettings = signal<TypeaheadConfig<SearchResult> | null>(null);
 
   ngOnInit() {
     const editRule = this.rule();
-    this.seriesSettings = this.createSeriesTypeahead(editRule);
+    this.seriesSettings.set(this.createSeriesTypeahead(editRule));
 
     if (editRule) {
-      this.form.patchValue({
+      this.formModel.set({
         cblSeriesName: editRule.cblSeriesName,
         cblVolume: editRule.cblVolume ?? '',
         cblNumber: editRule.cblNumber ?? '',
@@ -68,7 +65,7 @@ export class EditRemapRuleComponent implements OnInit {
         chapterStub.id = editRule.chapterId;
         chapterStub.volumeId = editRule.volumeId ?? 0;
         chapterStub.title = editRule.chapterRange;
-        chapterTypeahead.savedData = chapterStub;
+        chapterTypeahead.savedData = [chapterStub];
         this.selectedChapter.set(chapterStub);
       }
 
@@ -97,7 +94,7 @@ export class EditRemapRuleComponent implements OnInit {
   }
 
   save() {
-    const {cblSeriesName, cblVolume, cblNumber} = this.form.value;
+    const {cblSeriesName, cblVolume, cblNumber} = this.formModel();
     const selectedSeries = this.selectedSeries();
     if (!cblSeriesName?.trim() || !selectedSeries) return;
 
@@ -129,67 +126,16 @@ export class EditRemapRuleComponent implements OnInit {
     });
   }
 
-  private createSeriesTypeahead(editRule: RemapRule | null): TypeaheadSettings<SearchResult> {
-    const settings = new TypeaheadSettings<SearchResult>();
-    settings.minCharacters = 2;
-    settings.multiple = false;
-    settings.id = 'remap-series';
-    settings.unique = true;
-    settings.addIfNonExisting = false;
-    settings.fetchFn = (filter: string) =>
-      this.searchService.search(filter).pipe(
-        map(group => group.series),
-        map(items => settings.compareFn(items, filter)),
-      );
-    settings.trackByIdentityFn = (_idx, item) => item.seriesId + '';
-    settings.compareFn = (options: SearchResult[], filter: string) => {
-      return options.filter(m => {
-        return this.utilityService.filter(m.name, filter) || this.utilityService.filter(m.localizedName, filter);
-      });
-    };
-    settings.selectionCompareFn = (a: SearchResult, b: SearchResult) => {
-      return a.seriesId === b.seriesId;
-    };
-
-    if (editRule) {
-      settings.savedData = {seriesId: editRule.seriesId, name: editRule.seriesNameAtMapping} as SearchResult;
-    }
-
-    return settings;
+  private createSeriesTypeahead(editRule: RemapRule | null): TypeaheadConfig<SearchResult> {
+    const savedData = editRule ? [{seriesId: editRule.seriesId, name: editRule.seriesNameAtMapping} as SearchResult] : [];
+    return this.typeaheadSettingsFactory.forSearchResult({id: 'remap-series', savedData});
   }
 
-  private createChapterTypeahead(seriesId: number): TypeaheadSettings<Chapter> {
-    const settings = new TypeaheadSettings<Chapter>();
-    settings.minCharacters = 0;
-    settings.multiple = false;
-    settings.id = 'remap-chapter-' + seriesId;
-    settings.unique = true;
-    settings.addIfNonExisting = false;
-    settings.fetchFn = (searchFilter: string) => this.searchService.getChaptersBySeries(seriesId).pipe(
-      map(chapters => {
-        if (!searchFilter) return chapters;
-        const lower = searchFilter.toLowerCase().trim();
-        return chapters.filter(c =>
-          c.title?.toLowerCase().includes(lower) ||
-          c.range?.toLowerCase().includes(lower) ||
-          c.titleName?.toLowerCase().includes(lower)
-        );
-      })
-    );
-    settings.trackByIdentityFn = (_idx, item) => item.id + '';
-    settings.compareFn = (options: Chapter[], filter: string) => {
-      if (!filter) return options;
-      const lower = filter.toLowerCase().trim();
-      return options.filter(c =>
-        c.title?.toLowerCase().includes(lower) ||
-        c.range?.toLowerCase().includes(lower) ||
-        c.titleName?.toLowerCase().includes(lower)
-      );
-    };
-    settings.selectionCompareFn = (a: Chapter, b: Chapter) => {
-      return a.id === b.id;
-    };
+  private createChapterTypeahead(seriesId: number): TypeaheadConfig<Chapter> {
+    return this.typeaheadSettingsFactory.forChapter({id: `remap-chapter-${seriesId}`, seriesId});
+  }
 
-    return settings;
+  protected getCoverImage(item: Chapter) {
+    return this.imageService.getChapterCoverImage(item.id);
   }
 }

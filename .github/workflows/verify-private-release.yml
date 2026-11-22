@@ -1,0 +1,48 @@
+name: Verify Private Release
+
+on:
+  workflow_call:
+    inputs:
+      release_id:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Numeric ID of the draft release to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  privacy:
+    if: github.repository == 'earth4s/KavitaRPM' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    permissions:
+      # Draft visibility requires writer access, even though this job never modifies a release.
+      contents: write
+    steps:
+      - name: Verify unpublished state and anonymous download denial
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > release.json
+          jq -e '.draft == true and .published_at == null and (.assets | length) == 8' release.json > /dev/null
+          check_denied() {
+            local label="$1" api_url="$2" web_url="$3" api_code web_code
+            api_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$api_url")"
+            web_code="$(curl --disable --silent --show-error --location --max-time 30 --output /dev/null --write-out '%{http_code}' "$web_url")"
+            echo "$label anonymous status: API=$api_code, browser=$web_code"
+            # API 403 can be an anonymous rate limit. Browser denial must still be verified.
+            test "$web_code" = 404
+            [[ "$api_code" == 404 || "$api_code" == 403 ]]
+          }
+          check_denied release "$(jq -r '.url' release.json)" "$(jq -r '.html_url' release.json)"
+          check_denied asset "$(jq -r '.assets[0].url' release.json)" "$(jq -r '.assets[0].browser_download_url' release.json)"
+          echo "Verified private draft: $(jq -r '.html_url' release.json)" >> "$GITHUB_STEP_SUMMARY"

@@ -83,10 +83,10 @@ public class CacheService(
         return dimensions;
     }
 
-    public string GetCachedBookmarkPagePath(int seriesId, int page)
+    public string GetCachedBookmarkPagePath(int userId, int seriesId, int page)
     {
         // Calculate what chapter the page belongs to
-        var path = GetBookmarkCachePath(seriesId);
+        var path = GetBookmarkCachePath(userId, seriesId);
         var files = directoryService.GetFilesWithExtension(path, Parser.ImageFileExtensions);
         files = files
             .AsEnumerable()
@@ -275,6 +275,35 @@ public class CacheService(
     }
 
     /// <summary>
+    /// Wipes the whole page cache directory, except chapters tied to currently active
+    /// reading sessions, so a scan never deletes pages out from under a live reader.
+    /// Skipped chapters are cleaned by a later scan once their sessions close.
+    /// </summary>
+    public async Task CleanupCacheExceptActiveChaptersAsync()
+    {
+        var keepPaths = (await unitOfWork.ChapterRepository.GetActiveReadingChapterIdsAsync())
+            .Select(GetCachePath)
+            .Select(NormalizeDirPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var dir in directoryService.GetDirectories(directoryService.CacheDirectory))
+        {
+            if (keepPaths.Contains(NormalizeDirPath(dir)))
+            {
+                logger.LogTrace("Skipping cache cleanup for {Directory} with an active reading session", dir);
+                continue;
+            }
+            directoryService.ClearAndDeleteDirectory(dir);
+        }
+
+        static string NormalizeDirPath(string path)
+        {
+            return Parser.NormalizePath(Path.GetFullPath(path)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        }
+    }
+
+    /// <summary>
     /// Removes the cached files and folders for a set of chapterIds
     /// </summary>
     /// <param name="seriesIds"></param>
@@ -282,7 +311,7 @@ public class CacheService(
     {
         foreach (var series in seriesIds)
         {
-            directoryService.ClearAndDeleteDirectory(GetBookmarkCachePath(series));
+            directoryService.ClearAndDeleteDirectory(GetSeriesBookmarkCacheRoot(series));
         }
     }
 
@@ -298,11 +327,14 @@ public class CacheService(
     }
 
     /// <summary>
-    /// Returns the cache path for a given series' bookmarks. Should be cacheDirectory/{seriesId_bookmarks}/
+    /// Returns the cache path for a user's bookmarks on a series. Should be cacheDirectory/{seriesId_bookmarks}/{userId}/
     /// </summary>
-    /// <param name="seriesId"></param>
-    /// <returns></returns>
-    public string GetBookmarkCachePath(int seriesId)
+    public string GetBookmarkCachePath(int userId, int seriesId)
+    {
+        return directoryService.FileSystem.Path.GetFullPath(directoryService.FileSystem.Path.Join(GetSeriesBookmarkCacheRoot(seriesId), $"{userId}/"));
+    }
+
+    private string GetSeriesBookmarkCacheRoot(int seriesId)
     {
         return directoryService.FileSystem.Path.GetFullPath(directoryService.FileSystem.Path.Join(directoryService.CacheDirectory, $"{seriesId}_bookmarks/"));
     }
@@ -325,12 +357,12 @@ public class CacheService(
 
     public async Task<int> CacheBookmarkForSeries(int userId, int seriesId, CancellationToken ct = default)
     {
-        var destDirectory = directoryService.FileSystem.Path.Join(directoryService.CacheDirectory, seriesId + "_bookmarks");
+        var destDirectory = GetBookmarkCachePath(userId, seriesId);
         if (directoryService.Exists(destDirectory)) return directoryService.GetFiles(destDirectory).Count();
 
         var bookmarkDtos = await unitOfWork.UserRepository.GetBookmarkDtosForSeries(userId, seriesId, ct);
 
-        var files = (await bookmarkService.GetBookmarkFilesById(seriesId, bookmarkDtos.Select(b => b.Id), ct)).ToList();
+        var files = (await bookmarkService.GetBookmarkFilesById(userId, seriesId, bookmarkDtos.Select(b => b.Id), ct)).ToList();
         directoryService.CopyFilesToDirectory(files, destDirectory,
             Enumerable.Range(1, files.Count).Select(i => i + string.Empty).ToList());
 
@@ -343,7 +375,7 @@ public class CacheService(
     /// <param name="seriesId"></param>
     public void CleanupBookmarkCache(int seriesId)
     {
-        var destDirectory = directoryService.FileSystem.Path.Join(directoryService.CacheDirectory, seriesId + "_bookmarks");
+        var destDirectory = GetSeriesBookmarkCacheRoot(seriesId);
         if (!directoryService.Exists(destDirectory)) return;
 
         directoryService.ClearAndDeleteDirectory(destDirectory);

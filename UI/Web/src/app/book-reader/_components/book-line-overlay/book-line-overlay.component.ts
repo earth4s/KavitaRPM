@@ -1,6 +1,5 @@
 import {
   ChangeDetectionStrategy,
-  ChangeDetectorRef,
   Component,
   computed,
   DestroyRef,
@@ -13,9 +12,8 @@ import {
 } from '@angular/core';
 import {fromEvent, merge, of} from "rxjs";
 import {catchError, debounceTime, tap} from "rxjs/operators";
-import {FormControl, FormGroup, ReactiveFormsModule, Validators} from "@angular/forms";
 import {ReaderService} from "../../../_services/reader.service";
-import {ToastrService} from "ngx-toastr";
+import {ToastrService} from '@openng/ngx-toastr';
 import {translate, TranslocoDirective} from "@jsverse/transloco";
 import {EpubReaderMenuService} from "../../../_services/epub-reader-menu.service";
 import {Annotation} from "../../_models/annotations/annotation";
@@ -23,6 +21,9 @@ import {isMobileChromium} from "../../../_helpers/browser";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {KeyBindService} from "../../../_services/key-bind.service";
 import {KeyBindTarget} from "../../../_models/preferences/preferences";
+import {FormFieldDirective} from "../../../_directives/form-field.directive";
+import {ValidationErrorsComponent} from "../../../shared/_components/validation-errors/validation-errors.component";
+import {form, FormField, FormRoot, required} from "@angular/forms/signals";
 
 enum BookLineOverlayMode {
   None = 0,
@@ -30,17 +31,20 @@ enum BookLineOverlayMode {
   Bookmark = 2
 }
 
+interface FormModel {
+  name: string;
+}
+
 @Component({
-    selector: 'app-book-line-overlay',
-    imports: [ReactiveFormsModule, TranslocoDirective],
-    templateUrl: './book-line-overlay.component.html',
-    styleUrls: ['./book-line-overlay.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush
+  selector: 'app-book-line-overlay',
+  imports: [TranslocoDirective, FormFieldDirective, ValidationErrorsComponent, FormRoot, FormField],
+  templateUrl: './book-line-overlay.component.html',
+  styleUrls: ['./book-line-overlay.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class BookLineOverlayComponent implements OnInit {
 
   private readonly destroyRef = inject(DestroyRef);
-  private readonly cdRef = inject(ChangeDetectorRef);
   private readonly readerService = inject(ReaderService);
   private readonly toastr = inject(ToastrService);
   private readonly elementRef = inject(ElementRef);
@@ -63,11 +67,15 @@ export class BookLineOverlayComponent implements OnInit {
   allTextFromSelection: string = '';
   selectedText = signal<string>('');
   mode = signal<BookLineOverlayMode>(BookLineOverlayMode.None);
-  bookmarkForm: FormGroup = new FormGroup({
-    name: new FormControl('', [Validators.required]),
-  });
   hasSelectedAnnotation = signal<boolean>(false);
   showOverlay = computed(() => this.selectedText().length > 0 || this.mode() !== BookLineOverlayMode.None);
+
+  private readonly formModel = signal<FormModel>({
+    name: ''
+  });
+  formGroup = form(this.formModel, p => {
+    required(p.name);
+  });
 
 
 
@@ -173,16 +181,28 @@ export class BookLineOverlayComponent implements OnInit {
       event.preventDefault();
       event.stopPropagation();
     }
-
-    this.cdRef.markForCheck();
   }
 
   private shouldSkipSelection(selection: Selection | null, isRightClick: boolean): boolean {
+    if (this.selectionTouchesAnnotation(selection)) return true;
+
     return (selection === null ||
         selection === undefined ||
         selection.toString().trim() === '' ||
         selection.toString().trim() === this.selectedText()) ||
       this.hasSelectedAnnotation();
+  }
+
+  private selectionTouchesAnnotation(selection: Selection | null): boolean {
+    if (selection === null || selection === undefined || selection.rangeCount === 0) return false;
+
+    const range = selection.getRangeAt(0);
+    return this.isInsideAnnotation(range.startContainer) || this.isInsideAnnotation(range.endContainer);
+  }
+
+  private isInsideAnnotation(node: Node | null): boolean {
+    const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element | null;
+    return element instanceof Element && element.closest('app-epub-highlight') !== null;
   }
 
   /**
@@ -216,7 +236,7 @@ export class BookLineOverlayComponent implements OnInit {
     const selectedText = windowText?.toString() === '' ? this.selectedText() : windowText?.toString() ?? this.selectedText();
 
     if (mode === BookLineOverlayMode.Bookmark) {
-      this.bookmarkForm.get('name')?.setValue(selectedText);
+      this.formModel.set({name: selectedText});
       this.focusOnBookmarkInput();
       return;
     }
@@ -256,13 +276,12 @@ export class BookLineOverlayComponent implements OnInit {
     const xpath = this.readerService.descopeBookReaderXpath(this.startXPath);
 
     this.readerService.createPersonalToC(this.libraryId(), this.seriesId(), this.volumeId(), this.chapterId(), this.pageNumber(),
-      this.bookmarkForm.get('name')?.value, xpath, this.selectedText()).pipe(catchError(err => {
+      this.formModel().name, xpath, this.selectedText()).pipe(catchError(err => {
         this.focusOnBookmarkInput();
         return of();
     })).subscribe(() => {
       this.reset();
       this.refreshToC.emit(undefined);
-      this.cdRef.markForCheck();
     });
   }
 
@@ -272,7 +291,7 @@ export class BookLineOverlayComponent implements OnInit {
   }
 
   reset() {
-    this.bookmarkForm.reset();
+    this.formGroup().reset();
     this.mode.set(BookLineOverlayMode.None);
     this.startXPath = '';
     this.endXPath = '';
@@ -284,7 +303,6 @@ export class BookLineOverlayComponent implements OnInit {
       selection.removeAllRanges();
     }
     this.isOpen.emit(false);
-    this.cdRef.markForCheck();
   }
 
   async copy() {

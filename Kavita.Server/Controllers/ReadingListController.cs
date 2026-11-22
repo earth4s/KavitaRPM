@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Hangfire;
 using Kavita.API.Attributes;
@@ -19,6 +20,7 @@ using Kavita.Models.DTOs.ReadingLists;
 using Kavita.Models.DTOs.ReadingLists.Request;
 using Kavita.Models.DTOs.SignalR;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Images;
 using Kavita.Server.Attributes;
 using Kavita.Server.Extensions;
 using Kavita.Services.Reading;
@@ -33,6 +35,7 @@ public class ReadingListController(
     IReadingListService readingListService,
     ILocalizationService localizationService,
     ICblExportService  cblExportService,
+    ICompositeCoverService compositeCoverService,
     IEventHub eventHub)
     : BaseApiController
 {
@@ -45,7 +48,8 @@ public class ReadingListController(
     [ReadingListAccess]
     public async Task<ActionResult<ReadingListDto>> GetList(int readingListId)
     {
-        var readingList = await unitOfWork.ReadingListRepository.GetReadingListDtoByIdAsync(readingListId, UserId);
+        var ct = HttpContext.RequestAborted;
+        var readingList = await unitOfWork.ReadingListRepository.GetReadingListDtoByIdAsync(readingListId, UserId, ct);
         if (readingList == null)
         {
             return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-restricted"));
@@ -65,6 +69,7 @@ public class ReadingListController(
     public async Task<ActionResult<IEnumerable<ReadingListDto>>> GetListsForUser([FromQuery] UserParams userParams,
         bool includePromoted = true, bool sortByLastModified = false)
     {
+        var ct = HttpContext.RequestAborted;
         var items = await unitOfWork.ReadingListRepository.GetReadingListDtosForUserAsync(UserId, includePromoted,
             userParams, sortByLastModified, HttpContext.RequestAborted);
         Response.AddPaginationHeader(items.CurrentPage, items.PageSize, items.TotalCount, items.TotalPages);
@@ -81,6 +86,7 @@ public class ReadingListController(
     [HttpPost("all")]
     public async Task<ActionResult<PagedList<ReadingListDto>>> GetAllReadingList(ReadingListFilterDto filter, [FromQuery] UserParams userParams)
     {
+        var ct = HttpContext.RequestAborted;
         var list = await unitOfWork.ReadingListRepository.GetBrowseReadingListDtos(UserId, filter, userParams, HttpContext.RequestAborted);
         Response.AddPaginationHeader(list.CurrentPage, list.PageSize, list.TotalCount, list.TotalPages);
 
@@ -96,8 +102,9 @@ public class ReadingListController(
     [HttpGet("lists-for-series")]
     public async Task<ActionResult<IEnumerable<ReadingListDto>>> GetListsForSeries(int seriesId)
     {
+        var ct = HttpContext.RequestAborted;
         return Ok(await unitOfWork.ReadingListRepository.GetReadingListDtosForSeriesAndUserAsync(UserId,
-            seriesId, true));
+            seriesId, true, ct));
     }
 
     /// <summary>
@@ -109,8 +116,9 @@ public class ReadingListController(
     [HttpGet("lists-for-chapter")]
     public async Task<ActionResult<IEnumerable<ReadingListDto>>> GetListsForChapter(int chapterId)
     {
+        var ct = HttpContext.RequestAborted;
         return Ok(await unitOfWork.ReadingListRepository.GetReadingListDtosForChapterAndUserAsync(UserId,
-            chapterId, true));
+            chapterId, true, ct));
     }
 
     /// <summary>
@@ -123,6 +131,7 @@ public class ReadingListController(
     [HttpGet("items")]
     public async Task<ActionResult<IList<ReadingListItemDto>>> GetListForUser(int readingListId)
     {
+        var ct = HttpContext.RequestAborted;
         return Ok(await readingListService.GetReadingListItems(readingListId, UserId));
     }
 
@@ -137,6 +146,7 @@ public class ReadingListController(
     public async Task<ActionResult> UpdateListItemPosition(UpdateReadingListPosition dto)
     {
         // Make sure UI buffers events
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -149,7 +159,7 @@ public class ReadingListController(
         }
 
         await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-            MessageFactory.ReadingListUpdatedEvent(dto.ReadingListId), false);
+            MessageFactory.ReadingListUpdatedEvent(dto.ReadingListId), false, ct);
 
         return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
 
@@ -164,6 +174,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> DeleteListItem(UpdateReadingListPosition dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -176,7 +187,7 @@ public class ReadingListController(
         }
 
         await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-            MessageFactory.ReadingListUpdatedEvent(dto.ReadingListId), false);
+            MessageFactory.ReadingListUpdatedEvent(dto.ReadingListId), false, ct);
 
         return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
     }
@@ -190,6 +201,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> DeleteReadFromList([FromQuery] int readingListId)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(readingListId, Username!);
         if (user == null)
         {
@@ -202,7 +214,7 @@ public class ReadingListController(
         }
 
         await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-            MessageFactory.ReadingListUpdatedEvent(readingListId), false);
+            MessageFactory.ReadingListUpdatedEvent(readingListId), false, ct);
         return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
     }
 
@@ -212,9 +224,11 @@ public class ReadingListController(
     /// <param name="readingListId"></param>
     /// <returns></returns>
     [HttpDelete]
+    [ReadingListAccess]
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> DeleteList([FromQuery] int readingListId)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(readingListId, Username!);
         if (user == null)
         {
@@ -236,7 +250,8 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult<ReadingListDto>> CreateList(CreateReadingListDto dto)
     {
-        var user = await unitOfWork.UserRepository.GetUserByUsernameAsync(Username!, AppUserIncludes.ReadingLists);
+        var ct = HttpContext.RequestAborted;
+        var user = await unitOfWork.UserRepository.GetUserByUsernameAsync(Username!, AppUserIncludes.ReadingLists, ct);
         if (user == null) return Unauthorized();
 
         try
@@ -248,7 +263,7 @@ public class ReadingListController(
             return BadRequest(await localizationService.TranslateAsync(UserId, ex.Message));
         }
 
-        return Ok(await unitOfWork.ReadingListRepository.GetReadingListDtoByTitleAsync(user.Id, dto.Title));
+        return Ok(await unitOfWork.ReadingListRepository.GetReadingListDtoByTitleAsync(user.Id, dto.Title, ct));
     }
 
     /// <summary>
@@ -261,7 +276,7 @@ public class ReadingListController(
     public async Task<ActionResult<ReadingListDto>> UpdateList(UpdateReadingListDto dto)
     {
         var ct = HttpContext.RequestAborted;
-        var readingList = await unitOfWork.ReadingListRepository.GetReadingListByIdAsync(dto.ReadingListId, ReadingListIncludes.Tags, ct: ct);
+        var readingList = await unitOfWork.ReadingListRepository.GetReadingListByIdAsync(dto.ReadingListId, ReadingListIncludes.Tags | ReadingListIncludes.CoverImageFile, ct: ct);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
 
         var user = await readingListService.UserHasReadingListAccess(readingList.Id, Username!);
@@ -293,6 +308,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> UpdateListBySeries(UpdateReadingListBySeriesDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -301,11 +317,14 @@ public class ReadingListController(
 
         var readingList = user.ReadingLists.SingleOrDefault(l => l.Id == dto.ReadingListId);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
+
+        if (!await unitOfWork.UserRepository.HasAccessToSeries(UserId, dto.SeriesId, ct))
+            return BadRequest(await localizationService.TranslateAsync(UserId, "series-doesnt-exist"));
         var chapterIdsForSeries =
-            await unitOfWork.SeriesRepository.GetChapterIdsForSeriesAsync([dto.SeriesId]);
+            await unitOfWork.SeriesRepository.GetChapterIdsForSeriesAsync([dto.SeriesId], ct);
 
         // If there are adds, tell tracking this has been modified
-        if (await readingListService.AddChaptersToReadingList(dto.SeriesId, chapterIdsForSeries, readingList))
+        if (await readingListService.AddChaptersToReadingList(chapterIdsForSeries, readingList))
         {
             unitOfWork.ReadingListRepository.Update(readingList);
         }
@@ -314,16 +333,16 @@ public class ReadingListController(
         {
             if (unitOfWork.HasChanges())
             {
-                await unitOfWork.CommitAsync();
-                await readingListService.UpdateReadingListCoverImage(readingList);
+                await unitOfWork.CommitAsync(ct);
+                await compositeCoverService.CreateIfMissingAsync(ImageKind.ReadingListCover, readingList.Id, ct);
                 await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false);
+                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false, ct);
                 return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
             }
         }
         catch
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         return Ok(await localizationService.TranslateAsync(UserId, "nothing-to-do"));
@@ -339,6 +358,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> UpdateListByMultiple(UpdateReadingListByMultipleDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -347,14 +367,18 @@ public class ReadingListController(
         var readingList = user.ReadingLists.SingleOrDefault(l => l.Id == dto.ReadingListId);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
 
-        var chapterIds = await unitOfWork.VolumeRepository.GetChapterIdsByVolumeIds(dto.VolumeIds);
+        if (!await unitOfWork.UserRepository.HasAccessToAllVolumes(UserId, dto.VolumeIds, ct) ||
+            !await unitOfWork.UserRepository.HasAccessToAllChapters(UserId, dto.ChapterIds, ct))
+            return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
+
+        var chapterIds = await unitOfWork.VolumeRepository.GetChapterIdsByVolumeIds(dto.SeriesId, dto.VolumeIds, ct);
         foreach (var chapterId in dto.ChapterIds)
         {
             chapterIds.Add(chapterId);
         }
 
         // If there are adds, tell tracking this has been modified
-        if (await readingListService.AddChaptersToReadingList(dto.SeriesId, chapterIds, readingList))
+        if (await readingListService.AddChaptersToReadingList(chapterIds, readingList))
         {
             unitOfWork.ReadingListRepository.Update(readingList);
         }
@@ -363,16 +387,16 @@ public class ReadingListController(
         {
             if (unitOfWork.HasChanges())
             {
-                await unitOfWork.CommitAsync();
-                await readingListService.UpdateReadingListCoverImage(readingList);
+                await unitOfWork.CommitAsync(ct);
+                await compositeCoverService.CreateIfMissingAsync(ImageKind.ReadingListCover, readingList.Id, ct);
                 await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false);
+                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false, ct);
                 return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
             }
         }
         catch
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         return Ok(await localizationService.TranslateAsync(UserId, "nothing-to-do"));
@@ -387,6 +411,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> UpdateListByMultipleSeries(UpdateReadingListByMultipleSeriesDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -395,12 +420,15 @@ public class ReadingListController(
         var readingList = user.ReadingLists.SingleOrDefault(l => l.Id == dto.ReadingListId);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
 
-        var ids = await unitOfWork.SeriesRepository.GetChapterIdWithSeriesIdForSeriesAsync(dto.SeriesIds.ToArray());
+        if (!await unitOfWork.UserRepository.HasAccessToSeries(UserId, dto.SeriesIds, ct))
+            return BadRequest(await localizationService.TranslateAsync(UserId, "series-doesnt-exist"));
+
+        var ids = await unitOfWork.SeriesRepository.GetChapterIdWithSeriesIdForSeriesAsync(dto.SeriesIds.ToArray(), ct);
 
         foreach (var seriesId in ids.Keys)
         {
             // If there are adds, tell tracking this has been modified
-            if (await readingListService.AddChaptersToReadingList(seriesId, ids[seriesId], readingList))
+            if (await readingListService.AddChaptersToReadingList(ids[seriesId], readingList))
             {
                 unitOfWork.ReadingListRepository.Update(readingList);
             }
@@ -410,16 +438,16 @@ public class ReadingListController(
         {
             if (unitOfWork.HasChanges())
             {
-                await unitOfWork.CommitAsync();
-                await readingListService.UpdateReadingListCoverImage(readingList);
+                await unitOfWork.CommitAsync(ct);
+                await compositeCoverService.CreateIfMissingAsync(ImageKind.ReadingListCover, readingList.Id, ct);
                 await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false);
+                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false, ct);
                 return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
             }
         }
         catch
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         return Ok(await localizationService.TranslateAsync(UserId, "nothing-to-do"));
@@ -429,6 +457,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> UpdateListByVolume(UpdateReadingListByVolumeDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -437,11 +466,14 @@ public class ReadingListController(
         var readingList = user.ReadingLists.SingleOrDefault(l => l.Id == dto.ReadingListId);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
 
+        if (!await unitOfWork.UserRepository.HasAccessToVolume(UserId, dto.VolumeId, ct))
+            return BadRequest(await localizationService.TranslateAsync(UserId, "volume-doesnt-exist"));
+
         var chapterIdsForVolume =
-            (await unitOfWork.ChapterRepository.GetChaptersAsync(dto.VolumeId)).Select(c => c.Id).ToList();
+            (await unitOfWork.ChapterRepository.GetChaptersAsync(dto.VolumeId, ct: ct)).Select(c => c.Id).ToList();
 
         // If there are adds, tell tracking this has been modified
-        if (await readingListService.AddChaptersToReadingList(dto.SeriesId, chapterIdsForVolume, readingList))
+        if (await readingListService.AddChaptersToReadingList(chapterIdsForVolume, readingList))
         {
             unitOfWork.ReadingListRepository.Update(readingList);
         }
@@ -450,16 +482,16 @@ public class ReadingListController(
         {
             if (unitOfWork.HasChanges())
             {
-                await unitOfWork.CommitAsync();
-                await readingListService.UpdateReadingListCoverImage(readingList);
+                await unitOfWork.CommitAsync(ct);
+                await compositeCoverService.CreateIfMissingAsync(ImageKind.ReadingListCover, readingList.Id, ct);
                 await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false);
+                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false, ct);
                 return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
             }
         }
         catch
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         return Ok(await localizationService.TranslateAsync(UserId, "nothing-to-do"));
@@ -469,6 +501,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> UpdateListByChapter(UpdateReadingListByChapterDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         var user = await readingListService.UserHasReadingListAccess(dto.ReadingListId, Username!);
         if (user == null)
         {
@@ -477,8 +510,11 @@ public class ReadingListController(
         var readingList = user.ReadingLists.SingleOrDefault(l => l.Id == dto.ReadingListId);
         if (readingList == null) return BadRequest(await localizationService.TranslateAsync(UserId, "reading-list-doesnt-exist"));
 
+        if (!await unitOfWork.UserRepository.HasAccessToChapter(UserId, dto.ChapterId, ct))
+            return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
+
         // If there are adds, tell tracking this has been modified
-        if (await readingListService.AddChaptersToReadingList(dto.SeriesId, new List<int>() { dto.ChapterId }, readingList))
+        if (await readingListService.AddChaptersToReadingList(new List<int>() { dto.ChapterId }, readingList))
         {
             unitOfWork.ReadingListRepository.Update(readingList);
         }
@@ -487,16 +523,16 @@ public class ReadingListController(
         {
             if (unitOfWork.HasChanges())
             {
-                await unitOfWork.CommitAsync();
-                await readingListService.UpdateReadingListCoverImage(readingList);
+                await unitOfWork.CommitAsync(ct);
+                await compositeCoverService.CreateIfMissingAsync(ImageKind.ReadingListCover, readingList.Id, ct);
                 await eventHub.SendMessageAsync(MessageFactory.ReadingListUpdated,
-                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false);
+                    MessageFactory.ReadingListUpdatedEvent(readingList.Id), false, ct);
                 return Ok(await localizationService.TranslateAsync(UserId, "reading-list-updated"));
             }
         }
         catch
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         return Ok(await localizationService.TranslateAsync(UserId, "nothing-to-do"));
@@ -514,6 +550,7 @@ public class ReadingListController(
     [ResponseCache(CacheProfileName = ResponseCacheProfiles.TenMinute, VaryByQueryKeys = ["readingListId", "role"])]
     public ActionResult<IEnumerable<PersonDto>> GetPeopleByRoleForList(int readingListId, PersonRole role)
     {
+        var ct = HttpContext.RequestAborted;
         return Ok(unitOfWork.ReadingListRepository.GetReadingListPeopleAsync(readingListId, role));
     }
 
@@ -527,7 +564,8 @@ public class ReadingListController(
     [ResponseCache(CacheProfileName = ResponseCacheProfiles.TenMinute, VaryByQueryKeys = ["readingListId"])]
     public async Task<ActionResult<IEnumerable<PersonDto>>> GetAllPeopleForList(int readingListId)
     {
-        return Ok(await unitOfWork.ReadingListRepository.GetReadingListAllPeopleAsync(readingListId));
+        var ct = HttpContext.RequestAborted;
+        return Ok(await unitOfWork.ReadingListRepository.GetReadingListAllPeopleAsync(readingListId, ct));
     }
 
     /// <summary>
@@ -540,7 +578,8 @@ public class ReadingListController(
     [HttpGet("next-chapter")]
     public async Task<ActionResult<int>> GetNextChapter(int currentChapterId, int readingListId)
     {
-        var items = (await unitOfWork.ReadingListRepository.GetReadingListItemsByIdAsync(readingListId)).ToList();
+        var ct = HttpContext.RequestAborted;
+        var items = (await unitOfWork.ReadingListRepository.GetReadingListItemsByIdAsync(readingListId, ct)).ToList();
 
         var readingListItem = items.SingleOrDefault(rl => rl.ChapterId == currentChapterId);
         if (readingListItem == null) return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
@@ -564,7 +603,8 @@ public class ReadingListController(
     [HttpGet("prev-chapter")]
     public async Task<ActionResult<int>> GetPrevChapter(int currentChapterId, int readingListId)
     {
-        var items = (await unitOfWork.ReadingListRepository.GetReadingListItemsByIdAsync(readingListId)).ToList();
+        var ct = HttpContext.RequestAborted;
+        var items = (await unitOfWork.ReadingListRepository.GetReadingListItemsByIdAsync(readingListId, ct)).ToList();
 
         var readingListItem = items.SingleOrDefault(rl => rl.ChapterId == currentChapterId);
         if (readingListItem == null) return BadRequest(await localizationService.TranslateAsync(UserId, "chapter-doesnt-exist"));
@@ -587,8 +627,9 @@ public class ReadingListController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<bool>> DoesNameExists(string name)
     {
+        var ct = HttpContext.RequestAborted;
         if (string.IsNullOrEmpty(name)) return true;
-        return Ok(await unitOfWork.ReadingListRepository.ReadingListExists(name));
+        return Ok(await unitOfWork.ReadingListRepository.ReadingListExists(name, ct: ct));
     }
 
 
@@ -602,6 +643,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public async Task<ActionResult> PromoteMultipleReadingLists(PromoteReadingListsDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         // This needs to take into account owner as I can select other users cards
         var userId = UserId;
         if (!User.IsInRole(PolicyConstants.PromoteRole) && !User.IsInRole(PolicyConstants.AdminRole))
@@ -609,7 +651,7 @@ public class ReadingListController(
             return BadRequest(await localizationService.TranslateAsync(userId, "permission-denied"));
         }
 
-        var readingLists = await unitOfWork.ReadingListRepository.GetReadingListsByIds(dto.ReadingListIds);
+        var readingLists = await unitOfWork.ReadingListRepository.GetReadingListsByIds(dto.ReadingListIds, ct: ct);
 
         foreach (var readingList in readingLists)
         {
@@ -619,7 +661,7 @@ public class ReadingListController(
         }
 
         if (!unitOfWork.HasChanges()) return Ok();
-        await unitOfWork.CommitAsync();
+        await unitOfWork.CommitAsync(ct);
 
         return Ok();
     }
@@ -633,8 +675,9 @@ public class ReadingListController(
     [HttpPost("delete-multiple")]
     public async Task<ActionResult> DeleteMultipleReadingLists(DeleteReadingListsDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         // This needs to take into account owner as I can select other users cards
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId, AppUserIncludes.ReadingLists);
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId, AppUserIncludes.ReadingLists, ct);
         if (user == null) return Unauthorized();
 
         user.ReadingLists = user.ReadingLists.Where(uc => !dto.ReadingListIds.Contains(uc.Id)).ToList();
@@ -642,7 +685,7 @@ public class ReadingListController(
 
 
         if (!unitOfWork.HasChanges()) return Ok();
-        await unitOfWork.CommitAsync();
+        await unitOfWork.CommitAsync(ct);
 
         return Ok();
     }
@@ -653,10 +696,12 @@ public class ReadingListController(
     /// <param name="readingListId"></param>
     /// <returns></returns>
     [HttpGet("info")]
+    [ReadingListAccess]
     [ResponseCache(CacheProfileName = ResponseCacheProfiles.Hour, VaryByQueryKeys = ["readingListId"])]
     public async Task<ActionResult<ReadingListInfoDto?>> GetReadingListInfo(int readingListId)
     {
-        var result = await unitOfWork.ReadingListRepository.GetReadingListInfoAsync(readingListId);
+        var ct = HttpContext.RequestAborted;
+        var result = await unitOfWork.ReadingListRepository.GetReadingListInfoAsync(readingListId, ct);
 
         if (result == null) return Ok(null);
 
@@ -679,6 +724,7 @@ public class ReadingListController(
     [HttpPost("export-as-cbl")]
     public async Task<ActionResult> ExportAsCbl([FromQuery] int readingListId, [FromQuery] bool asV2 = false)
     {
+        var ct = HttpContext.RequestAborted;
         var filepath = await cblExportService.ExportReadingList(readingListId, UserId,  asV2);
         if (string.IsNullOrEmpty(filepath)) return BadRequest(await localizationService.TranslateAsync(UserId, "cbl-export-failed"));
 
@@ -696,7 +742,7 @@ public class ReadingListController(
     [DisallowRole(PolicyConstants.ReadOnlyRole)]
     public ActionResult RegenerateCover([FromQuery] int readingListId)
     {
-        BackgroundJob.Enqueue(() => readingListService.GenerateReadingListCoverImage(readingListId, true));
+        BackgroundJob.Enqueue(() => compositeCoverService.RefreshAsync(ImageKind.ReadingListCover, readingListId, true, CancellationToken.None));
 
         return Ok();
     }

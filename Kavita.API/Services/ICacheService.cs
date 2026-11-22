@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Kavita.Models.DTOs.Reader;
@@ -22,13 +22,19 @@ public interface ICacheService
     /// </summary>
     /// <param name="chapterIds">Volumes that belong to that library. Assume the library might have been deleted before this invocation.</param>
     void CleanupChapters(IEnumerable<int> chapterIds);
+    /// <summary>
+    /// Wipes the whole page cache directory, except chapters tied to currently active
+    /// reading sessions. Used after a scan so cached pages are never deleted out from
+    /// under a live reader.
+    /// </summary>
+    Task CleanupCacheExceptActiveChaptersAsync();
     void CleanupBookmarks(IEnumerable<int> seriesIds);
     string GetCachedPagePath(int chapterId, int page);
     string GetCachePath(int chapterId);
-    string GetBookmarkCachePath(int seriesId);
+    string GetBookmarkCachePath(int userId, int seriesId);
     IEnumerable<string> GetCachedPages(int chapterId);
     IEnumerable<FileDimensionDto> GetCachedFileDimensions(string cachePath);
-    string GetCachedBookmarkPagePath(int seriesId, int page);
+    string GetCachedBookmarkPagePath(int userId, int seriesId, int page);
     string GetCachedFile(Chapter chapter);
     string GetCachedFile(int chapterId, string firstFilePath);
     Task ExtractChapterFiles(string extractPath, IReadOnlyList<MangaFile> files, bool extractPdfImages = false);

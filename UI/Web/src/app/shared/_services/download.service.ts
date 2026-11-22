@@ -1,18 +1,11 @@
 import {HttpClient} from '@angular/common/http';
 import {computed, DestroyRef, effect, inject, Injectable, signal} from '@angular/core';
-import {Series} from 'src/app/_models/series';
-import {environment} from 'src/environments/environment';
 import {ConfirmService} from '../confirm.service';
-import {Chapter} from 'src/app/_models/chapter';
-import {Volume} from 'src/app/_models/volume';
 import {asyncScheduler, filter, firstValueFrom, forkJoin, of, tap} from 'rxjs';
 import {download, parseContentDisposition} from '../_models/download';
-import {PageBookmark} from 'src/app/_models/readers/page-bookmark';
 import {map, switchMap, throttleTime} from 'rxjs/operators';
-import {AccountService} from 'src/app/_services/account.service';
-import {BytesPipe} from 'src/app/_pipes/bytes.pipe';
 import {translate, TranslocoService} from "@jsverse/transloco";
-import {takeUntilDestroyed, toObservable} from "@angular/core/rxjs-interop";
+import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {SAVER} from "../../_providers/saver.provider";
 import {UtilityService} from "./utility.service";
 import {DateTime} from 'luxon';
@@ -38,6 +31,13 @@ import {EntityTitleService} from "../../_services/entity-title.service";
 import {LibraryService} from "../../_services/library.service";
 import NoSleep from "nosleep.js";
 import {FilterEntityType} from "../../_models/metadata/v2/filter-entity-type";
+import {Chapter} from "../../_models/chapter";
+import {BytesPipe} from "../../_pipes/bytes.pipe";
+import {AccountService} from "../../_services/account.service";
+import {Volume} from "../../_models/volume";
+import {PageBookmark} from "../../_models/readers/page-bookmark";
+import {Series} from "../../_models/series";
+import {environment} from "../../../environments/environment";
 
 export const DEBOUNCE_TIME = 100;
 
@@ -142,8 +142,6 @@ export class DownloadService {
   private _olderItems = signal<DownloadQueueItem[]>([]);
   readonly olderCompletedItems = this._olderItems.asReadonly();
   private _olderLoaded = false;
-
-  private readonly activeQueue$ = toObservable(this.activeQueue);
 
   /**
    * Sliding window of recent byte snapshots for smoothed speed calculation.
@@ -1117,7 +1115,17 @@ export class DownloadService {
     setTimeout(() => this.processQueue(), 1500);
   }
 
-  // --- Blob-based downloads (bookmarks, logs) ---
+  downloadDebugExport(exportId: string) {
+    this.httpClient.get(this.baseUrl + 'server/debug-export/' + encodeURIComponent(exportId),
+      { observe: 'events', responseType: 'blob', reportProgress: true }
+    ).pipe(
+      throttleTime(DEBOUNCE_TIME, asyncScheduler, { leading: true, trailing: true }),
+      download((blob, filename) => {
+        this.save(blob, decodeURIComponent(filename));
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe();
+  }
 
   private downloadBookmarksBlob(bookmarks: PageBookmark[]) {
     this.httpClient.post(this.baseUrl + 'download/bookmarks', { bookmarks },

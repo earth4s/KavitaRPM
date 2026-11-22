@@ -35,10 +35,11 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
 
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), new MockFileSystem());
         var readingListService = new ReadingListService(unitOfWork, Substitute.For<ILogger<ReadingListService>>(),
-            Substitute.For<IEventHub>(), Substitute.For<IImageService>(), ds, new EntityNamingService());
+            new EntityNamingService(),
+            Substitute.For<IImageFileService>(), Substitute.For<ICompositeCoverService>());
 
         var readerService = new ReaderService(unitOfWork, Substitute.For<ILogger<ReaderService>>(),
-            Substitute.For<IEventHub>(), Substitute.For<IImageService>(),
+            Substitute.For<IEventHub>(), Substitute.For<IImagePipeline>(),
             new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), new MockFileSystem()),
             Substitute.For<IScrobblingService>(), Substitute.For<IReadingSessionService>(),
             Substitute.For<IClientInfoAccessor>(), Substitute.For<IEntityNamingService>(),
@@ -92,7 +93,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1}, readingList);
         await unitOfWork.CommitAsync();
 
         Assert.Single(readingList.Items);
@@ -139,9 +140,9 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1}, readingList);
         await unitOfWork.CommitAsync();
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {2}, readingList);
         await unitOfWork.CommitAsync();
 
         Assert.Equal(2, readingList.Items.Count);
@@ -200,7 +201,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2, 3}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2, 3}, readingList);
         await unitOfWork.CommitAsync();
         Assert.Equal(3, readingList.Items.Count);
 
@@ -262,7 +263,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
         };
 
         // Existing (order, chapterId): (0, 1), (1, 2), (2, 3)
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2, 3}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2, 3}, readingList);
         await unitOfWork.CommitAsync();
         Assert.Equal(3, readingList.Items.Count);
 
@@ -338,7 +339,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2}, readingList);
         await unitOfWork.CommitAsync();
         Assert.Equal(2, readingList.Items.Count);
 
@@ -393,7 +394,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
 
         await context.SaveChangesAsync();
 
-        var user = await unitOfWork.UserRepository.GetUserByUsernameAsync("majora2007", AppUserIncludes.ReadingLists | AppUserIncludes.Progress);
+        var user = await unitOfWork.UserRepository.GetUserByUsernameAsync("majora2007", AppUserIncludes.ReadingLists);
         var readingList = new ReadingListBuilder("test").Build();
         Assert.NotNull(user);
         user.ReadingLists = new List<ReadingList>()
@@ -401,7 +402,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2, 3}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2, 3}, readingList);
         await unitOfWork.CommitAsync();
         Assert.Equal(3, readingList.Items.Count);
 
@@ -461,7 +462,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2}, readingList);
 
 
         unitOfWork.UserRepository.Update(user);
@@ -514,7 +515,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2}, readingList);
 
 
         unitOfWork.UserRepository.Update(user);
@@ -579,10 +580,10 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
         };
 
 
-        await readingListService.AddChaptersToReadingList(spiceAndWolf.Id, new List<int> {1, 2}, myTestReadingList);
-        await readingListService.AddChaptersToReadingList(othersidePicnic.Id, new List<int> {3, 4}, myTestReadingList);
-        await readingListService.AddChaptersToReadingList(spiceAndWolf.Id, new List<int> {1, 2}, myThirdTestReadingList);
-        await readingListService.AddChaptersToReadingList(othersidePicnic.Id, new List<int> {3, 4}, mySecondTestReadingList);
+        await readingListService.AddChaptersToReadingList(new List<int> {1, 2}, myTestReadingList);
+        await readingListService.AddChaptersToReadingList(new List<int> {3, 4}, myTestReadingList);
+        await readingListService.AddChaptersToReadingList(new List<int> {1, 2}, myThirdTestReadingList);
+        await readingListService.AddChaptersToReadingList(new List<int> {3, 4}, mySecondTestReadingList);
 
 
         unitOfWork.UserRepository.Update(user);
@@ -657,7 +658,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2}, readingList);
 
 
         unitOfWork.UserRepository.Update(user);
@@ -713,7 +714,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
             readingList
         };
 
-        await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 2}, readingList);
+        await readingListService.AddChaptersToReadingList(new List<int>() {1, 2}, readingList);
 
 
         unitOfWork.UserRepository.Update(user);
@@ -1194,7 +1195,7 @@ public class ReadingListServiceTests(ITestOutputHelper outputHelper): AbstractDb
     //     var user = await unitOfWork.UserRepository.GetUserByIdAsync(1, AppUserIncludes.ReadingLists);
     //     Assert.NotNull(user);
     //     var readingList = await readingListService.CreateReadingListForUser(user, "Fables");
-    //     Assert.True(await readingListService.AddChaptersToReadingList(1, new List<int>() {1, 3}, readingList));
+    //     Assert.True(await readingListService.AddChaptersToReadingList(new List<int>() {1, 3}, readingList));
     //     Assert.Equal(2, readingList.Items.Count);
     //
     //     // Attempt to import a Cbl with same reading list name

@@ -3,15 +3,21 @@ using Kavita.API.Database;
 using Kavita.API.Repositories;
 using Kavita.API.Services;
 using Kavita.API.Services.Scanner;
+using Kavita.API.Services.Plus;
 using Kavita.Common;
+using Kavita.Common.Helpers;
 using Kavita.Database;
 using Kavita.Database.Tests;
+using Kavita.Models;
 using Kavita.Models.Builders;
 using Kavita.Models.Constants;
+using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Entities.Enums.User;
 using Kavita.Models.Entities.User;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -224,6 +230,32 @@ public class AccountServiceTests(ITestOutputHelper outputHelper): AbstractDbTest
         Assert.Empty(userLibs);
     }
 
+    [Fact]
+    public async Task SeedUserGivesEveryDefault()
+    {
+        var (unitOfWork, context, mapper) = await CreateDatabase();
+        var (_, accountService, _, _) = await Setup(unitOfWork, context, mapper);
+        var user = new AppUserBuilder("new-user", "new-user@localhost").Build();
+
+        accountService.SeedUser(user);
+
+        AssertSeeded(user);
+        Assert.Equal(EntityState.Detached, context.Entry(user).State);
+    }
+
+    internal static void AssertSeeded(AppUser user)
+    {
+        Assert.Equal(Defaults.DefaultStreams.Select(s => s.StreamType).Order(),
+            user.DashboardStreams.Select(s => s.StreamType).Order());
+        Assert.Equal(Defaults.DefaultSideNavStreams.Select(s => s.StreamType).Order(),
+            user.SideNavStreams.Where(s => s.StreamType != SideNavStreamType.Library).Select(s => s.StreamType).Order());
+        Assert.Equal(Defaults.DefaultHighlightSlots.Length, user.UserPreferences.BookReaderHighlightSlots.Count);
+        Assert.Equal([AuthKeyHelper.ImageOnlyKeyName, AuthKeyHelper.OpdsKeyName],
+            user.AuthKeys.Where(k => k.Provider == AuthKeyProvider.System).Select(k => k.Name).Order());
+        Assert.Equal(KavitaPlusConfiguration.AllInUseScrobbleProviders.Order(), user.ScrobbleProviders.Keys.Order());
+        Assert.Equal(ReadingProfileKind.Default, Assert.Single(user.ReadingProfiles).Kind);
+    }
+
 
 
     private static async Task<(AppUser, IAccountService, UserManager<AppUser>, SettingsService)> Setup(IUnitOfWork unitOfWork, DataContext context, IMapper mapper)
@@ -285,7 +317,7 @@ public class AccountServiceTests(ITestOutputHelper outputHelper): AbstractDbTest
         await userManager.CreateAsync(defaultAdmin);
 
         var accountService = new AccountService(userManager, Substitute.For<ILogger<AccountService>>(), unitOfWork, mapper, Substitute.For<ILocalizationService>());
-        var settingsService = new SettingsService(unitOfWork, Substitute.For<IDirectoryService>(), Substitute.For<ILibraryWatcher>(), Substitute.For<ITaskScheduler>(), Substitute.For<ILogger<SettingsService>> (), Substitute.For<IOidcService>(), Substitute.For<ILoggingService>());
+        var settingsService = new SettingsService(unitOfWork, Substitute.For<IDirectoryService>(), Substitute.For<IFolderWatchService>(), Substitute.For<ITaskScheduler>(), Substitute.For<ILogger<SettingsService>> (), Substitute.For<IOidcService>(), Substitute.For<ILoggingService>());
 
         user = await unitOfWork.UserRepository.GetUserByIdAsync(user.Id, AppUserIncludes.SideNavStreams);
         return (user!, accountService, userManager, settingsService);

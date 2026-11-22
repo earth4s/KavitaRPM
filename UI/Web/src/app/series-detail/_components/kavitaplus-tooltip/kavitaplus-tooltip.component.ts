@@ -1,4 +1,7 @@
 import {ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal} from '@angular/core';
+import {DrawerService} from '../../../_services/drawer.service';
+import {SeriesPreviewDrawerComponent} from '../../../_single-module/series-preview-drawer/series-preview-drawer.component';
+import {MetadataProvider} from '../../../_models/kavitaplus/metadata-provider.enum';
 import {NavigationExtras, Router} from '@angular/router';
 import {NgbActiveOffcanvas} from '@ng-bootstrap/ng-bootstrap';
 import {TranslocoDirective} from '@jsverse/transloco';
@@ -39,6 +42,16 @@ import {
     UtcToLocalDatePipe, TimeDifferencePipe, ScrobbleProviderTagBadgeComponent, MetadataProviderTagBadgeComponent],
 })
 export class KavitaplusTooltipComponent implements OnInit {
+  protected readonly MetadataProvider = MetadataProvider;
+  private readonly drawer = inject(DrawerService);
+
+  protected showCatalogDetails(info: KavitaPlusAuditSeriesInfo) {
+    const ref = this.drawer.open(SeriesPreviewDrawerComponent, {position: 'end'});
+    ref.setInput('seriesId', info.seriesId);
+    ref.setInput('name', info.seriesName);
+    ref.setInput('isExternalSeries', true);
+  }
+
   private readonly auditService = inject(KavitaPlusAuditService);
   private readonly router = inject(Router);
   protected readonly activeOffcanvas = inject(NgbActiveOffcanvas, { optional: true });

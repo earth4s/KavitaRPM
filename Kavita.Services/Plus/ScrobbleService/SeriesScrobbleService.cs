@@ -3,7 +3,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Kavita.API.Database;
+using Kavita.API.Repositories;
 using Kavita.API.Services.Plus;
+using Kavita.Common.Extensions;
 using Kavita.Models.DTOs.KavitaPlus;
 using Kavita.Models.DTOs.Scrobbling;
 using Kavita.Models.Entities;
@@ -45,9 +47,8 @@ where T: IScrobbleProviderService
         if (HasRequiredIds(ctx.Series)) return true;
 
         await auditService.LogTemperedAsync(al => al.SeriesId == ctx.Series.Id && al.UserId == ctx.User.Id, KavitaPlusAuditCategory.Scrobble,
-            KavitaPlusEventType.ScrobbleEventSkipped, AuditStatus.Info, AuditSubjectType.Series,
-            payload: new AuditLogScrobbleParamsDto { ScrobbleEventType = eventType, Provider = Provider },
-            seriesId: ctx.Series.Id, error: "series-missing-required-ids", userId: ctx.User.Id, ct: ct);
+            KavitaPlusEventType.ScrobbleEventSkipped, AuditStatus.Failure, AuditSubjectType.Series,
+            seriesId: ctx.Series.Id, payload: new AuditLogScrobbleParamsDto { ScrobbleEventType = eventType, Provider = Provider }, error: "series-missing-required-ids", userId: ctx.User.Id, ct: ct);
 
         return false;
     }
@@ -279,6 +280,12 @@ where T: IScrobbleProviderService
             var prevChapterNumber = existingEvent.ChapterNumber;
             var prevVolumeNumber = existingEvent.VolumeNumber;
 
+            if (prevVolumeNumber.Is(volumeNumber) && prevChapterNumber == chapterNumber)
+            {
+                logger.LogTrace("Ignoring reading update for {Series} as volume & chapter have not changed", ctx.Series.Name);
+                return;
+            }
+
             existingEvent.VolumeNumber = volumeNumber;
             existingEvent.ChapterNumber = chapterNumber;
             existingEvent.IsBackFill &= ctx.IsBackfill;
@@ -321,8 +328,12 @@ where T: IScrobbleProviderService
 
         if (evt.VolumeNumber is Parser.SpecialVolumeNumber)
         {
-            // We don't process Specials because they will never match on AniList
-            return;
+            var countIfAllSpecial = await unitOfWork.SeriesRepository.GetChapterCountIfAllSpecials(ctx.Series.Id, ct);
+            if (countIfAllSpecial is null or 0)
+                return;
+
+            // In case of a series only being specials, send the amount of specials as chapter count
+            evt.ChapterNumber = countIfAllSpecial;
         }
 
         unitOfWork.ScrobbleRepository.Attach(evt);
@@ -333,13 +344,13 @@ where T: IScrobbleProviderService
             {
                 Provider = Provider,
                 ScrobbleEventType = ScrobbleEventType.ChapterRead,
-                ChapterNumber = chapterNumber,
-                VolumeNumber = volumeNumber,
+                ChapterNumber = evt.ChapterNumber,
+                VolumeNumber = evt.VolumeNumber,
                 LibraryType = ctx.Series.Library.Type,
             }, AuditStatus.Info, userId: ctx.User.Id, ct: ct);
 
         logger.LogDebug("Created new scrobble read event for {Series} with Volume {Volume}, Chapter {Chapter} for User: {UserId}",
-            ctx.Series.Name, volumeNumber, chapterNumber, ctx.User.Id);
+            ctx.Series.Name, evt.VolumeNumber, evt.ChapterNumber, ctx.User.Id);
 
     }
 

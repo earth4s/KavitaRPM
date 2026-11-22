@@ -4,8 +4,10 @@ import {IHasCover} from "./common/i-has-cover";
 import {IHasReadingTime} from "./common/i-has-reading-time";
 import {IHasProgress} from "./common/i-has-progress";
 import {IHasMetadataIds} from "./common/i-has-metadata-ids";
+import {MetadataProvider} from "./kavitaplus/metadata-provider.enum";
 
 export interface Series extends IHasCover, IHasReadingTime, IHasProgress, IHasMetadataIds {
+  gcdId?: number | null;
   id: number;
   name: string;
   /**
@@ -74,9 +76,7 @@ export interface Series extends IHasCover, IHasReadingTime, IHasProgress, IHasMe
    * This is currently only used on Series detail page for recommendations
    */
   summary?: string;
-  coverImage?: string;
-  primaryColor: string;
-  secondaryColor: string;
+  hasCoverImage: boolean;
   /**
    * Kavita+ only. Will not perform any matching from Kavita+
    */
@@ -91,4 +91,9 @@ export interface Series extends IHasCover, IHasReadingTime, IHasProgress, IHasMe
   totalReads: number;
   isStandAlone: boolean;
   mangaBakaEditionId: string;
+  /**
+   * Overrides the parent Library's default Metadata Provider for this Series only.
+   * Undefined/null means the Series inherits the Library's default provider.
+   */
+  metadataProviderOverride?: MetadataProvider | null;
 }

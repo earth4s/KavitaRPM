@@ -101,7 +101,7 @@ public static partial class Parser
     [GeneratedRegex(@"[^a-zA-Z0-9]")]
     public static partial Regex NonAlphanumericRegex();
 
-    private static readonly Regex ImageRegex = new(ImageFileExtensions,
+    private static readonly Regex ImageRegex = new($"^{ImageFileExtensions}$",
         MatchOptions, RegexTimeout);
     private static readonly Regex ArchiveFileRegex = new(ArchiveFileExtensions,
         MatchOptions, RegexTimeout);
@@ -524,7 +524,7 @@ public static partial class Parser
             MatchOptions, RegexTimeout),
         // Batgirl Vol.2000 #57 (December, 2004)
         new Regex(
-            @"^(?<Series>.+?)(?:\s|_)(v|vol|tome|t)\.?(\s|_)?(?<Volume>\d+)",
+            @"^(?<Series>.+?)(?:\s|_)(v|vol|volume|tome|t)\.?(\s|_)?(?<Volume>\d+)",
             MatchOptions, RegexTimeout),
         // Chinese Volume: 第n卷 -> Volume n, 第n册 -> Volume n, 幽游白书完全版 第03卷 天下 or 阿衰online 第1册
         new Regex(
@@ -578,13 +578,13 @@ public static partial class Parser
         new Regex(
             @"^(?<Series>.+?)(?:\s|_)#(?<Chapter>\d+)",
             MatchOptions, RegexTimeout),
-        // Batman 2016 - Chapter 01, Batman 2016 - Issue 01, Batman 2016 - Issue #01
+        // Batman 2016 - Chapter 01, Batman 2016 - Issue 01, Batman 2016 - Issue #01, Blade Runner 2019 - Ch. 01
         new Regex(
-            @"^(?<Series>.+?)((c(hapter)?)|issue)(_|\s)#?(?<Chapter>(\d+(\.\d)?)-?(\d+(\.\d)?)?)",
+            @"^(?<Series>.+?)((chapter|ch|c)\.?|issue)(_|\s)#?(?<Chapter>(\d+(\.\d)?)-?(\d+(\.\d)?)?)",
             MatchOptions, RegexTimeout),
         // Invincible 070.5 - Invincible Returns 1 (2010) (digital) (Minutemen-InnerDemons).cbr
         new Regex(
-            @"^(?<Series>.+?)(?:\s|_)(c? ?(chapter)?)(?<Chapter>(\d+(\.\d)?)-?(\d+(\.\d)?)?)(c? ?)-",
+            @"^(?<Series>.+?)(?<!Vol)(?<!Vol.)(?<!Volume)(?<!Tome)(?:\s|_)(c? ?(chapter)?)(?<Chapter>(\d+(\.\d)?)-?(\d+(\.\d)?)?)(?!\d)(?![\s_]*-?[\s_]*(?:vol(?:ume)?|tome)(?![a-zA-Z]))(c? ?)-",
             MatchOptions, RegexTimeout),
         // Batgirl Vol.2000 #57 (December, 2004)
         new Regex(
@@ -601,7 +601,7 @@ public static partial class Parser
             MatchOptions, RegexTimeout),
         // Batman & Catwoman - Trail of the Gun 01, Batman & Grendel (1996) 01 - Devil's Bones, Teen Titans v1 001 (1966-02) (digital) (OkC.O.M.P.U.T.O.-Novus)
         new Regex(
-            @"^(?<Series>.+?)(?: (?<Chapter>\d+))",
+            @"^(?<Series>.+?)(?<!Vol)(?<!Vol.)(?<!Volume)(?<!Tome)(?: (?<Chapter>\d+))(?!\d)(?![\s_]*-?[\s_]*(?:vol(?:ume)?|tome)(?![a-zA-Z]))",
             MatchOptions, RegexTimeout),
         // Saga 001 (2012) (Digital) (Empire-Zone)
         new Regex(
@@ -628,8 +628,10 @@ public static partial class Parser
             @"(?<Volume>((เล่ม|เล่มที่))?(\s|_)?\.?\d+)(\s|_)(บทที่|ตอนที่)\.?(\s|_)?(?<Chapter>\d+)",
             MatchOptions, RegexTimeout),
         // Historys Strongest Disciple Kenichi_v11_c90-98.zip, ...c90.5-100.5
+        // Trailing (?(Range)|(?![a-zA-Z])) keeps this from matching inside ripper/scanlator tags like "(c1fi7)"
+        // (a bare short number glued to more letters) while still allowing ranges like c001-006x1.
         new Regex(
-            @"(\b|_)(c|ch)(\.?\s?)(?<Chapter>(\d+(\.\d)?)(-c?\d+(\.\d)?)?)",
+            @"(\b|_)(c|ch)(\.?\s?)(?<Chapter>(?>\d+(\.\d)?)(?<Range>-c?\d+(\.\d)?)?)(?(Range)|(?:x\d+)?(?![a-zA-Z]))",
             MatchOptions, RegexTimeout),
         // [Suihei Kiki]_Kasumi_Otoko_no_Ko_[Taruby]_v1.1.zip
         new Regex(
@@ -653,7 +655,7 @@ public static partial class Parser
             MatchOptions, RegexTimeout),
         // Korean Chapter: 제n화 -> Chapter n, 가디언즈 오브 갤럭시 죽음의 보석.E0008.7화#44
         new Regex(
-            @"제?(?<Chapter>\d+\.?\d+)(회|화|장)",
+            @"제?(?<Chapter>\d+(?:\.\d+)?)(?:-\d+)?(회|화|장)",
             MatchOptions, RegexTimeout),
         // Korean Chapter: 第10話 -> Chapter n, [ハレム]ナナとカオル ～高校生のSMごっこ～　第1話
         new Regex(
@@ -669,7 +671,7 @@ public static partial class Parser
             MatchOptions, RegexTimeout),
         // Hinowa ga CRUSH! 018 (2019) (Digital) (LuCaZ).cbz, Hinowa ga CRUSH! 018.5 (2019) (Digital) (LuCaZ).cbz
         new Regex(
-            @"^(?<Series>.+?)(?<!Vol)(?<!Vol.)(?<!Volume)\s(\d\s)?(?<Chapter>\d+(?:\.\d+|-\d+)?)(?![\d.권])(?:\s\(\d{4}\))?(\b|_|-)",
+            @"^(?<Series>.+?)(?<!Vol)(?<!Vol.)(?<!Volume)(?<!Tome)\s(\d\s)?(?<Chapter>\d+(?:\.\d+|-\d+)?)(?![\d.권])(?:\s\(\d{4}\))?(?!\d)(?![\s_]*-?[\s_]*(?:vol(?:ume)?|tome)(?![a-zA-Z]))(?!.*\bv\.?\d)(?!.*\b(?:vol(?:ume)?|tome)\.?\s*\d)(?<!\bv\.?\d.*)(?<!\b(?:vol(?:ume)?|tome)\.?\s*\d.*)(\b|_|-)",
             MatchOptions, RegexTimeout),
         // Tower Of God S01 014 (CBT) (digital).cbz
         new Regex(
@@ -677,7 +679,7 @@ public static partial class Parser
             MatchOptions, RegexTimeout),
         // Beelzebub_01_[Noodles].zip, Beelzebub_153b_RHS.zip
         new Regex(
-            @"^((?!v|vo|vol|Volume).)*(\s|_)(?<Chapter>\.?\d+(?:.\d+|-\d+)?)(?<Part>b)?(\s|_|\[|\()",
+            @"^((?!v|vo|vol|Volume).)*(\s|_)(?<Chapter>\.?\d+(?:.\d+|-\d+)?)(?<Part>b)?(?!\d)(?![\s_]*-?[\s_]*(?:vol(?:ume)?|tome)(?![a-zA-Z]))(?!.*\bv\.?\d)(?!.*\b(?:vol(?:ume)?|tome)\.?\s*\d)(\s|_|\[|\()",
             MatchOptions, RegexTimeout),
         // Yumekui-Merry_DKThias_Chapter21.zip
         new Regex(
@@ -770,9 +772,31 @@ public static partial class Parser
 
     public static int ParseSpecialIndex(string filePath)
     {
-        var match = SpecialMarkerRegex.Match(filePath).Value.Replace("SP", string.Empty);
-        if (string.IsNullOrEmpty(match)) return 0;
-        return int.Parse(match);
+        var match = SpecialMarkerRegex.Match(filePath).Value;
+        return match.Length == 0 ? 0 : int.Parse(match.AsSpan(2));
+    }
+
+    /// <summary>Only an entire path component named Specials is a grouping container.</summary>
+    public static bool IsSpecialsFolder(string path) =>
+        string.Equals(Path.GetFileName(path.Replace('\\', '/').TrimEnd('/')), "Specials", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Finds the comic above a Specials subtree, without climbing above the library root.
+    /// A top-level series actually named Specials has no parent comic and is not a container.
+    /// </summary>
+    public static string? GetSpecialsOwnerFolder(string filePath, string libraryRoot)
+    {
+        var root = NormalizePath(libraryRoot);
+        var directory = Path.GetDirectoryName(NormalizePath(filePath));
+        string? owner = null;
+        while (!string.IsNullOrEmpty(directory) && directory.IsInsideFolder(root))
+        {
+            var parent = Path.GetDirectoryName(directory);
+            if (IsSpecialsFolder(directory) && !string.IsNullOrEmpty(parent) && parent.IsInsideFolder(root))
+                owner = parent;
+            directory = parent;
+        }
+        return owner;
     }
 
     public static bool IsSpecial(string? filePath, LibraryType type)
@@ -1055,6 +1079,10 @@ public static partial class Parser
         return XmlRegex.IsMatch(Path.GetExtension(filePath));
     }
 
+    public static bool IsRange(string range)
+    {
+        return !string.IsNullOrEmpty(range) && Regex.IsMatch(range, @"^[\d\-.]+$", MatchOptions, RegexTimeout);
+    }
 
     public static float MinNumberFromRange(string range)
     {
@@ -1133,18 +1161,54 @@ public static partial class Parser
     }
 
     /// <summary>
-    /// Validates that a Path doesn't start with certain blacklisted folders, like __MACOSX, @Recently-Snapshot, etc. and that if a full path, the filename
-    /// doesn't start with ._, which is a metadata file on MACOSX.
+    /// Cover images are skipped by the parsers and never become a file of the series, except in Image libraries
     /// </summary>
-    /// <param name="path"></param>
-    /// <returns></returns>
+    /// <param name="filename">Filename with extension</param>
+    /// <param name="type">Library type</param>
+    public static bool IsSkippedCoverImage(string filename, LibraryType type)
+    {
+        return type != LibraryType.Image && IsCoverImage(filename);
+    }
+
+    // Synology reports @eaDir in several casings (@eadir, @eaDIR)
+    private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Synology
+        "@eaDir", "#recycle", "#snapshot",
+        // QNAP
+        "@Recycle", "@Recently-Snapshot", ".@__thumb", ".qpkg",
+        // Samba vfs_recycle default repository (TrueNAS, OpenMediaVault)
+        ".recycle",
+        // ZFS and snapper snapshots hold a full copy of the library each
+        ".zfs", ".snapshots",
+        // Windows
+        "$RECYCLE.BIN", "System Volume Information",
+        // macOS
+        "__MACOSX", ".Trashes", ".Spotlight-V100", ".fseventsd", ".TemporaryItems", ".DocumentRevisions-V100", ".AppleDouble",
+        // Linux
+        "lost+found", ".Trash",
+        // Syncthing
+        ".stversions", ".stfolder",
+        // WD My Cloud
+        ".wdmc",
+        // Readers
+        ".caltrash", ".yacreaderlibrary",
+    };
+
+    /// <summary>
+    /// A NAS, OS, sync or reader folder that never holds library files
+    /// </summary>
+    public static bool IsExcludedFolderName(string name)
+    {
+        return ExcludedFolderNames.Contains(name)
+               || name.StartsWith(MacOsMetadataFileStartsWith, StringComparison.Ordinal)
+               || name.StartsWith(".Trash-", StringComparison.OrdinalIgnoreCase);
+    }
+
+
     public static bool HasBlacklistedFolderInPath(string path)
     {
-        return path.Contains("__MACOSX") || path.StartsWith("@Recently-Snapshot") || path.StartsWith("@recycle")
-               || path.StartsWith("._") || Path.GetFileName(path).StartsWith("._") || path.Contains(".qpkg")
-               || path.StartsWith("#recycle")
-               || path.Contains(".yacreaderlibrary")
-               || path.Contains(".caltrash");
+        return path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).Any(IsExcludedFolderName);
     }
 
 
@@ -1196,9 +1260,10 @@ public static partial class Parser
     /// </summary>
     /// <param name="comicInfoFormat"></param>
     /// <returns></returns>
-    public static bool HasComicInfoSpecial(string comicInfoFormat)
+    public static bool HasComicInfoSpecial(string? comicInfoFormat)
     {
-        return FormatTagSpecialKeywords.Contains(comicInfoFormat);
+        return !string.IsNullOrWhiteSpace(comicInfoFormat)
+            && FormatTagSpecialKeywords.Contains(comicInfoFormat.Trim(), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1214,21 +1279,6 @@ public static partial class Parser
     private static string ReplaceUnderscores(string name)
     {
         return string.IsNullOrEmpty(name) ? string.Empty : name.Replace('_', ' ');
-    }
-
-    public static string? ExtractFilename(string fileUrl)
-    {
-        var matches = CssImageUrlRegex.Matches(fileUrl);
-        foreach (Match match in matches)
-        {
-            if (!match.Success) continue;
-
-            // NOTE: This is failing for //localhost:5000/api/book/29919/book-resources?file=OPS/images/tick1.jpg
-            var importFile = match.Groups["Filename"].Value;
-            if (!importFile.Contains('?')) return importFile;
-        }
-
-        return null;
     }
 
     /// <summary>

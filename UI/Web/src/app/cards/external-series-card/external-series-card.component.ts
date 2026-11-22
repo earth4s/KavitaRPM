@@ -3,7 +3,6 @@ import {NgOptimizedImage} from '@angular/common';
 import {ExternalSeries} from "../../_models/series-detail/external-series";
 import {ImageComponent} from "../../shared/image/image.component";
 import {NgbTooltip} from "@ng-bootstrap/ng-bootstrap";
-import {ReactiveFormsModule} from "@angular/forms";
 import {TranslocoDirective} from "@jsverse/transloco";
 import {SeriesPreviewDrawerComponent} from "../../_single-module/series-preview-drawer/series-preview-drawer.component";
 import {ProviderImagePipe} from "../../_pipes/provider-image.pipe";
@@ -14,7 +13,7 @@ import {ScrobbleProvider} from "../../_services/scrobbling.service";
 
 @Component({
   selector: 'app-external-series-card',
-  imports: [ImageComponent, NgbTooltip, ReactiveFormsModule, TranslocoDirective, NgOptimizedImage, ProviderImagePipe, RecommendationSourcePipe],
+  imports: [ImageComponent, NgbTooltip, TranslocoDirective, NgOptimizedImage, ProviderImagePipe, RecommendationSourcePipe],
   templateUrl: './external-series-card.component.html',
   styleUrls: ['./external-series-card.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -22,6 +21,7 @@ import {ScrobbleProvider} from "../../_services/scrobbling.service";
 export class ExternalSeriesCardComponent {
   private readonly drawerService = inject(DrawerService);
 
+  seriesId = input.required<number>()
   data = input.required<ExternalSeries>();
 
   protected readonly scrobbleProvider = computed(() => {
@@ -48,9 +48,11 @@ export class ExternalSeriesCardComponent {
       const ref = this.drawerService.open(SeriesPreviewDrawerComponent, {position: 'end', panelClass: ''});
 
       ref.setInput('isExternalSeries', true);
+      ref.setInput('seriesId', this.seriesId());
       ref.setInput('mangaBakaId', this.data().mangaBakaId)
       ref.setInput('aniListId', this.data().aniListId);
       ref.setInput('malId', this.data().malId);
+      ref.setInput('hardcoverId', this.data().hardcoverId)
       ref.setInput('name', this.data().name);
       return;
     }

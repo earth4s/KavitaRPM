@@ -17,7 +17,6 @@
         "title": "Sign in to your account",
         "username": "{{common.username}}",
         "password": "{{common.password}}",
-        "password-validation": "{{validation.password-validation}}",
         "forgot-password": "Forgot Password?",
         "submit": "Sign in",
         "oidc": "OpenID Connect"
@@ -53,7 +52,6 @@
         "behavior-title": "Behavior",
         "other-field-required": "{{validation.other-field-required}}",
         "other-field-invalid": "{{validation.other-field-invalid}}",
-        "invalid-uri": "{{validation.invalid-uri}}",
         "tls-required": "The OIDC provider must use tls (https)",
         "checking-authority": "Checking if the authority is valid, please be patient...",
         "manual-save-label": "Changing provider settings requires a manual save",
@@ -114,7 +112,9 @@
         "add-auth-key": "New",
         "description": "An Auth Key is like a password. Rotating it will invalidate any existing clients.",
         "copy-key": "{{common.copy}}",
-        "clients-opds-error": "Failed to load OPDS url for key: {{key}}"
+        "clients-opds-error": "Failed to load OPDS url for key: {{key}}",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "You have no authorization keys yet."
     },
 
     "create-auth-key": {
@@ -123,12 +123,12 @@
         "name-label": "Name",
         "key-length-label": "Key Length",
         "expiration-label": "Expiration",
-        "required-field": "{{validation.required-field}}",
         "total-key-length": "Total Key Length: {{length}}",
         "cancel": "{{common.cancel}}",
         "close": "{{common.close}}",
         "save": "{{common.save}}",
-        "never": "Never"
+        "never": "Never",
+        "duplicate-name-validation": "Auth Key Name must be unique"
     },
 
     "identity-provider-pipe": {
@@ -150,7 +150,6 @@
         "edit": "{{common.edit}}",
         "close": "{{common.close}}",
         "username": "{{common.username}}",
-        "required": "{{validation.required-field}}",
         "email": "{{common.email}}",
         "invalid-email-warning": "A non-valid email will block some functionalities of Kavita",
         "warning-read-only": "Read Only accounts have limited permissions",
@@ -165,34 +164,6 @@
         "identity-provider-tooltip": "Kavita users are never synced with OIDC accounts.",
         "libraries-label": "{{common.libraries}}",
         "roles-label": "{{common.roles}}"
-    },
-
-    "user-scrobble-history": {
-        "title": "Scrobble History",
-        "description": "Here you will find any scrobble events linked with your account. In order for events to exist, you must have an active scrobble provider configured. All events that have been processed will clear after a month. If there are non-processed events, it is likely these cannot form matches upstream. Please reach out to your admin to get them corrected.",
-        "not-read-warning": "Upstream providers will always keep the highest number",
-        "filter-label": "{{common.filter}}",
-        "provider-header": "Provider",
-        "created-header": "Created",
-        "last-modified-header": "Last Modified",
-        "type-header": "Type",
-        "series-header": "Series",
-        "data-header": "Data",
-        "is-processed-header": "Is Processed",
-        "select-all-label": "Select all",
-        "delete-selected-label": "Delete selected",
-        "no-data": "{{common.no-data}}",
-        "volume-and-chapter-num": "Volume {{v}} Chapter {{n}}",
-        "volume-num": "{{entity-title.volume-num}}",
-        "chapter-num": "{{entity-title.chapter-num}}",
-        "rating": "Rating {{r}}",
-        "not-applicable": "Not Applicable",
-        "processed": "Processed",
-        "not-processed": "Not Processed",
-        "special": "{{entity-title.special}}",
-        "token-expired": "Your AniList token is Expired! Scrobbling events will not process until you renew on Accounts page.",
-        "scrobbling-disabled": "Scrobbling is disabled on your Account Settings.",
-        "read-status-update": "Status: {{status}}"
     },
 
     "scrobble-event-type-pipe": {
@@ -218,8 +189,7 @@
         "close": "{{common.close}}",
         "save": "{{common.save}}",
         "delete": "{{common.delete}}",
-        "min-length": "Review must be at least {{count}} characters",
-        "required": "{{validation.required-field}}"
+        "min-length": "Review must be at least {{count}} characters"
     },
 
     "review-card-modal": {
@@ -287,6 +257,10 @@
         "data-saver-tooltip": "Minimizes data usage by preventing automatic prefetching (e.g., PDF reader)",
         "prompt-for-rereads-after-label": "Prompt for Re-Reads",
         "prompt-for-rereads-after-tooltip": "Show the Re-Read Prompt if no progress since X days ago. 0 disables the prompt entirely.",
+        "ondeck-progress-days-label": "On Deck Last Progress (days)",
+        "ondeck-progress-days-tooltip": "The number of days since last progress before kicking something off On Deck.",
+        "ondeck-update-days-label": "On Deck Last Chapter Add (days)",
+        "ondeck-update-days-tooltip": "The number of days since last chapter was added to include something On Deck.",
 
         "kavitaplus-settings-title": "Kavita+",
         "anilist-scrobbling-label": "AniList Scrobbling",
@@ -344,6 +318,7 @@
         "title": "Scrobble Holds",
         "description": "This is a user-managed list of Series that will not be scrobbled to upstream providers. You can remove a series at any time and the next scrobble-able event (reading progress, rating, want to read status) will trigger scrobbling.",
         "no-data": "{{typeahead.no-data}}",
+        "no-data-description": "You don't have any series on hold. Series you place on hold will appear here.",
         "series-name-header": "{{manage-matched-metadata.series-name-header}}",
         "created-header": "{{manage-media-issues.created-header}}",
         "delete-label": "{{common.remove}}"
@@ -454,7 +429,8 @@
         "add": "{{common.add}}",
         "delete": "{{common.delete}}",
         "edit": "{{common.edit}}",
-        "no-data": "{{typeahead.no-data}}",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "You have no email-based devices setup yet.",
         "actions-header": "{{manage-users.actions-header}}",
         "warning": "Warning",
         "client-devices-header": "Client Devices",
@@ -476,9 +452,7 @@
         "email-tooltip": "This email will be used to accept the file via Send To",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}"
+        "cancel": "{{common.cancel}}"
     },
 
     "client-device-card": {
@@ -502,7 +476,6 @@
         "confirm-password-label": "Confirm Password",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "passwords-must-match": "Passwords must match",
         "permission-error": "You do not have permission to change your password. Reach out to the admin of the server."
     },
@@ -511,8 +484,7 @@
         "username-label": "{{common.username}}",
         "new-username-label": "New Username",
         "reset": "{{common.reset}}",
-        "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}"
+        "save": "{{common.save}}"
     },
 
     "change-email": {
@@ -527,8 +499,6 @@
         "invite-url-label": "Invite Url",
         "invite-url-tooltip": "Copy this and paste in a new tab",
         "has-invalid-email": "It looks like you do not have a valid email set. Change email will require the admin to send you a link to complete this action.",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}"
     },
@@ -578,7 +548,14 @@
         "loading": "{{common.loading}}",
         "add-item": "Add {{item}}…",
         "no-data": "{{common.no-data}}",
-        "add-custom-item": ", type to add a custom item"
+        "add-custom-item": ", type to add a custom item",
+        "toggle-lock-alt": "Lock field",
+        "remove-alt": "Remove {{title}}",
+        "remove-item-alt": "Remove item",
+        "clear-selections-alt": "Clear all selections",
+        "selected-items-alt": "Selected items",
+        "results-available-alt": "{{count}} results available",
+        "no-results-alt": "No results available"
     },
 
     "generic-list-modal": {
@@ -850,6 +827,44 @@
         "lightNovel": "Book library with special handling optimized for light novels"
     },
 
+    "folder-watch-mode-pipe": {
+        "off": "Off",
+        "automatic": "Automatic",
+        "automatic-recommended": "Automatic (Recommended)",
+        "file-watcher": "File Watcher",
+        "polling": "Polling"
+    },
+
+    "folder-watch-mode-description-pipe": {
+        "off": "Changes are picked up by the scheduled scan or a manual scan.",
+        "automatic": "Kavita picks the best way to detect changes for each folder.",
+        "file-watcher": "Uses native OS change events, but limited supported configurations. Docker on a network share, Docker Desktop host folders, or FUSE pools do not support.",
+        "polling": "Periodically checks the folders. Slower than File Watcher, but works everywhere."
+    },
+
+    "folder-watch-status-pipe": {
+        "server-off": "Off",
+        "off": "Not watched",
+        "trial": "Testing",
+        "watching": "Watching",
+        "polling": "Polling"
+    },
+
+    "folder-watch-status-detail-pipe": {
+        "server-off": "Folder watching is off for the server.",
+        "trial": "Watching, and checking the watcher against each scan. {{successes}} of {{needed}} changes caught so far. New files move this forward.",
+        "trial-waiting-scan": "{{successes}} of {{needed}} changes caught. Waiting for a full library scan.",
+        "missed-change": "The watcher missed a change in {{folder}}.",
+        "errors": "Too many errors watching {{folder}}.",
+        "polling": "Checks the folders on a schedule.",
+        "polling-network": "A folder is on a network share, so Kavita checks the folders on a schedule."
+    },
+
+    "folder-watch-fallback-reason-pipe": {
+        "errors": "Watcher failed",
+        "missed-change": "Missed a change"
+    },
+
     "age-rating-pipe": {
         "unknown": "Unknown",
         "early-childhood": "Early Childhood",
@@ -873,8 +888,6 @@
         "title": "Password Reset",
         "description": "Enter the email of your account. Kavita will send you an email if a valid one is on file, otherwise ask the admin to reset your password.",
         "email-label": "{{common.email}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "submit": "{{common.submit}}"
     },
 
@@ -952,7 +965,6 @@
         "close": "{{common.close}}",
         "description": "Invite a user to your server by entering their email. They'll receive an email to create an account. For this to work you must have the Host Name and Email setting fields set in the <a href=\"/settings#admin-email\" rel=\"noopener noreferrer\" target=\"_blank\">Email</a> tab, otherwise a link will be presented to you to setup on the user's behalf.<br/><br/>The email is not required to be valid.",
         "email": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
         "setup-user-title": "User invited",
         "setup-user-description": "You can use the following link below to setup the account for your user or use the copy button. You may need to log out before using the link to register a new user.",
         "setup-user-account": "Setup user's account",
@@ -984,7 +996,6 @@
         "email-help": "This is the email registered with Stripe",
         "license-help": "For your security, the stored key is encrypted on disk, re-enter it to update.",
         "help-label": "{{common.help}}",
-        "required-field-validation": "{{validation.required-field}}",
         "license-length-validation": "License key is expected to be 19 characters long",
         "license-format-validation": "License is expected to be formatted as: XXXX-XXXX-XXXX-XXXX",
         "discord-format-validation": "Discord ID expected to be 19 number user id",
@@ -1125,6 +1136,13 @@
     },
 
     "scrobble-health": {
+        "local-requests": "Requests from this server in the last hour: {{count}} of {{limit}}",
+        "last-success": "Last successful request:",
+        "last-error": "Last failed request:",
+        "retry-at": "Requests can resume at",
+        "gcd-unconfigured": "No GCD account configured.",
+        "gcd-requests": "{{minute}} / 25 requests this minute · {{day}} / 2,000 this day",
+        "comicvine-unconfigured": "No Comic Vine API key configured.",
         "title-label": "Upstream Providers",
         "checked-ago-label": "checked {{time}} ago",
         "live-label": "live",
@@ -1219,6 +1237,13 @@
         "support-label": "Help"
     },
 
+    "register-license": {
+        "k+-already-registered-header": "License already registered",
+        "k+-license-overwrite": "This license is already registered to a different server. Are you sure you want to overwrite? This will deregister the other server.",
+        "overwrite": "Overwrite",
+        "cancel": "{{common.cancel}}"
+    },
+
     "discord-connect-card": {
         "connect-title": "Connect Discord",
         "connect-subtitle": "Access exclusive channels and show your flair",
@@ -1263,6 +1288,12 @@
     },
 
     "manage-matched-metadata": {
+        "source-label": "Metadata source",
+        "gcd-source": "Grand Comics Database (GCD)",
+        "gcd-description": "Match comic series directly with the Grand Comics Database using your saved account.",
+        "comicvine-source": "Comic Vine (your API key)",
+        "kavitaplus-source": "Kavita+",
+        "comicvine-description": "Match comic series directly with Comic Vine using your API key. Supports Comic and Comic (Flexible) libraries. An active Kavita+ license is required.",
         "title": "Matched Metadata",
         "description": "All applicable Series that can be matched with External Metadata reside here. Kavita will prefetch or refresh series metadata, 50 series per 24 hours daily.",
         "status-header": "Status",
@@ -1279,7 +1310,9 @@
         "all-status-label": "All",
         "dont-match-label": "Don't Match",
         "no-data": "{{common.no-data}}",
-        "match-alt": "Match {{seriesName}}"
+        "match-alt": "Match {{seriesName}}",
+        "total-matched-label": "Total Matched",
+        "total-count": "Total: {{count}}"
     },
 
     "manage-user-tokens": {
@@ -1293,12 +1326,12 @@
     },
 
     "manage-metadata-settings": {
-        "k+-warning": "The settings below are shared with those found on the K+ page. You may change them in either location",
+        "k+-warning": "The settings below are shared with those found on the K+ page. You may change them in either location.",
         "export-settings": "Export",
-        "export-tooltip": "Export your blacklist and whitelist, age rating, and field mappings",
+        "export-tooltip": "Export your blacklist and whitelist, age rating, and field mappings.",
         "export-file-name": "Kavita Metadata Settings Export.json",
         "import-settings": "Import",
-        "import-tooltip": "Import your or someone else's settings",
+        "import-tooltip": "Import your or someone else's settings.",
         "run-metadata-mappings": "Run Metadata Mappings",
         "run-metadata-mappings-tooltip": "Process series through your metadata mappings. This may take a while and consume more resources.",
         "description": "Kavita+ has the ability to download and write some limited metadata to the Database. This page allows for you to toggle what is in scope.",
@@ -1310,6 +1343,8 @@
         "localized-name-tooltip": "Allow Localized Name to be written when the field is unlocked. Kavita will attempt to make the best guess.",
         "name-label": "Series Name",
         "name-tooltip": "Allow the Series Name to be written when the field is unlocked. The name on disk is still used to keep the series matched during scans.",
+        "enable-age-rating-label": "Age Rating",
+        "enable-age-rating-tooltip": "Allow Age Rating to be written when the field is unlocked. Kavita will always take the highest from mapping controls.",
         "derive-publication-status-label": "Publication Status",
         "derive-publication-status-tooltip": "Allow Publication Status to be derived from Total Chapter/Volume counts.",
         "enable-relations-label": "Relationships",
@@ -1343,6 +1378,9 @@
         "whitelist-tooltip": "Only allow a string in this list from being written for <b>Tags</b>. Ensure they are comma-separated.",
         "age-rating-mapping-title": "Age Rating Mapping",
         "age-rating-mapping-description": "Any strings on the left, if found in either Genre or Tags, will set the Age Rating on the Series. Matching is normalized and case-insensitive, the highest age rating is used.",
+        "external-age-rating-header": "Provider Age Rating Mapping",
+        "external-age-rating-description": "Map a raw content rating string from a metadata provider to an Age Rating. Kavita+ will already map for you. This is additive, highest Age Rating will always win.",
+        "external-age-rating-label": "Provider Content Rating",
         "genre": "Genre",
         "tag": "Tag",
         "remove-source-tag-label": "Remove Source Tag",
@@ -1365,7 +1403,30 @@
         "dest-genre-tags-placeholder": "Destination genre/tag",
         "volume-header": "Volume",
         "enable-volume-cover-label": "Volume Cover",
-        "enable-volume-cover-tooltip": "Allow Kavita to set Volume covers"
+        "enable-volume-cover-tooltip": "Allow Kavita to set Volume covers",
+
+        "language-header": "Language",
+        "language-description": "Setup the priority order of languages that Kavita uses when setting Series Name/LocalizedName. You can add overrides just for specific libraries. Note that Localized Name will not always write if it will affect Series with 2 separate filenames.",
+        "global-series-name-language-label": "Name",
+        "global-series-name-language-tooltip": "Determines the order in which series name is prioritized. Separate BCP47 language codes with a semicolon. i.e. en;ja-Latn;ja. Use {Native} for the provider's native (original-script) title or {Romaji} for its romanized title, regardless of language.",
+        "global-series-name-localized-language-label": "Localized Name",
+        "global-series-name-localized-language-tooltip": "Determines the order in which series localized name is prioritized. Separate BCP47 language codes with a semicolon. i.e. en;ja-Latn;ja. Use {Native} for the provider's native (original-script) title or {Romaji} for its romanized title, regardless of language.",
+        "native-title-token-label": "Native title (original script)",
+        "romaji-title-token-label": "Romanized title",
+        "language-library-override-header": "Library Overrides",
+        "language-library-override-description": "A library override fully replaces the global order for that library, it does not add to it.",
+        "language-library-override-empty": "No library overrides. All libraries use the global order above.",
+        "language-override-library-label": "Library",
+        "language-override-library-placeholder": "Select a library",
+        "language-override-remove": "Remove override",
+        "language-code-malformed": "Not a valid language code: {{codes}}",
+        "language-code-unknown": "Unrecognized language code: {{codes}}. Double check the spelling, it will still be saved.",
+        "unsaved-changes-invalid": "Changes are not being saved. Fix the highlighted fields to resume saving.",
+        "add": "{{common.add}}",
+
+        "tag-weight-label": "Filter Tags above weight (Mangabaka only)",
+        "tag-weight-tooltip": "Select a tag weight to filter out after tag mapping. For example, Recurrent will filter out Incidental and Unweighted.",
+        "tag-weight-disabled": "Don't filter tags"
     },
 
     "book-line-overlay": {
@@ -1373,7 +1434,6 @@
         "bookmark": "Bookmark",
         "annotate": "Annotate",
         "close": "{{common.close}}",
-        "required-field": "{{common.required-field}}",
         "bookmark-label": "Bookmark Name",
         "save": "{{common.save}}"
     },
@@ -1423,6 +1483,14 @@
         "full": "— Page {{pageNumber}}, Chapter \"{{chapterTitle}}\""
     },
 
+    "tag-weight-title-pipe": {
+        "core": "Core",
+        "defining": "Defining",
+        "recurrent": "Recurrent",
+        "incidental": "Incidental",
+        "unweighted": "Unweighted"
+    },
+
     "view-toc-drawer": {
         "title": "Table of Contents",
         "close": "{{common.close}}",
@@ -1461,7 +1529,10 @@
 
         "force-selected-one-column": "Layout mode switched to One Column due to insufficient space to render Two Columns",
         "forced-vertical-switch": "Layout mode switched as Two Column layout doesn't work with Vertical Writing Style",
-        "shortcuts-menu-alt": "{{manga-reader.shortcuts-menu-alt}}"
+        "shortcuts-menu-alt": "{{manga-reader.shortcuts-menu-alt}}",
+        "bookmarks-alt": "{{view-bookmark-drawer.title}}",
+        "annotations-alt": "{{view-annotations-drawer.title}}",
+        "toc-alt": "{{view-toc-drawer.title}}"
     },
 
     "personal-table-of-contents": {
@@ -1479,8 +1550,6 @@
         "username-label": "{{common.username}}",
         "password-label": "{{common.password}}",
         "email-label": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
-        "valid-email": "{{common.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "register": "Register",
         "error-label": "Error:"
@@ -1497,7 +1566,6 @@
         "title": "Password Reset",
         "description": "Enter the new password",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
         "submit": "{{common.submit}}",
         "password-validation": "{{validation.password-validation}}"
     },
@@ -1509,8 +1577,6 @@
         "email-label": "{{common.email}}",
         "email-tooltip": "Email does not need to be a real address, but provides access to forgot password. It is not sent outside the server unless Kavita emails you.",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "register": "Register"
     },
@@ -1551,10 +1617,13 @@
         "off": "{{reader-settings.off}}",
         "loading": "{{common.loading}}",
         "read-count-tooltip": "Total Reads",
-        "kavitaplus-audit-alt": "Kavita+ Activity"
+        "kavitaplus-audit-alt": "Kavita+ Activity",
+        "media-error-tooltip": "This series has files with problems",
+        "media-errors-title": "One or more files were not parsed or have errors:"
     },
 
     "kavitaplus-tooltip": {
+        "view-details": "View metadata",
         "panel-title": "Kavita+: Audit Log",
         "matched": "Matched",
         "unmatched": "Unmatched",
@@ -1583,7 +1652,13 @@
     },
 
     "kavitaplus-activity": {
-        "description": "Reading activity Kavita has synced to external services on your behalf - progress, ratings, and reading status."
+        "description": "Reading activity Kavita has synced to external services on your behalf - progress, ratings, and reading status.",
+        "tab-select-label": "Filter activity",
+        "stats-queue-label": "{{manage-kavitaplus-activity.stats-queue-label}}",
+        "next-scrobble": "{{manage-kavitaplus-activity.next-scrobble}}",
+        "stats-events-label": "{{manage-kavitaplus-activity.stats-events-label}}",
+        "stats-failures-label": "{{manage-kavitaplus-activity.stats-failures-label}}"
+
     },
 
     "manage-kavitaplus-activity": {
@@ -1651,7 +1726,8 @@
     "kavita-plus-audit-entry": {
         "system": "{{manage-kavitaplus-activity.system}}",
         "retry": "Retry",
-        "match": "Match"
+        "match": "Match",
+        "remove-error": "Remove Scrobble Error"
     },
 
     "audit-status-title-pipe": {
@@ -1706,6 +1782,7 @@
         "volume-cover-updated": "Volume cover updated: {{volume}}",
         "series-cover-updated": "Series cover updated",
         "series-match-fixed": "Series matched with {{matchName}}",
+        "metadata-provider-changed": "Metadata Provider changed from {{previousProvider}} to {{newProvider}}",
         "collection-synced": "{{collectionName}}: {{itemCount}} items synced, {{missingCount}} missing",
         "collection-item-added": "Added to {{collectionName}}",
         "person-cover-updated": "Cover updated for {{personName}}",
@@ -1727,6 +1804,7 @@
         "series-blacklisted": "Blacklisted",
         "series-match-fixed": "Match Fixed",
         "series-dont-match-set": "Don't Match Set",
+        "series-metadata-provider-override-set": "Metadata Provider Changed",
         "metadata-fetched": "Metadata Fetched",
         "metadata-updated": "Metadata Updated",
         "cover-updated": "Cover Updated",
@@ -1776,6 +1854,9 @@
     },
 
     "match-series-modal": {
+        "gcd-query-hint": "Search by title, enter a GCD series or issue reference, or paste its comics.org URL.",
+        "comicvine-query-hint": "Search by title or volume ID, or paste a Comic Vine volume or issue URL.",
+        "comicvine-key-hint": "Requires an active Kavita+ license and your API key in Settings > Kavita+ > Metadata Providers > Comic Vine. Applying a match saves series metadata immediately and queues an issue rescan. Locked fields are preserved.",
         "title-prefix": "Match",
         "in-kavita": "In Kavita",
         "description": "Pick a match to rewire Kavita+ metadata and regenerate scrobble events. Click an edition to get Volume/Chapter level metadata (if applicable).",
@@ -1802,7 +1883,8 @@
         "special-count": "{{match-series-result-item.special-count}}",
         "matched-to": "Currently matched to",
         "searching-against": "Searching against {{provider}}",
-        "change-provider-help": "You can change which provider to use in Library settings",
+        "change-provider-help": "Choose a different provider to search against for this series",
+        "provider-switch-help": "Results are from {{provider}}. Applying a match will switch this series to {{provider}}",
         "is-standalone-label": "Is standalone",
         "is-standalone-tooltip": "Enable if this series represents a single book, and hardcover doesn't have a series entry for it"
     },
@@ -1823,6 +1905,7 @@
     },
 
     "metadata-provider-title-pipe": {
+        "comicvine": "Comic Vine",
         "hardcover": "Hardcover",
         "mangabaka": "MangaBaka",
         "cbr": "Comic Book Roundup"
@@ -1993,8 +2076,11 @@
         "allow-scrobbling-tooltip": "Should Kavita scrobble reading events, want to read status, ratings, and reviews to configured providers. This will only occur if the server has an active Kavita+ Subscription.",
         "allow-metadata-matching-label": "Allow Metadata Matching",
         "allow-metadata-matching-tooltip": "Should Kavita download metadata for Series within this Library. This will only occur if the server has an active Kavita+ Subscription.",
-        "folder-watching-label": "Folder Watching",
-        "folder-watching-tooltip": "Override Server folder watching for this library. If off, folder watching won't run on the folders this library contains. If libraries share folders, then folders may still be ran against. Will always wait 10 minutes before triggering scan.",
+        "folder-watch-mode-label": "Folder Watching",
+        "watch-status-label": "Status",
+        "watch-status-retry": "Retry",
+        "watch-status-retried": "{{name}} is watching for changes again",
+        "watch-status-replace-caveat": "Files replaced in place show up at the next scheduled scan.",
         "include-in-dashboard-label": "Include in Dashboard",
         "include-in-dashboard-tooltip": "Should series from the library be included on the Dashboard. This affects all streams, like On Deck, Recently Updated, Recently Added, or any custom additions.",
         "include-in-search-label": "Include in Search",
@@ -2015,7 +2101,6 @@
         "cancel": "{{common.cancel}}",
         "next": "Next",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "file-type-group-label": "File Types",
         "file-type-group-tooltip": "What types of files should Kavita scan for. For example, Archive will include all cb*, zip, rar, etc files.",
         "exclude-patterns-label": "Exclude Patterns",
@@ -2267,14 +2352,45 @@
 
 
     "manage-media-issues": {
-        "description-part-1": "This table contains issues found during scan or reading of your media. You can clear it at any time and use Library (Force) Scan to perform analysis. A list of some common errors and what they mean can be found on the ",
-        "description-part-2": "wiki.",
+        "description": "Files Kavita had trouble with while scanning or reading. An issue clears itself once the file is replaced or removed and its folder is scanned again. Common problems and fixes are on the {{wikiLink}}.",
+        "wiki": "wiki",
         "filter-label": "{{common.filter}}",
-        "clear-alerts": "Clear Alerts",
+        "clear-all": "Clear all",
+        "library-label": "Library",
+        "all-libraries": "All libraries",
+        "series-label": "Series",
+        "all-series": "All series",
+        "reason-label": "Reason",
+        "all-reasons": "All reasons",
+        "dismissed-header": "Dismissed ({{count}})",
+        "dismissed-description": "Dismissed issues are left out of scan results. One comes back if its file changes and still has a problem.",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "No files have open issues.",
+        "no-matches-description": "No open issues match the filters.",
+        "dismiss-success": "Issues dismissed: {{count}}",
+        "restore-success": "Issues restored: {{count}}",
+        "clear-success": "All media issues cleared",
+        "results-alt": "Media issues"
+    },
+
+    "media-issues-table": {
+        "select-all-label": "{{common.select-all}}",
+        "select-alt": "Select {{file}}",
         "file-header": "File",
-        "comment-header": "Comment",
-        "created-header": "Created",
-        "no-data": "{{common.no-data}}"
+        "series-header": "Series",
+        "reason-header": "Reason",
+        "last-seen-header": "Last seen",
+        "actions-header": "Actions",
+        "no-series": "No series",
+        "show-details": "Show details",
+        "hide-details": "Hide details",
+        "first-seen-label": "First seen: {{date}}",
+        "dismiss": "Dismiss",
+        "restore": "Restore",
+        "dismiss-alt": "Dismiss {{file}}",
+        "restore-alt": "Restore {{file}}",
+        "dismiss-selected": "Dismiss selected ({{count}})",
+        "restore-selected": "Restore selected ({{count}})"
     },
 
     "manage-email-settings": {
@@ -2325,7 +2441,7 @@
         "delete-library": "Delete Library",
         "delete-library-by-name": "Delete {{name}}",
         "edit-library": "Edit",
-        "edit-library-by-name": "Delete {{name}}",
+        "edit-library-by-name": "Edit {{name}}",
         "folder-count": "{{num}} folders",
         "actions-header": "{{manage-users.actions-header}}",
         "name-header": "{{manage-users.name-header}}",
@@ -2352,7 +2468,6 @@
         "encode-as-description-part-1": "WebP/AVIF can drastically reduce space requirements for files. WebP/AVIF is not supported on all browsers or versions. To learn if these settings are appropriate for your setup, visit ",
         "encode-as-description-part-2": "Can I Use WebP?",
         "encode-as-description-part-3": "Can I Use AVIF?",
-        "encode-as-warning": "You cannot convert back to PNG once you've gone to WebP/AVIF. You would need to refresh covers on your libraries to regenerate all covers. Bookmarks and favicons cannot be converted.",
         "media-warning": "You must trigger the media conversion task in Tasks Tab after Saving.",
         "encode-as-label": "Save Media As",
         "encode-as-tooltip": "All media Kavita manages (covers, bookmarks, favicons) will be encoded as this type.",
@@ -2371,6 +2486,24 @@
         "cover-image-size-tooltip": "How large should cover images generate as. Note: Anything larger than the default will incur longer page load times."
     },
 
+    "kepubify-source-pipe": {
+        "shipped": "Shipped kepubify",
+        "custom": "Custom kepubify from appsettings.json"
+    },
+
+    "kepubify-check-status-pipe": {
+        "checking": "Checking kepubify…",
+        "supported": "Kepub conversion is working",
+        "not-supported": "Kepub conversion is off"
+    },
+
+    "kepubify-off-reason-pipe": {
+        "disabled": "Turned off in settings",
+        "file-missing": "The kepubify file does not exist",
+        "hash-mismatch": "The shipped kepubify does not match any known release, so it was turned off. Replace the file or set KepubifyPath in appsettings.json, then turn it back on",
+        "version-check-failed": "The file did not report a kepubify version"
+    },
+
     "pdf-render-resolution": {
         "default": "Default (1080x1920)",
         "high": "High (1920x2560)",
@@ -2386,7 +2519,7 @@
 
     "manage-scrobble-errors": {
         "title": "Scrobbling Errors",
-        "description": "This table contains issues found during scrobbling. You can clear it at any time and wait for the next scrobble upload to see. If there is an unknown series, you are best correcting the series name or localized series name or adding a weblink for the providers.",
+        "description": "This table contains issues found during scrobbling. You can clear it at any time and wait for the next scrobble upload to see. If there is an unknown series, use the match to correct and enqueue events again.",
         "filter-label": "{{common.filter}}",
         "clear-errors": "Clear Errors",
         "series-header": "Series",
@@ -2422,10 +2555,6 @@
         "logging-level-tooltip": "Use debug to help identify issues. Debug can eat up a lot of disk space.",
         "cache-size-label": "Cache Size",
         "cache-size-tooltip": "The amount of memory allowed for caching heavy APIs. Default is 75MB.",
-        "on-deck-last-progress-label": "On Deck Last Progress (days)",
-        "on-deck-last-progress-tooltip": "The number of days since last progress before kicking something off On Deck.",
-        "on-deck-last-chapter-add-label": "On Deck Last Chapter Add (days)",
-        "on-deck-last-chapter-add-tooltip": "The number of days since last chapter was added to include something On Deck.",
         "allow-stats-label": "Allow Anonymous Usage Collection",
         "allow-stats-tooltip-part-1": "Send anonymous usage data to Kavita's servers. This includes information on certain features used, number of files, OS version, Kavita install version, CPU, and memory. We will use this information to prioritize features, bug fixes, and performance tuning. Requires restart to take effect. See the ",
         "allow-stats-tooltip-part-2": "for what is collected.",
@@ -2433,8 +2562,16 @@
         "opds-label": "OPDS",
         "opds-tooltip": "OPDS support will allow all users to use OPDS to read and download content from the server.",
         "enable-opds": "Enable OPDS",
+        "kobo-label": "Enable Kobo Sync",
+        "kobo-tooltip": "Enable Kobo Sync support for all users on the server. Covers and downloads may fail if your hostname is not set",
+        "kepubify-restart-required": "A custom kepubify can be set as KepubifyPath in appsettings.json. Changing it requires a manual restart of Kavita to take effect.",
+        "enable-kepubify-label": "Convert Epubs to Kepub for Kobo",
+        "enable-kepubify-tooltip": "Kobo devices get kepub files, which let reading progress sync to the exact position. When off, books sync to Kobo as plain epub, and reading progress only syncs to the chapter.",
+        "kepubify-off-alert": "Kepub conversion is off. Books sync to Kobo as plain epub, and reading progress only syncs to the chapter.",
+        "kepubify-status-label": "{{source}}: {{path}}",
+        "kobo-no-hostname-warning": "You have no hostname set, this may cause issues while using Kobo Sync",
         "folder-watching-label": "Folder Watching",
-        "folder-watching-tooltip": "Allows Kavita to monitor Library Folders to detect changes and invoke scanning on those changes. This allows content to be updated without manually invoking scans or waiting for nightly scans. Will always wait 10 minutes before triggering scan.",
+        "folder-watching-tooltip": "Allows Kavita to monitor Library Folders to detect changes and invoke scanning on those changes. This allows content to be updated without manually invoking scans or waiting for nightly scans. A folder is scanned 30 seconds after its last change. Each library chooses how it watches on its Folder tab.",
         "enable-folder-watching": "Enable Folder Watching",
         "host-name-label": "{{manage-email-settings.host-name-label}}",
         "host-name-tooltip": "{{manage-email-settings.host-name-tooltip}}",
@@ -2483,6 +2620,8 @@
         "cleanup-tooltip": "How often Kavita will run cleanup tasks. This can be heavy and should be performed at midnight in most cases.",
         "cbl-sync-label": "Reading List Sync",
         "cbl-sync-tooltip": "How often Kavita will check for new updates to CBL Reading Lists. Defaults to daily at 4am.",
+        "composite-covers-label": "Reading List & Collection Covers",
+        "composite-covers-tooltip": "How often Kavita will rebuild the reading list and collection covers it makes from their items, picking up items added or removed since the last run. Recommended to run after the Reading List Sync. Defaults to daily at 5 am.",
         "adhoc-tasks-title": "Ad-hoc Tasks",
         "job-title-header": "Job Title",
         "description-header": "Description",
@@ -2503,10 +2642,6 @@
         "bust-cache-task-desc": "Busts the Kavita+ Cache - should only be used when debugging bad matches.",
         "bust-cache-task-success": "Kavita+ Cache busted",
 
-        "bust-locale-task": "Bust Locale Cache",
-        "bust-locale-task-desc": "Busts the Locale Cache. This can fix issues with strings not showing correctly after an update. A browser refresh is needed.",
-        "bust-locale-task-success": "Locale Cache busted",
-
         "clear-reading-cache-task": "Clear Reading Cache",
         "clear-reading-cache-task-desc": "Clears cached files for reading. Useful when you've just updated a file that you were previously reading within the last 24 hours.",
         "clear-reading-cache-task-success": "Cache has been cleared",
@@ -2525,6 +2660,11 @@
 
         "download-logs-task": "Download Logs",
         "download-logs-task-desc": "Compiles all log files into a zip and downloads it.",
+
+        "debug-export-task": "Create Debug Export",
+        "debug-export-task-desc": "A scrubbed copy of your database, logs and system info to send with a bug report.",
+        "debug-export-task-confirm": "This builds a zip of your database, the last 5 days of logs and some system information (OS, disk speed, Kavita+ status) for the Kavita team to debug with. Passwords, API keys, emails, usernames and IP addresses are replaced before anything is written. File paths, library and series names are kept as they are, since bugs often depend on them.",
+        "debug-export-task-success": "Debug export started. You’ll get a notification to download it when it’s ready.",
 
         "sync-themes-task": "Sync Themes",
         "sync-themes-task-desc": "Synchronize downloaded themes with upstream changes if version matches.",
@@ -2554,7 +2694,8 @@
         "all-libraries": "All Libraries",
         "too-many-libraries": "A lot",
         "sharing-header": "Sharing",
-        "no-data": "There are no other users.",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "There are no other users.",
         "actions-header": "Actions",
         "pending-tooltip": "This user has not validated their email",
         "identity-provider-oidc-tooltip": "OIDC",
@@ -2575,10 +2716,8 @@
 
     "edit-collection-tags": {
         "title": "Edit {{collectionName}} Collection",
-        "required-field": "{{validation.required-field}}",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
         "name-label": "Name",
         "name-validation": "Name must be unique",
         "promote-label": "Promote",
@@ -2608,6 +2747,9 @@
 
 
     "settings": {
+        "admin-meta-api-connections": "Metadata Providers",
+        "panel-load-error": "Unable to load this settings panel.",
+        "reload-settings": "Reload settings",
         "account-section-title": "Account",
         "server-section-title": "Server",
         "insights-section-title": "Insights",
@@ -2631,10 +2773,11 @@
         "admin-system": "System",
         "admin-email-history": "Email History",
         "admin-kavitaplus": "License",
-        "admin-matched-metadata": "Matched Metadata",
-        "admin-manage-tokens": "Manage User Tokens",
-        "admin-metadata": "Manage Metadata",
-        "admin-mappings-import": "Metadata Settings",
+        "admin-matched-metadata": "Matched Series",
+        "admin-manage-tokens": "User Tokens",
+        "admin-metadata": "Metadata Controls",
+        "admin-mappings-import": "Metadata Controls",
+        "admin-comicvine": "Comic Vine",
         "scrobble-holds": "Scrobble Holds",
         "my-activity": "My Activity",
         "account": "Account",
@@ -2650,9 +2793,71 @@
         "cbl-import": "Reading List Manager",
         "remap-rules": "Remap Rules",
         "mal-stack-import": "MAL Stack",
-        "admin-public-metadata": "Manage Metadata",
-        "admin-manage-kavitaplus-activity": "Manage Kavita+ Activity",
-        "scrobble-settings": "Connections"
+        "admin-public-metadata": "Metadata Controls",
+        "admin-manage-kavitaplus-activity": "Kavita+ Activity",
+        "scrobble-settings": "Connections",
+        "kobo": "Kobo Sync"
+    },
+
+    "meta-api-connections": {
+        "description": "Manage external metadata providers using your own API keys. An active Kavita+ license is required. Each provider has its own credentials and connection test."
+    },
+    "gcd-issue": {
+        "details": "Show GCD issue details",
+        "error": "GCD issue details are unavailable.",
+        "number": "Issue",
+        "base": "View base issue",
+        "barcode": "Barcode",
+        "publication": "Publication date",
+        "sale": "On-sale date",
+        "key-date": "GCD key date"
+    },
+    "manage-gcd": {
+        "description": "Use your GCD account to match series and look up issues in comic libraries.",
+        "credit": "Catalog metadata from",
+        "username": "GCD account login",
+        "password": "GCD password",
+        "save": "Save",
+        "test": "Test connection",
+        "remove": "Remove credentials",
+        "configured": "GCD credentials are saved.",
+        "unconfigured": "Enter your GCD credentials to connect.",
+        "replace": "The saved credentials could not be read. Replace or remove them.",
+        "saved": "GCD credentials saved.",
+        "removed": "GCD credentials removed.",
+        "connected": "GCD accepted the saved credentials.",
+        "test-error": "Connection failed. Check the saved credentials and provider health.",
+        "error": "The request failed. Check your connection and Kavita+ license."
+    },
+    "manage-comicvine": {
+        "save": "{{common.save}}",
+        "description": "Connect Comic Vine to fill missing comic metadata using your own API key.",
+        "get-api-key": "Get your Comic Vine API key",
+        "api-title": "Comic Vine API",
+        "api-key-label": "API key",
+        "key-placeholder": "Enter your Comic Vine API key",
+        "replace-placeholder": "Enter a new key to replace the saved key",
+        "key-help": "Saved keys are never shown. Save a new key before testing the connection.",
+        "key-configured": "A saved API key is configured.",
+        "environment-configured": "An API key is configured by your server administrator.",
+        "not-configured": "No API key is configured.",
+        "key-unavailable": "The saved key cannot be read. Replace it to reconnect Comic Vine.",
+        "save-key": "Save API key",
+        "replace-key": "Replace API key",
+        "remove-key": "Remove saved key",
+        "show-key": "Show",
+        "hide-key": "Hide",
+        "test-connection": "Test connection",
+        "saved": "API key saved. The change takes effect without restarting.",
+        "removed": "Saved API key removed.",
+        "test-success": "Successfully connected to Comic Vine.",
+        "test-error": "Unable to connect to Comic Vine. Check your API key, or try again later if the service is unavailable or its request limit has been reached.",
+        "save-error": "Unable to save the API key. Try again.",
+        "remove-error": "Unable to remove the saved API key. Try again.",
+        "load-error": "Unable to load Comic Vine settings.",
+        "retry": "Retry",
+        "scan-help": "Use Settings > Import > Matched Series to apply a Comic Vine series match. Enable metadata reading to enrich its issues during the queued scan. Existing Comic Vine issue IDs, or a series ID and issue number, can also be used.",
+        "environment-help": "Saving a key here takes priority over the server's environment key. To disable the environment key, your administrator must remove it from the server configuration."
     },
 
     "scrobble-provider-settings-manager": {
@@ -2690,7 +2895,7 @@
         "dropped-series-rule-condition": "If a series/chapter hasn't been read for",
         "all-libraries-label": "All libraries",
         "all-libraries-tooltip": "When enabled, scrobbling runs on all applicable libraries. Disable to restrict it to specific libraries using the selection below.",
-        "confirm-delete": "Are you sure want to disconnect {{provider}}",
+        "confirm-delete": "Are you sure you want to disconnect {{provider}}?",
         "inactive-series-rule-days-aria": "Inactive series threshold in days",
         "inactive-series-rule-status-aria": "Inactive series transition status",
         "inactive-series-rule-excluded-publication-aria": "Excluded publication statuses for inactive series rule",
@@ -2721,10 +2926,8 @@
     },
 
     "scrobble-provider-description-pipe": {
-        "kavita": "",
         "anilist": "Everything Manga & Light Novels",
         "my-anime-list": "Want To Read & Stacks sync for Manga & Light Novels",
-        "comic-book-roundup": "",
         "hardcover": "Everything Books, Manga, and Light Novels!",
         "mangabaka": "Everything Manga & Light Novels"
     },
@@ -2764,6 +2967,8 @@
     "keybind-setting-description-pipe": {
         "key-bind-title-navigate-to-settings": "Open settings",
         "key-bind-tooltip-navigate-to-settings": "Open settings while not in a reader",
+        "key-bind-title-open-event-widget": "Open Event Widget",
+        "key-bind-tooltip-open-event-widget": "Opens event widget popover",
         "key-bind-title-open-search": "Open search",
         "key-bind-tooltip-open-search": "Open the top search bar",
         "key-bind-title-navigate-to-scrobbling": "Open My Activity",
@@ -2801,6 +3006,62 @@
         "key-bind-tooltip-first-page": "Move to the first page",
         "key-bind-title-last-page": "Last Page",
         "key-bind-tooltip-last-page": "Move to the last page"
+    },
+
+    "manage-kobo": {
+        "kobo-sync-settings-title": "Sync Settings",
+        "kobo-sync-disabled-alert": "Kobo Sync has been disabled by your administrator.",
+        "kobo-sync-no-download-role": "Kobo Sync requires the Download role. Ask your administrator for help.",
+        "sync-item-limit-label": "Sync Item Limit",
+        "sync-item-limit-tooltip": "Maximum number of items sent to the device per sync request. Between 25 and 100.",
+        "forward-to-kobo-store-label": "Forward to Kobo Store",
+        "forward-to-kobo-store-tooltip": "Forward requests for books outside your Kavita library to the official Kobo store. Disable to stop the device from talking to Kobo's servers.",
+        "sync-sources-title": "Sync Sources",
+        "sync-libraries-label": "Libraries",
+        "sync-libraries-tooltip": "Enable to sync chapters in your libraries. If none are selected, all are synced",
+        "sync-libraries-selection-label": "Libraries to sync",
+        "sync-reading-lists-label": "Reading Lists",
+        "sync-reading-lists-tooltip": "Enable to sync reading lists to your kobo as tags. If none are selected, all are synced",
+        "sync-reading-lists-selection-label": "Reading lists to sync",
+        "sync-collections-label": "Collections",
+        "sync-collections-tooltip": "Enable to sync collections to your kobo as tags. If none are selected, all are synced",
+        "sync-collections-selection-label": "Collections to sync",
+        "sync-smart-filters-label": "Sync Smart Filters",
+        "sync-smart-filters-tooltip": "Coming soon. Smart Filters cannot be used as a Kobo sync source yet",
+        "managed-collection-label": "Managed Collection",
+        "managed-collection-tooltip": "Collection used to add recommendation to when \"purchasing\" them on your Kobo. Required for the feature to work",
+        "kobo-devices-title": "Kobo Devices",
+        "kobo-devices-description": "Each device has a sync point associated with it. Managed deleted chapters, or delete the sync point to reset",
+        "device-id-label": "Device ID",
+        "removed-chapters-label": "Chapters Removed",
+        "view-removed-chapters-tooltip": "View the chapters removed on this device",
+        "view-removed-chapters-alt": "View removed chapters, {{count}}",
+        "last-sync-label": "Last Sync",
+        "delete-sync-point-alt": "Delete the sync point for device {{device}}",
+        "no-devices-title": "No Kobo devices",
+        "no-devices-description": "A device appears here after it syncs with your account for the first time.",
+        "load-error-title": "Could not load Kobo settings",
+        "load-error-description": "Refresh the page to try again."
+    },
+
+    "restore-chapters-modal": {
+        "title": "Removed Chapters",
+        "description": "These chapters were removed on your Kobo and are skipped during sync. Select the chapters you want to sync again, then restore",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "There are no chapters available to restore for this device.",
+        "selected-count": "{{selected}} of {{total}} selected",
+        "select-all": "{{common.select-all}}",
+        "clear-selection": "Clear",
+        "load-error-title": "Could not load chapter details",
+        "load-error-description": "Close the dialog and try again.",
+        "cancel": "{{common.cancel}}",
+        "close": "{{common.close}}",
+        "restore-selected": "Restore Selected ({{count}})",
+        "series-label": "Series name",
+        "chapter-title-label": "Chapter title",
+        "removed-at-label": "Removed",
+        "select-chapter-alt": "Select {{title}}",
+        "unselect-chapter-alt": "Unselect {{title}}"
     },
 
     "cbl-manager": {
@@ -2929,7 +3190,9 @@
         "cbl-number-placeholder": "e.g. 1",
         "kavita-chapter-label": "Kavita Chapter (optional)",
         "series-level": "Series-level",
-        "edit": "{{common.edit}}"
+        "edit": "{{common.edit}}",
+        "no-data": "{{common.no-data}}",
+        "no-data-description": "There are no remap rules to display here yet."
     },
 
     "browse-cbl-repo-modal": {
@@ -3035,19 +3298,182 @@
 
     "events-widget": {
         "title-alt": "Activity",
-        "dismiss-all": "Dismiss All",
-        "update-available": "Update available",
-        "downloading-item": "Downloading {{item}}",
-        "more-info": "Click for more information",
-        "close": "{{common.close}}",
-        "users-online-count": "{{num}} Users online",
-        "active-events-title": "Active Events:",
-        "no-data": "Not much going on here",
-        "left-to-process": "Left to Process: {{leftToProcess}} / {{totalToProcess}}",
-        "download-in-queue": "{{num}} downloads in Queue",
         "reading-now": "{{num}} reading now",
-        "downloads-active": "{{count}} download(s) in progress",
-        "not-connected": "Not connected, try refreshing"
+        "filter-all-label": "All",
+        "filter-attention-label": "Needs attention",
+        "filter-jobs-label": "Jobs",
+        "clear-finished-label": "Clear finished",
+        "dismiss-alt": "Dismiss",
+        "now-label": "now",
+        "no-data-description": "Nothing is running and nothing needs you.",
+        "filter-empty-label": "Nothing here right now.",
+        "server-unreachable-label": "Can’t reach the server. Retrying...",
+        "view-activity-label": "View activity",
+        "restoring-alt": "Restoring activity from before the refresh",
+        "scan-series-added-label": "Series added: {{count}}",
+        "scan-series-removed-label": "Series removed: {{count}}",
+        "scan-series-failed-label": "Series failed: {{count}}",
+        "scan-chapters-added-label": "Chapters added: {{count}}",
+        "scan-chapters-updated-label": "Chapters updated: {{count}}",
+        "scan-chapters-removed-label": "Chapters removed: {{count}}",
+        "scan-no-changes-label": "No changes",
+        "scan-problem-files-label": "Problem files: {{count}}",
+        "scan-problem-files-new-label": "Problem files: {{count}} ({{new}} new)",
+        "new-problem-files-alt": "Scan of {{library}} found new problem files: {{count}}",
+        "finished-while-away-label": "Finished while you were away",
+        "finishing-up-label": "Finishing up",
+        "refreshing-covers-label": "Refreshing covers",
+        "counting-words-label": "Counting words",
+        "interrupted-label": "Stopped by a server restart",
+        "failed-label": "Stopped before finishing",
+        "schedule-lost-label": "Was set for {{time}}, lost in a server restart",
+        "progress-counter-label": "{{current}} / {{total}}",
+        "up-next-label": "Up next",
+        "show-more-label": "Show {{count}} more",
+        "show-less-label": "Show less",
+        "scanning-libraries-label": "Scanning libraries",
+        "libraries-progress-label": "{{current}} of {{total}}",
+        "scans-waiting-label": "Library scans waiting: {{count}}",
+        "and-more-label": "and {{count}} more",
+        "problems-in-libraries-label": "Libraries with problems: {{count}}",
+        "status-offline-alt": "Server unreachable",
+        "status-attention-alt": "Needs attention: {{count}}",
+        "status-attention-error-alt": "Needs attention: {{count}}, including errors",
+        "status-running-alt": "Jobs running: {{count}}",
+        "title-label": "Activity",
+        "filter-group-alt": "Filter activity",
+        "scanned-libraries-label": "Scanned libraries: {{count}}",
+        "rate-limit-description": "Not matched: {{count}}. Try again in a few minutes.",
+        "scan-scheduled": "Scan {{libraryName}}",
+        "scan-libraries-scheduled": "Scan all libraries",
+        "scan-series-scheduled": "Scan {{seriesName}}",
+        "scan-series-in-library-scheduled": "Scan a series in {{libraryName}}",
+        "scan-waiting-description": "Waiting for the scans before it",
+        "scan-queued-label": "Queued",
+        "scan-folder-scheduled": "Check {{folder}}",
+        "scan-folders-in-library-scheduled": "Check {{count}} folders in {{libraryName}}",
+        "scan-folders-scheduled": "Check {{count}} folders",
+        "scan-folder-watcher-description": "Folder watching saw a change",
+        "scan-folder-api-description": "Requested from the API",
+        "show-label": "Show",
+        "hide-label": "Hide",
+        "show-problem-files-label": "Show problem files",
+        "hide-problem-files-label": "Hide problem files"
+    },
+
+    "event-title-pipe": {
+        "scan-progress": "Scanning {{libraryName}}",
+        "scan-done": "Scanned {{libraryName}}",
+        "scan-series-progress": "Scanning {{seriesName}}",
+        "scan-series-done": "Scanned {{seriesName}}",
+        "backup-database-progress": "Backing up database",
+        "debug-export-progress": "Building debug export",
+        "cleanup-progress": "Cleaning up",
+        "cover-update-progress": "Refreshing covers: {{libraryName}}",
+        "word-count-analyzer-progress": "Counting words: {{libraryName}}",
+        "convert-media-progress": "Converting media",
+        "smart-collection-sync": "Syncing {{collectionName}}",
+        "rerun-metadata-mappings-progress": "Reapplying metadata mappings",
+        "sending-to-device": "Sending files to device",
+        "download-progress": "Preparing {{downloadName}}",
+        "site-theme-progress": "Processing theme {{themeName}}",
+        "book-theme-progress": "Processing book theme {{themeName}}",
+        "update-available": "Kavita {{version}} is available",
+        "scrobbling-key-expired": "{{provider}} connection expired",
+        "external-match-rate-limit": "Kavita+ rate limit reached"
+    },
+
+    "event-message-pipe": {
+        "root-folders-inaccessible-label": "Library folders can’t be reached",
+        "root-folders-inaccessible-description": "Check that these drives are connected, then rescan: {{folders}}",
+        "root-folders-empty-label": "{{libraryName}} scan aborted",
+        "root-folders-empty-description": "Some root folders are empty. Check that your mount is connected or change the root folder, then rescan.",
+        "root-folders-unreadable-label": "{{libraryName}} scan aborted",
+        "root-folders-unreadable-description": "Some root folders can’t be read. Check the folder permissions, then rescan: {{folders}}",
+        "unreadable-folders-label": "Some folders in {{libraryName}} can’t be read",
+        "unreadable-folders-description": "Their series were kept as they are. Check the folder permissions, then rescan: {{folders}}",
+        "unreadable-folders-more-description": "Their series were kept as they are. Check the folder permissions, then rescan: {{folders}} and {{count}} more",
+        "series-collision-label": "Series collision on “{{seriesName}}” in {{libraryName}}",
+        "series-collision-description": "Two folders parse to the same series. Open details to see the files.",
+        "files-outside-folder-label": "{{seriesName}} has files outside its folder",
+        "files-outside-folder-description": "This slows down scans. Keep every file for a series under one folder.",
+        "scan-series-no-root-label": "{{seriesName}} scan aborted",
+        "scan-series-no-root-description": "No single folder holds every file for this series. Check the folder layout, then rescan.",
+        "scan-series-not-nested-label": "{{seriesName}} scan aborted",
+        "scan-series-not-nested-description": "The series files are not in a folder under the library path. Move them into one, then rescan.",
+        "scan-series-no-files-label": "No files found for {{seriesName}}",
+        "scan-series-no-files-description": "Files were expected but none were found. Check the file names, or put the series in its own folder.",
+        "scan-series-folder-missing-label": "{{seriesName}} folder is missing",
+        "scan-series-folder-missing-description": "Delete the series or scan the library.",
+        "scan-no-work-label": "{{seriesName}} has nothing to scan",
+        "scan-no-work-description": "No folders changed since the last scan.",
+        "db-write-failed-label": "Couldn’t save {{seriesName}}",
+        "library-scan-failed-label": "{{libraryName}} scan failed",
+        "series-update-failed-label": "Couldn’t update {{seriesName}}",
+        "series-update-failed-description": "An unexpected error stopped this series from updating. Check the logs for details.",
+        "series-removal-failed-label": "Couldn’t remove deleted series from {{libraryName}}",
+        "series-removal-failed-description": "Series whose files are gone are still in the library. The next scan tries again.",
+        "scan-libraries-delayed-label": "Scan all libraries queued",
+        "scan-library-delayed-label": "Scan {{libraryName}} queued",
+        "scan-series-delayed-label": "Scan {{seriesName}} queued",
+        "scan-delayed-description": "Another scan is running. Scans run one at a time, in the order they were asked for.",
+        "backup-folder-unwritable-label": "Backup failed",
+        "backup-folder-unwritable-description": "Can’t write to {{folder}}.",
+        "backup-exists-label": "{{event-message-pipe.backup-folder-unwritable-label}}",
+        "backup-exists-description": "{{path}} already exists.",
+        "cleanup-on-hold-label": "Cleanup postponed",
+        "cleanup-on-hold-description": "A media conversion is running. Cleanup runs after it.",
+        "word-count-failed-label": "Couldn’t count words in {{seriesName}}",
+        "word-count-failed-description": "Can’t read {{filePath}}.",
+        "debug-export-ready-label": "Debug export ready",
+        "debug-export-ready-description": "{{size}}, kept until {{time}}",
+        "debug-export-failed-label": "Debug export failed",
+        "image-migration-summary-label": "Image migration finished",
+        "media-conversion-summary-label": "Media conversion finished",
+        "image-cleanup-summary-description": "Cleaned up {{corrected}} images, deleted {{deleted}} and saved {{size}}.",
+        "image-cleanup-summary-skipped-description": "Cleaned up {{corrected}} images, deleted {{deleted}} and saved {{size}}. {{missing}} were missing and {{unreadable}} could not be read. The log lists each one.",
+        "bookmark-directory-moved-label": "Bookmarks moved",
+        "bookmark-directory-moved-description": "Moved {{moved}} bookmark images to {{path}}.",
+        "bookmark-directory-moved-skipped-description": "Moved {{moved}} bookmark images to {{path}}. {{skipped}} stayed in the old folder because {{path}} already had a file with the same name. The log lists each one.",
+        "folder-watch-fallback-label": "Library is now using Polling",
+        "folder-watch-fallback-errors-description": "Too many errors occurred watching {{folder}}, so {{libraryName}} was switched to Polling. Use Retry on the library’s Folder tab to watch again.",
+        "folder-watch-fallback-missed-change-description": "The watcher missed a change in {{folder}}, so {{libraryName}} was switched to Polling. Use Retry on the library’s Folder tab to watch again.",
+        "kepubify-checked-failed-label": "Kepubify is off",
+        "kepubify-checked-failed-description": "{{path}}: {{reason}}. Books sync to Kobo as plain epub."
+    },
+
+    "event-action-pipe": {
+        "reconnect": "Reconnect",
+        "whats-new": "What’s new",
+        "remind-later": "Remind me tomorrow",
+        "open-library": "Open library",
+        "open-series": "Open series",
+        "open-matching": "Open matching",
+        "rescan": "Rescan",
+        "scan-now": "Scan now",
+        "details": "Details",
+        "open-media-issues": "Open Media Issues",
+        "download": "Download"
+    },
+
+    "activity-age-pipe": {
+        "now": "now",
+        "minutes": "{{value}}m",
+        "hours": "{{value}}h"
+    },
+
+    "activity-duration-pipe": {
+        "seconds": "{{seconds}}s",
+        "minutes": "{{minutes}}m {{seconds}}s",
+        "hours": "{{hours}}h {{minutes}}m"
+    },
+
+    "upcoming-task-name-pipe": {
+        "scan-libraries": "Scan all libraries",
+        "cleanup": "Cleanup",
+        "backup": "Backup",
+        "sync-cbl": "Sync reading lists",
+        "refresh-composite-covers": "Refresh reading list and collection covers"
     },
 
     "download-queue-drawer": {
@@ -3125,7 +3551,7 @@
         "last-page": "{{keybind-setting-description-pipe.key-bind-title-last-page}}"
     },
 
-    "grouped-typeahead": {
+    "search-typeahead": {
         "files": "Files",
         "chapters": "Chapters",
         "people": "People",
@@ -3136,16 +3562,28 @@
         "libraries": "{{common.libraries}}",
         "reading-lists": "Reading Lists",
         "collections": "Collections",
+        "series": "Series",
         "close": "{{common.close}}",
         "loading": "{{common.loading}}",
-        "include-extras": "Include Chapters & Files"
+        "include-extras": "Include Chapters & Files",
+        "search-alt": "Search…",
+        "person-aka-status": "Matches an alias",
+        "no-data": "No results found",
+        "search-for": "Search for {{term}}",
+        "in-library": "in {{name}}",
+        "volume-count": "{{count}} vols",
+        "volume-count-one": "{{count}} vol",
+        "chapter-count": "{{count}} chapters",
+        "chapter-count-one": "{{count}} chapter",
+        "search-config-alt": "Search options",
+        "search-config-title": "Search Options",
+        "results-available-alt": "{{typeahead.results-available-alt}}",
+        "no-results-alt": "{{typeahead.no-results-alt}}",
+        "search-series-alt": "Search series"
     },
 
     "nav-header": {
         "skip-alt": "Skip to main content",
-        "search-series-alt": "Search series",
-        "search-alt": "Search…",
-        "no-data": "No results found",
         "scroll-to-top-alt": "Scroll to Top",
         "server-settings": "Server Settings",
         "settings": "Settings",
@@ -3155,7 +3593,6 @@
         "all-filters": "Smart Filters",
         "nav-link-header": "Navigation Options",
         "close": "{{common.close}}",
-        "person-aka-status": "Matches an alias",
         "browse-genres": "Browse Genres",
         "browse-tags": "Browse Tags",
         "all-annotations": "Browse Annotations",
@@ -3166,7 +3603,8 @@
         "unknown": "Unknown",
         "oidc": "OIDC",
         "jwt": "JWT",
-        "auth-key": "Auth Key"
+        "auth-key": "Auth Key",
+        "kobo": "Kobo"
     },
 
     "client-device-platform-pipe": {
@@ -3180,7 +3618,8 @@
         "koreader": "KOReader",
         "panels": "Panels",
         "librera": "Librera",
-        "opds-client": "OPDS Client"
+        "opds-client": "OPDS Client",
+        "kobo": "Kobo"
     },
 
 
@@ -3212,7 +3651,6 @@
         "year-validation": "Must be greater than 1000, 0 or blank",
         "month-validation": "Must be between 1 and 12 or blank",
         "name-unique-validation": "Name must be unique",
-        "required-field": "{{validation.required-field}}",
         "name-label": "{{edit-series-modal.name-label}}",
         "summary-label": "Summary",
         "year-label": "Year",
@@ -3303,7 +3741,22 @@
         "dark-theme-alt": "Dark Theme",
         "close-reader-alt": "Close Reader",
         "toggle-incognito": "Turn off Incognito Mode",
-        "shortcuts-menu-alt": "{{manga-reader.shortcuts-menu-alt}}"
+        "shortcuts-menu-alt": "{{manga-reader.shortcuts-menu-alt}}",
+        "prev-chapter-alt": "Previous Chapter",
+        "next-chapter-alt": "Next Chapter",
+        "first-page-alt": "{{manga-reader.first-page-tooltip}}",
+        "prev-page-alt": "{{manga-reader.prev-page-tooltip}}",
+        "next-page-alt": "{{manga-reader.next-page-tooltip}}",
+        "last-page-alt": "{{manga-reader.last-page-tooltip}}"
+    },
+
+    "chapter-cap": {
+        "next-scroll-hint": "Scroll or click to read",
+        "prev-scroll-hint": "Scroll up or click to read",
+        "click-hint": "Click to read",
+        "finish-hint": "Click to finish",
+        "end-of-series": "End of series",
+        "end-of-reading-list": "End of reading list"
     },
 
     "pdf-layout-mode-pipe": {
@@ -3328,9 +3781,7 @@
 
     "infinite-scroller": {
         "continuous-reading-prev-chapter-alt": "Scroll up to move to previous chapter",
-        "continuous-reading-prev-chapter": "Previous Chapter",
-        "continuous-reading-next-chapter-alt": "Scroll up to move to next chapter",
-        "continuous-reading-next-chapter": "Next Chapter"
+        "continuous-reading-prev-chapter": "Previous Chapter"
     },
 
     "manga-reader": {
@@ -3378,7 +3829,8 @@
         "emulate-comic-book-label": "{{manage-reading-profiles.emulate-comic-book-label}}",
         "series-progress": "Series Progress: {{percentage}}",
         "page-offset-label": "Page Offset",
-        "offset-only-double": "Page Offset can only be used with Double Layout"
+        "offset-only-double": "Page Offset can only be used with Double Layout",
+        "layout-mode-label": "{{manage-reading-profiles.layout-mode-label}}"
     },
 
     "metadata-filter": {
@@ -3427,7 +3879,7 @@
         "unit-average-rating": "Kavita+ external rating, percent",
         "unit-reading-progress": "Percent",
         "unit-user-rating": "0.0 - 5.0 Stars",
-        "unit-read-last": "Days from TODAY",
+        "unit-read-last": "Days ago",
         "disclaimer-highlight-slots": "When using this field, only your own annotations will be shown",
         "unit-file-size": "GB, MB, KB, B",
         "disclaimer-file-size": "File size must include the unit"
@@ -3488,7 +3940,6 @@
         "age-rating-label": "{{metadata-fields.age-rating-title}}",
 
         "publication-status-label": "Publication Status",
-        "required-field": "{{validation.required-field}}",
         "close": "{{common.close}}",
         "name-label": "Name",
         "align-sort-name": "You've renamed this series but its sort name is locked. Update the sort name to match the new name?",
@@ -3500,7 +3951,6 @@
         "web-link-label": "{{tabs.weblink-tab}}",
         "cover-image-description": "Upload and choose a new cover image. Press Save to upload and override the cover.",
         "save": "{{common.save}}",
-        "field-locked-alt": "Field is locked",
         "info-title": "Information",
         "library-title": "Library",
         "format-title": "Format",
@@ -3531,7 +3981,10 @@
         "specials-volume": "Specials",
         "release-year-validation": "{{validation.year-validation}}",
         "volumes-title": "{{tab.volumes-tab}}",
-        "no-data": "{{common.no-data}}"
+        "no-data": "{{common.no-data}}",
+        "metadata-provider-override-label": "Metadata Provider Override",
+        "metadata-provider-override-tooltip": "Use a different Metadata Provider than the Library default for this Series",
+        "metadata-provider-override-default": "Use Library Default"
     },
 
     "edit-chapter-modal": {
@@ -3563,7 +4016,6 @@
         "web-link-description": "{{edit-series-modal.web-link-description}}",
         "web-link-label": "{{edit-series-modal.web-link-label}}",
         "external-ids-tab": "{{tabs.external-ids-tab}}",
-        "field-locked-alt": "{{edit-series-modal.field-locked-alt}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
 
         "pages-label": "Pages",
@@ -3617,9 +4069,7 @@
         "hardcover-tooltip": "https://hardcover.app/authors/{HardcoverId}",
         "asin-label": "ASIN",
         "asin-tooltip": "https://www.amazon.com/stores/J.K.-Rowling/author/{ASIN}",
-        "invalid-amazon-code": "ASIN should start with B0 or BT",
         "description-label": "Description",
-        "required-field": "{{validation.required-field}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "cover-image-description-extra": "Alternatively you can download a cover from CoversDB if available.",
         "save": "{{common.save}}",
@@ -3638,6 +4088,11 @@
         "alias-title": "New aliases",
         "known-for-title": "Known for"
     },
+
+    "locked-field": {
+        "field-locked-alt": "Field is locked"
+    },
+
 
     "day-breakdown": {
         "title": "Reading by Day",
@@ -3838,7 +4293,8 @@
     "favorite-authors": {
         "title": "Most Read Authors",
         "sub-title": "{{name}}'s most read author is {{author}}, with {{count}} total reads",
-        "no-data": "{{common.no-data}}"
+        "no-data": "{{common.no-data}}",
+        "chapter-count": "{{common.chapter-count}}"
     },
 
     "page-spread": {
@@ -4012,6 +4468,7 @@
         "font-already-in-use": "Font already exists by that name",
         "upload-too-large": "The file is too large for upload, select a smaller image and try again.",
         "invalid-form": "The form you're trying to submit contains errors",
+        "required-if-other-invalid": "{{other}} is invalid",
         "import-fields": {
             "non-unique-age-ratings": "Age rating mapping keys aren't unique, please correct your import file",
             "non-unique-fields": "Field mappings do not have a unique id, please correct your import file"
@@ -4086,7 +4543,6 @@
         "edit-smart-filter": "Edit {{name}}",
         "name-label": "Name",
         "entity-type-label": "Entity Type",
-        "required-field": "Smart Filters need a name",
         "filter-name-unique": "Smart Filter names must be unique",
         "no-content": "This smart filter has no results on the dashboard"
     },
@@ -4102,8 +4558,7 @@
         "edit": "{{common.edit}}",
         "cancel": "{{common.cancel}}",
         "delete": "{{common.delete}}",
-        "pattern": "Host must be a valid http(s):// url",
-        "required": "{{validation.required-field}}"
+        "confirm-delete": "Are you sure you want to delete {{name}} as external source?"
     },
 
     "stream-pipe": {
@@ -4153,7 +4608,8 @@
         "read-date": "Reading Date",
         "read-last": "Read Last",
         "average-rating": "Average rating",
-        "file-size": "File size"
+        "file-size": "File size",
+        "collapse-series-relationships": "{{user-preferences.collapse-series-relationships-label}}"
     },
 
     "filter-entity-type-pipe": {
@@ -4266,12 +4722,15 @@
 
 
     "toasts": {
+        "confirm-clear-media-issues": "Remove every media issue, including dismissed ones? Files that still have problems are reported again on the next scan.",
         "save-remap-rule": "Save \"{{from}} → {{to}}\" as a remap rule for future imports?",
         "import-complete": "Import complete",
         "failed-to-validate": "Failed to validate file",
         "failed-to-import": "Failed to import {{name}}",
         "no-pages": "There are no pages. Kavita was not able to read this archive.",
         "scan-queued": "Scan queued for {{name}}",
+        "debug-export-downloading": "Downloading debug export",
+        "scan-all-queued": "Scan queued for all libraries",
         "server-settings-updated": "Server settings updated",
         "reset-ip-address": "IP Addresses Reset",
         "reset-base-url": "Base Url Reset",
@@ -4318,10 +4777,13 @@
         "k+-reset-key-success": "Your license has been un-registered. Use Edit button to re-register your instance and re-activate Kavita+",
         "library-deleted": "Library {{name}} has been removed",
         "copied-to-clipboard": "Copied to clipboard",
-        "no-next-chapter": "Could not find next {{entity}}",
-        "no-prev-chapter": "Could not find previous {{entity}}",
+        "no-next-chapter": "No next {{entity}}",
+        "no-prev-chapter": "No previous {{entity}}",
         "load-next-chapter": "Next {{entity}} loaded",
         "load-prev-chapter": "Previous {{entity}} loaded",
+        "reading-profile-switched": "Using reading profile {{name}}",
+        "reading-profile-switched-series": "Using your settings for {{seriesName}}",
+        "reading-profile-switch-failed": "The reading profile for {{seriesName}} failed to load, settings will not save",
         "account-registration-complete": "Account registration complete",
         "account-migration-complete": "Account migration complete",
         "password-reset": "Password reset",
@@ -4336,6 +4798,12 @@
         "device-updated": "Device updated",
         "device-created": "Device created",
         "delete-device": "Are you sure you want to delete this device?",
+        "kobo-sync-point": {
+            "confirm-delete": "Are you sure you want to delete this sync point? The device will start a fresh sync the next time it connects.",
+            "deleted": "Sync point deleted",
+            "restored": "Chapters restored",
+            "copied": "Copied device id to your clipboard"
+        },
         "confirm-regen-covers": "Refresh covers will force all cover images to be recalculated. This is a heavy operation. Are you sure you don't want to perform a Scan instead?",
         "confirm-delete-multiple-series": "Are you sure you want to delete {{count}} series? It will not modify files on disk.",
         "confirm-delete-multiple-chapters": "Are you sure you want to delete {{count}} chapter/volumes? It will not modify files on disk.",
@@ -4365,7 +4833,9 @@
         "reading-list-promoted": "Reading List promoted",
         "reading-list-unpromoted": "Reading List un-promoted",
         "confirm-delete-collection": "Are you sure you want to delete the collection? This cannot be undone.",
+        "confirm-delete-kobo-collection": "Are you sure you want to delete the collection? It is being used to sync media to your Kobo.",
         "confirm-delete-collections": "Are you sure you want to delete multiple collections?",
+        "confirm-delete-collections-kobo": "Are you sure you want to delete multiple collections? One of these is used to sync your media to your Kobo.",
         "collections-deleted": "Collections deleted",
         "confirm-delete-annotations": "Are you sure you want to delete the annotations? This cannot be undone.",
         "annotations-deleted": "Annotation deleted",
@@ -4432,7 +4902,8 @@
         "chapter-publisher": "{{person-role-pipe.publisher}} (Chapter)",
         "chapter-title": "Title (Chapter)",
         "chapter-age-rating": "Age Rating (Chapter)",
-        "volume-covers": "Covers (Volume)"
+        "volume-covers": "Covers (Volume)",
+        "sort-name": "{{sort-field-pipe.sort-name}}"
     },
 
 
@@ -4573,6 +5044,14 @@
         "desktop": "Desktop"
     },
 
+    "rate-and-review-series-modal": {
+        "title": "Rate & Review: {{seriesName}}",
+        "description": "Leave a rating and review about the series.",
+        "save": "{{common.save}}",
+        "close": "{{common.close}}",
+        "review-label": "{{review-modal.review-label}}"
+    },
+
     "account-settings": {
         "oidc": "{{login.oidc}}",
         "unlink-oidc": "Remove OIDC link",
@@ -4694,14 +5173,43 @@
         "queued-description": "Processing will kick of shortly, please be patient."
     },
 
+    "media-error-producer-pipe": {
+        "book-service": "Book processing",
+        "archive-service": "Archive processing",
+        "scanner": "Scanner",
+        "kepubify": "Kepub conversion"
+    },
+
+    "media-error-reason-pipe": {
+        "unknown": "Unknown error",
+        "parse-failed": "Nothing could be parsed from the file name",
+        "no-series-name": "No series name could be found",
+        "unreadable-archive": "Archive could not be opened",
+        "corrupt-epub": "Epub is damaged or has invalid content",
+        "no-pages": "Page count could not be read",
+        "cover-failed": "Cover image could not be generated",
+        "word-count-failed": "Words could not be counted",
+        "io-error": "File could not be accessed (disk, network or permissions)",
+        "metadata-unreadable": "Embedded metadata could not be read, imported without it",
+        "epub-not-strict": "Epub has structural errors, imported in lenient mode",
+        "ambiguous-series": "Matches more than one series, edit its LocalizedSeries tag",
+        "kepub-conversion-failed": "Could not be converted to kepub, Kobo devices get the plain epub instead"
+    },
+
     "validation": {
         "required-field": "This field is required",
         "other-field-required": "{{name}} is required when {{other}} is set",
         "other-field-invalid": "Cannot check validity, {{other}} is invalid",
         "valid-email": "This must be a valid email",
+        "email-invalid": "This must be a valid email",
+        "min-length": "This must be at least {{requiredLength}} characters",
         "password-validation": "Password must be between 6 and 256 characters in length",
         "year-validation": "This must be a valid year greater than 1000 and 4 characters long",
-        "invalid-uri": "The provided uri is invalid"
+        "invalid-uri": "The provided uri is invalid",
+        "min": "Value must be greater than {{min}}",
+        "max": "Value must be less than {{max}}",
+        "invalid-amazon-code": "ASIN should start with B0 or BT",
+        "invalid-asin": "This isn't a valid ASIN"
     },
 
     "entity-type": {

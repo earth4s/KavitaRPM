@@ -13,6 +13,7 @@ using Kavita.Models.Entities.Enums.User;
 using Kavita.Models.Entities.Enums.UserPreferences;
 using Kavita.Models.Entities.History;
 using Kavita.Models.Entities.Interfaces;
+using Kavita.Models.Entities.Kobo;
 using Kavita.Models.Entities.Metadata;
 using Kavita.Models.Entities.MetadataMatching;
 using Kavita.Models.Entities.Person;
@@ -98,6 +99,7 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
     public DbSet<ClientDevice> ClientDevice { get; set; } = null!;
     public DbSet<ClientDeviceHistory> ClientDeviceHistory { get; set; } = null!;
     public DbSet<AppUserAuthKey> AppUserAuthKey { get; set; } = null!;
+    public DbSet<KoboSyncPoint> KoboSyncPoints { get; set; } = null!;
 
     public DbSet<ReadingListTag> ReadingListTag { get; set; } = null!;
     public DbSet<ReadingListRemapRule> ReadingListRemapRule { get; set; } = null!;
@@ -107,11 +109,14 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
     public DbSet<KavitaPlusAuditLog> KavitaPlusAuditLogs { get; set; } = null!;
 
     public DbSet<ScrobbleRuleHistory> ScrobbleRuleHistory { get; set; } = null!;
+    public DbSet<ImageFile> ImageFile { get; set; } = null!;
 
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.ApplyJsonColumns();
 
         builder.Entity<SeriesRelation>()
             .HasOne(pt => pt.Series)
@@ -137,6 +142,18 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
         builder.Entity<AppUserCollection>()
             .Property(b => b.AgeRating)
             .HasDefaultValue(AgeRating.Unknown);
+
+        builder.Entity<MediaError>()
+            .HasOne(e => e.Library)
+            .WithMany()
+            .HasForeignKey(e => e.LibraryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<MediaError>()
+            .HasOne(e => e.Series)
+            .WithMany()
+            .HasForeignKey(e => e.SeriesId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         #region Reading List
         builder.Entity<ReadingList>()
@@ -185,6 +202,18 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
         builder.Entity<Library>()
             .Property(l => l.DefaultLanguage)
             .HasDefaultValue(string.Empty);
+        builder.Entity<Library>()
+            .Property(l => l.ScanInfo)
+            .HasJsonConversion(new LibraryScanInfo())
+            .HasColumnType("TEXT")
+            .IsRequired()
+            .HasDefaultValue(new LibraryScanInfo());
+        builder.Entity<Library>()
+            .Property(l => l.FolderWatchState)
+            .HasJsonConversion(new LibraryFolderWatchState())
+            .HasColumnType("TEXT")
+            .IsRequired()
+            .HasDefaultValue(new LibraryFolderWatchState());
 
         #endregion
 
@@ -225,6 +254,30 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .HasJsonConversion([])
             .HasColumnType("TEXT")
             .HasDefaultValue(new List<MetadataSettingField>());
+
+        builder.Entity<ExternalRating>()
+            .HasOne<Chapter>()
+            .WithMany(c => c.ExternalRatings)
+            .HasForeignKey(e => e.ChapterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<ExternalReview>()
+            .HasOne<Chapter>()
+            .WithMany(c => c.ExternalReviews)
+            .HasForeignKey(e => e.ChapterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<ScrobbleEvent>()
+            .HasOne(e => e.Chapter)
+            .WithMany()
+            .HasForeignKey(e => e.ChapterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<ScrobbleError>()
+            .HasOne(e => e.Chapter)
+            .WithMany()
+            .HasForeignKey(e => e.ChapterId)
+            .OnDelete(DeleteBehavior.Cascade);
         #endregion
 
         #region User & Preferences
@@ -271,6 +324,12 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
         builder.Entity<AppUserPreferences>()
             .Property(b => b.PromptForRereadsAfter)
             .HasDefaultValue(30);
+        builder.Entity<AppUserPreferences>()
+            .Property(b => b.OnDeckProgressDays)
+            .HasDefaultValue(30);
+        builder.Entity<AppUserPreferences>()
+            .Property(b => b.OnDeckUpdateDays)
+            .HasDefaultValue(7);
 
         builder.Entity<AppUserPreferences>()
             .Property(a => a.BookReaderHighlightSlots)
@@ -457,6 +516,10 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .Property(x => x.AgeRatingMappings)
             .HasJsonConversion([]);
 
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.ExternalAgeRatingMappings)
+            .HasJsonConversion([]);
+
         builder.Entity<SeriesMetadata>()
             .Property(b => b.WebLinks)
             .HasDefaultValue(string.Empty);
@@ -472,6 +535,21 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .Property(x => x.Overrides)
             .HasJsonConversion([]);
 
+        builder.Entity<MetadataSettings>()
+            .Property(x => x.LibraryLanguageTitleOverrides)
+            .HasJsonConversion(new Dictionary<int, SeriesNameLanguage>())
+            .HasColumnType("TEXT")
+            .HasDefaultValue(new Dictionary<int, SeriesNameLanguage>());
+
+        // Defaults must match the property initializers on MetadataSettings, else existing installs (which take
+        // the column default) and fresh installs (which take the initializer) would ship different behaviour
+        builder.Entity<MetadataSettings>()
+            .Property(b => b.GlobalNameLanguages)
+            .HasDefaultValue("en");
+        builder.Entity<MetadataSettings>()
+            .Property(b => b.GlobalLocalizedNameLanguages)
+            .HasDefaultValue("ja-Latn");
+
         // Configure one-to-many relationship
         builder.Entity<MetadataSettings>()
             .HasMany(x => x.FieldMappings)
@@ -484,6 +562,9 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             .HasDefaultValue(true);
         builder.Entity<MetadataSettings>()
             .Property(b => b.EnableCoverImage)
+            .HasDefaultValue(true);
+        builder.Entity<MetadataSettings>()
+            .Property(b => b.EnableAgeRating)
             .HasDefaultValue(true);
 
         #endregion
@@ -517,6 +598,39 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
                 .HasForeignKey(b => b.AppUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+        #endregion
+
+        #region Image Files
+        builder.Entity<ImageFile>(entity =>
+        {
+            entity.HasIndex(f => new { f.FileName, f.Kind })
+                .IsUnique()
+                .HasDatabaseName("IX_ImageFile_FileName_Kind");
+            entity.HasIndex(f => new { f.Kind, f.Key })
+                .HasDatabaseName("IX_ImageFile_Kind_Key");
+        });
+
+        builder.Entity<Chapter>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<Volume>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<Series>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<Library>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<Person>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<ReadingList>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<AppUser>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<AppUserCollection>().HasOne(e => e.CoverImageFile).WithMany()
+            .HasForeignKey(e => e.CoverImageFileId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<AppUserBookmark>().HasOne(e => e.ImageFile).WithMany()
+            .HasForeignKey(e => e.ImageFileId).OnDelete(DeleteBehavior.SetNull);
         #endregion
 
         #region Search Indexes
@@ -587,6 +701,10 @@ public sealed class DataContext : IdentityDbContext<AppUser, AppRole, int,
             entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ScrobbleError)
+                .WithMany()
+                .HasForeignKey(e => e.ScrobbleErrorId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 

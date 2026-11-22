@@ -18,7 +18,8 @@ export enum ClientDeviceType {
   KoReader = 3,
   Panels = 4,
   Librera = 5,
-  OpdsClient = 6
+  OpdsClient = 6,
+  Kobo = 7,
 }
 
 export interface ClientInfo {
@@ -167,7 +168,8 @@ export class ClientInfoService {
   }
 
   private getAppVersion() {
-    return localStorage.getItem(VersionService.SERVER_VERSION_KEY);
+    const version = localStorage.getItem(VersionService.SERVER_VERSION_KEY);
+    return VersionService.isVersion(version) ? version : null;
   }
 
 }

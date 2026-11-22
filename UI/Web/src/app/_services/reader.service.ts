@@ -2,8 +2,8 @@ import {HttpClient} from '@angular/common/http';
 import {effect, inject, Injectable, signal} from '@angular/core';
 import {DOCUMENT, Location} from '@angular/common';
 import {Router} from '@angular/router';
-import {environment} from 'src/environments/environment';
-import {ChapterInfo} from '../manga-reader/_models/chapter-info';
+import {environment} from '../../environments/environment';
+import {ChapterInfo} from '../_models/readers/chapter-info';
 import {Chapter} from '../_models/chapter';
 import {HourEstimateRange} from '../_models/series-detail/hour-estimate-range';
 import {MangaFormat} from '../_models/manga-format';
@@ -19,20 +19,27 @@ import {FilterV2} from "../_models/metadata/v2/filter-v2";
 import NoSleep from 'nosleep.js';
 import {Volume} from "../_models/volume";
 import {translate} from "@jsverse/transloco";
-import {ToastrService} from "ngx-toastr";
+import {ToastrService} from '@openng/ngx-toastr';
 import {SeriesFilterField} from "../_models/metadata/v2/series-filter-field";
 import {ModalService, TypedModalRef} from "./modal.service";
-import {catchError, map, merge, Observable, of, switchMap, tap} from "rxjs";
+import {catchError, EMPTY, finalize, map, merge, Observable, of, switchMap, tap} from "rxjs";
 import {ListSelectModalComponent} from "../shared/_components/list-select-modal/list-select-modal.component";
 import {take, takeUntil} from "rxjs/operators";
 import {SeriesService} from "./series.service";
 import {Series} from "../_models/series";
 import {RereadPrompt} from "../_models/readers/reread-prompt";
-import {mediumModal} from "../_models/modal/modal-options";
+import {editModal, mediumModal} from "../_models/modal/modal-options";
 import {
   KeyboardShortcut,
   ShortcutsModalComponent
 } from "../reader-shared/_modals/shortcuts-modal/shortcuts-modal.component";
+import {
+  RateAndReviewSeriesModalComponent
+} from "../reader-shared/_modals/rate-and-review-series-modal/rate-and-review-series-modal.component";
+import {RateReviewPrompt} from "../_models/readers/rate-review-prompt";
+import {ReadingProfile, ReadingProfileKind} from "../_models/preferences/reading-profiles";
+import {PublicationStatus} from "../_models/metadata/publication-status";
+import {ReviewService} from "./review.service";
 
 enum RereadPromptResult {
   Cancel = 0,
@@ -44,7 +51,8 @@ enum RereadPromptResult {
 export const CHAPTER_ID_DOESNT_EXIST = -1;
 export const CHAPTER_ID_NOT_FETCHED = -2;
 
-const MS_IN_DAY = 1000 * 60 * 60 * 24;
+const RATE_REVIEW_PROMPT_STATUSES = [PublicationStatus.Completed, PublicationStatus.Hiatus, PublicationStatus.Cancelled];
+
 
 @Injectable({
   providedIn: 'root'
@@ -59,6 +67,7 @@ export class ReaderService {
   private readonly document = inject(DOCUMENT);
   private readonly modalService = inject(ModalService);
   private readonly seriesService = inject(SeriesService);
+  private readonly reviewService = inject(ReviewService);
 
   baseUrl = environment.apiUrl;
   encodedKey: string = '';
@@ -70,6 +79,8 @@ export class ReaderService {
   private noSleep: NoSleep = new NoSleep();
   shortCutModalOpen = signal(false);
   shortCutModalRef: TypedModalRef<ShortcutsModalComponent> | undefined;
+  private rateReviewPromptActive = false;
+  private rateReviewModalRef: TypedModalRef<RateAndReviewSeriesModalComponent> | undefined;
 
 
 
@@ -86,19 +97,71 @@ export class ReaderService {
     if (this.shortCutModalOpen()) return;
 
     this.shortCutModalOpen.set(true);
-    this.shortCutModalRef = this.modalService.open(ShortcutsModalComponent, mediumModal());
-    this.shortCutModalRef.setInput('shortcuts', shortcuts);
-    this.shortCutModalRef.setInput('inBookReader', inBookReader);
+    const ref = this.modalService.open(ShortcutsModalComponent, mediumModal());
+    this.shortCutModalRef = ref;
+    ref.setInput('shortcuts', shortcuts);
+    ref.setInput('inBookReader', inBookReader);
 
-    merge(this.shortCutModalRef.closed, this.shortCutModalRef.dismissed).subscribe(() => this.shortCutModalOpen.set(false));
+    merge(ref.closed, ref.dismissed).subscribe(() => {
+      this.shortCutModalOpen.set(false);
+      if (this.shortCutModalRef === ref) {
+        this.shortCutModalRef = undefined;
+      }
+    });
+  }
+
+  /**
+   * Emits true once the modal closes, false when no prompt is due, and nothing while a prompt is already open
+   */
+  promptRateAndReview(prompt: RateReviewPrompt): Observable<boolean> {
+    if (this.rateReviewPromptActive) return EMPTY;
+    if (this.accountService.hasReadOnlyRole()) return EMPTY; 
+    if (prompt.readingListMode) return of(false);
+
+    const status = prompt.publicationStatus;
+    if (status === null || !RATE_REVIEW_PROMPT_STATUSES.includes(status)) return of(false);
+
+    this.rateReviewPromptActive = true;
+
+    return this.getNextChapter(prompt.seriesId, prompt.volumeId, prompt.chapterId).pipe(
+      switchMap(nextChapterId => nextChapterId === CHAPTER_ID_DOESNT_EXIST
+        ? this.reviewService.getMyRatingAndReview(prompt.seriesId)
+        : of(null)),
+      switchMap(ratingReview => {
+        if (ratingReview === null || ratingReview.hasBeenRated) return of(false);
+
+        const ref = this.modalService.open(RateAndReviewSeriesModalComponent, editModal());
+        ref.setInput('seriesId', prompt.seriesId);
+        ref.setInput('ratingReview', ratingReview);
+        ref.setInput('seriesName', prompt.seriesName);
+        this.rateReviewModalRef = ref;
+
+        return merge(ref.closed, ref.dismissed).pipe(take(1), map(() => true));
+      }),
+      catchError(() => of(false)),
+      finalize(() => {
+        this.rateReviewPromptActive = false;
+        this.rateReviewModalRef = undefined;
+      }),
+    );
+  }
+
+  // KeyBindService calls preventDefault on Escape, which blocks ng-bootstrap's own Escape dismiss
+  closeRateReviewModal() {
+    if (!this.rateReviewModalRef) return false;
+
+    this.rateReviewModalRef.dismiss();
+    return true;
   }
 
   closeShortCutModal() {
+    const isOpen = !!this.shortCutModalRef;
     if (this.shortCutModalRef) {
       this.shortCutModalRef.dismiss();
       this.shortCutModalRef = undefined;
     }
     this.shortCutModalOpen.set(false);
+    return isOpen;
   }
 
 
@@ -308,13 +371,26 @@ export class ReaderService {
     return parseInt(params.get('chapterId') || '-1', 10);
   }
 
-  getNextChapterUrl(url: string, nextChapterId: number, incognitoMode: boolean = false, readingListMode: boolean = false, readingListId: number = -1) {
-    const lastSlashIndex = url.lastIndexOf('/');
-    let newRoute = url.substring(0, lastSlashIndex + 1) + nextChapterId + '';
-    newRoute += this.getQueryParams(incognitoMode, readingListMode, readingListId);
-    return newRoute;
+  showReadingProfileSwitch(profile: ReadingProfile, seriesName: string) {
+    const message = profile.kind === ReadingProfileKind.Implicit
+      ? translate('toasts.reading-profile-switched-series', {seriesName})
+      : translate('toasts.reading-profile-switched', {name: profile.name});
+    this.toastr.info(message, '', {timeOut: 1000});
   }
 
+  showReadingProfileSwitchFailed(seriesName: string) {
+    this.toastr.error(translate('toasts.reading-profile-switch-failed', {seriesName}));
+  }
+
+  /**
+   * Points the address bar at the chapter the reader now shows, without navigating
+   */
+  replaceReaderUrl(libraryId: number, seriesId: number, chapterId: number, format: MangaFormat,
+                   incognitoMode: boolean, readingListMode: boolean, readingListId: number) {
+    const tree = this.router.createUrlTree(this.getNavigationArray(libraryId, seriesId, chapterId, format),
+      {queryParams: this.getQueryParamsObject(incognitoMode, readingListMode, readingListId)});
+    this.location.replaceState(this.router.serializeUrl(tree));
+  }
 
   getQueryParamsObject(incognitoMode: boolean = false, readingListMode: boolean = false, readingListId: number = -1) {
     const params: {[key: string]: any} = {};
@@ -327,34 +403,32 @@ export class ReaderService {
     return params;
   }
 
-  getQueryParams(incognitoMode: boolean = false, readingListMode: boolean = false, readingListId: number = -1) {
-    let params = '';
-    if (incognitoMode) {
-      params += '?incognitoMode=true';
-    }
-    if (readingListMode) {
-      if (params.indexOf('?') > 0) {
-        params += '&readingListId=' + readingListId;
-      } else {
-        params += '?readingListId=' + readingListId;
-      }
-    }
-    return params;
-  }
-
-  toggleFullscreen(el: Element, callback?: VoidFunction) {
-
+  toggleFullscreen() {
+    const curr = screenfull.isFullscreen;
     if (screenfull.isEnabled) {
       screenfull.toggle();
+      return !curr;
+    }
+
+    return false;
+  }
+
+  setFullscreen(fullscreen: boolean) {
+    if (!screenfull.isEnabled) return;
+
+    if (fullscreen && !screenfull.isFullscreen) {
+      screenfull.toggle().catch(console.error);
+      return;
+    }
+    if (!fullscreen && screenfull.isFullscreen) {
+      screenfull.toggle().catch(console.error);
     }
   }
 
-  /**
-   *
-   * @returns If document is in fullscreen mode
-   */
-  checkFullscreenMode() {
-    return document.fullscreenElement != null;
+  exitFullscreen() {
+    if (screenfull.isEnabled) {
+      screenfull.exit();
+    }
   }
 
   /**

@@ -29,6 +29,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols;
@@ -45,7 +46,7 @@ namespace Kavita.Services;
 /// <remarks>It is registered as a singleton only if oidc is enabled. So must be nullable and optional</remarks>
 public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userManager,
     IUnitOfWork unitOfWork, IAccountService accountService, IEmailService emailService,
-    ICoverDbService coverDbService,
+    ICoverDbService coverDbService, IAuthKeyService authKeyService,
     [FromServices] ConfigurationManager<OpenIdConnectConfiguration>? configurationManager = null): IOidcService
 {
     public const string LibraryAccessPrefix = "library-";
@@ -59,6 +60,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
     public const string CookieName = ".AspNetCore.Cookies";
     public static readonly List<string> DefaultScopes = ["openid", "profile", "offline_access", "roles", "email"];
 
+    private const AppUserIncludes DefaultUserIncludes = AppUserIncludes.UserPreferences | AppUserIncludes.SideNavStreams | AppUserIncludes.AuthKeys;
     private static readonly ConcurrentDictionary<string, bool> RefreshInProgress = new();
     private static readonly ConcurrentDictionary<string, DateTimeOffset> LastFailedRefresh = new();
 
@@ -73,7 +75,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
             throw new KavitaException("errors.oidc.missing-external-id");
         }
 
-        var user = await unitOfWork.UserRepository.GetByOidcId(oidcId, AppUserIncludes.UserPreferences | AppUserIncludes.SideNavStreams, ct);
+        var user = await unitOfWork.UserRepository.GetByOidcId(oidcId, DefaultUserIncludes, ct);
         if (user != null)
         {
             await SyncUserSettings(request, settings, principal, user);
@@ -93,7 +95,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
         }
 
 
-        user = await unitOfWork.UserRepository.GetUserByEmailAsync(email, AppUserIncludes.UserPreferences | AppUserIncludes.SideNavStreams, ct);
+        user = await unitOfWork.UserRepository.GetUserByEmailAsync(email, DefaultUserIncludes, ct);
         if (user != null)
         {
             // Don't allow taking over accounts
@@ -119,7 +121,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
     {
         if (ctx.Principal == null) return null;
 
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(ctx.Principal.GetUserId(), ct: ct) ?? throw new UnauthorizedAccessException();
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(ctx.Principal.GetUserId(), DefaultUserIncludes, ct) ?? throw new UnauthorizedAccessException();
         var key = ctx.Principal.GetUsername();
 
         var refreshToken = ctx.Properties.GetTokenValue(RefreshToken);
@@ -291,7 +293,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
         user.OidcId = externalId;
         user.IdentityProvider = IdentityProvider.OpenIdConnect;
 
-        await accountService.SeedUser(user);
+        accountService.SeedUser(user);
 
         await SyncUserSettings(request, settings, claimsPrincipal, user);
         await SetDefaults(settings, user);
@@ -312,7 +314,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
             settings.DefaultRoles, settings.DefaultLibraries, settings.DefaultAgeRestriction, settings.DefaultIncludeUnknowns);
 
         // Assign roles
-        var errors = await accountService.UpdateRolesForUser(user, settings.DefaultRoles);
+        var (errors, _) = await accountService.UpdateRolesForUser(user, settings.DefaultRoles);
         if (errors.Any()) throw new KavitaException("errors.oidc.syncing-user");
 
         // Assign libraries
@@ -409,10 +411,10 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
         // Only sync if the user has no image, I know this is no true sync as changing it in your idp
         // will require action on Kavita. But it's less effort than saving if the user has set it themselves
         // Will just need to be documented on the wiki.
-        if (!string.IsNullOrEmpty(picture) && string.IsNullOrEmpty(user.CoverImage))
+        if (!string.IsNullOrEmpty(picture) && user.CoverImageFileId == null)
         {
             // Run in the background to not block http thread, pass id to Hangfire doesn't kill itself
-            BackgroundJob.Enqueue(() => coverDbService.SetUserCoverByUrl(user.Id, picture, false));
+            BackgroundJob.Enqueue(() => coverDbService.SetOidcUserCoverAsync(user.Id, picture, CancellationToken.None));
         }
     }
 
@@ -520,11 +522,18 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
 
         logger.LogDebug("Syncing access roles for user {UserId}, found roles {Roles}", user.Id, roles);
 
-        var errors = (await accountService.UpdateRolesForUser(user, roles)).ToList();
-        if (errors.Count != 0)
+        var (errors, hasMadeChanges) = await accountService.UpdateRolesForUser(user, roles);
+        var identityErrors = errors.ToList();
+
+        if (identityErrors.Count != 0)
         {
-            logger.LogError("Failed to sync roles {Errors}", errors.Select(x => x.Description).ToList());
+            logger.LogError("Failed to sync roles {Errors}", identityErrors.Select(x => x.Description).ToList());
             throw new KavitaException("errors.oidc.syncing-user");
+        }
+
+        if (hasMadeChanges)
+        {
+            await authKeyService.InvalidateAllForUserAsync(user, CancellationToken.None);
         }
     }
 
@@ -538,7 +547,11 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
         var allLibraries = (await unitOfWork.LibraryRepository.GetLibrariesAsync()).ToList();
         // Distinct to ensure each library (id) is only present once
         var librariesIds = allLibraries
-            .Where(l => libraryAccess.Contains(l.Name, StringComparer.OrdinalIgnoreCase))
+            .Where(l =>
+                libraryAccess.Contains(l.Name, StringComparer.OrdinalIgnoreCase)
+                || libraryAccess.Contains(l.Name.Replace(" ", "-"), StringComparer.OrdinalIgnoreCase)
+                || libraryAccess.Contains(l.Id.ToString(), StringComparer.OrdinalIgnoreCase)
+                )
             .Select(l => l.Id).Distinct()
             .ToList();
 
@@ -562,7 +575,7 @@ public class OidcService(ILogger<OidcService> logger, UserManager<AppUser> userM
 
         if (ageRatings.Count == 0 || (ageRatings.Count == 1 && ageRatings.Contains(IncludeUnknowns, StringComparer.OrdinalIgnoreCase)))
         {
-            logger.LogDebug("No age restriction found in roles, setting to NotApplicable and Include Unknowns: {IncludeUnknowns}", settings.DefaultIncludeUnknowns);
+            logger.LogDebug("No age restriction found in roles, setting to NotApplicable and Include Unknowns");
 
             user.AgeRestriction = AgeRating.NotApplicable;
             user.AgeRestrictionIncludeUnknowns = true;

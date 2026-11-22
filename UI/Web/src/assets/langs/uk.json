@@ -3,7 +3,6 @@
         "title": "Увійдіть у свій обліковий запис",
         "username": "{{common.username}}",
         "password": "{{common.password}}",
-        "password-validation": "{{validation.password-validation}}",
         "forgot-password": "Забули пароль?",
         "submit": "Увійдіть",
         "oidc": "OpenID Connect"
@@ -21,7 +20,6 @@
         "edit": "{{common.edit}}",
         "close": "{{common.close}}",
         "username": "{{common.username}}",
-        "required": "{{validation.required-field}}",
         "email": "{{common.email}}",
         "cancel": "{{common.cancel}}",
         "saving": "Збереження…",
@@ -36,31 +34,6 @@
         "libraries-label": "{{common.libraries}}",
         "roles-label": "{{common.roles}}",
         "warning-read-only": "Облікові записи \"Тільки для читання\" мають обмежені дозволи"
-    },
-    "user-scrobble-history": {
-        "filter-label": "{{common.filter}}",
-        "created-header": "Створено",
-        "last-modified-header": "Останні Зміни",
-        "type-header": "Тип",
-        "series-header": "Серія",
-        "volume-and-chapter-num": "Том {{v}} Розділ {{n}}",
-        "rating": "Рейтинг {{r}}",
-        "special": "{{entity-title.special}}",
-        "not-applicable": "Незастосовно",
-        "volume-num": "Том",
-        "description": "Тут ви знайдете всі відстежені події вашого облікового запису. Щоб такі події зʼявилися, треба спершу налаштувати провайдера таких змін. Всі опрацьовані події зникають за місяць. Якщо ви бачите неопрацьовані події, імовірно, для них не знайшлося відповідних звʼязків. Звʼяжіться з адміністратором, щоб їх виправити.",
-        "not-read-warning": "Провайдери даних завжди зберігатимуть найбільшу кількість",
-        "title": "Історія відстежень",
-        "data-header": "Дані",
-        "is-processed-header": "На опрацюванні",
-        "no-data": "{{common.no-data}}",
-        "processed": "Опрацьовано",
-        "not-processed": "Не опрацьовано",
-        "chapter-num": "Розділ {{num}}",
-        "select-all-label": "Вибрати все",
-        "delete-selected-label": "Видалити вибране",
-        "token-expired": "Термін дії вашого токена AniList закінчився! Події скроблінгу не оброблятимуться, доки ви не поновите його на сторінці Облікові записи.",
-        "scrobbling-disabled": "Скроблінг вимкнено в налаштуваннях вашого облікового запису."
     },
     "review-card-modal": {
         "close": "{{common.close}}",
@@ -200,8 +173,6 @@
         "save": "{{common.save}}",
         "close": "{{common.close}}",
         "cancel": "{{common.cancel}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "device-platform-label": "{{manage-devices.platform-label}}",
         "title": "Редагувати пристрій електронної пошти",
         "email-tooltip": "Ця скринька буде використовуватися для прийняття файлів через функцію \"Відправити\""
@@ -210,7 +181,6 @@
         "password-label": "{{common.password}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "confirm-password-label": "Підтвердити пароль",
         "current-password-label": "Поточний пароль",
         "new-password-label": "Новий пароль",
@@ -219,8 +189,6 @@
     },
     "change-email": {
         "email-label": "Новий електронний лист",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
         "email-title": "Електронна пошта",
@@ -324,8 +292,6 @@
     },
     "reset-password": {
         "email-label": "{{common.email}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "submit": "{{common.submit}}",
         "title": "Скидання пароля",
         "description": "Введіть електронну адресу вашого облікового запису. Kavita надішле вам електронного листа, якщо у вас є дійсна адреса, інакше попросіть адміністратора скинути ваш пароль."
@@ -349,7 +315,6 @@
     "invite-user": {
         "close": "{{common.close}}",
         "email": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
         "cancel": "{{common.cancel}}",
         "email-not-sent": "{{toasts.email-not-sent}}",
         "notice": "{{manage-settings.notice}}",
@@ -373,7 +338,6 @@
     },
     "book-line-overlay": {
         "close": "{{common.close}}",
-        "required-field": "{{common.required-field}}",
         "save": "{{common.save}}",
         "copy": "Копіювати",
         "bookmark": "Закладка",
@@ -401,8 +365,6 @@
         "username-label": "{{common.username}}",
         "password-label": "{{common.password}}",
         "email-label": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
-        "valid-email": "{{common.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "title": "Зареєструватися",
         "description": "Заповніть форму, щоб завершити реєстрацію",
@@ -411,7 +373,6 @@
     },
     "confirm-reset-password": {
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
         "submit": "{{common.submit}}",
         "password-validation": "{{validation.password-validation}}",
         "title": "Скидання пароля",
@@ -421,8 +382,6 @@
         "username-label": "{{common.username}}",
         "email-label": "{{common.email}}",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "title": "Зареєструватися",
         "description": "Заповніть форму, щоб зареєструвати обліковий запис адміністратора",
@@ -522,7 +481,6 @@
         "reset": "{{common.reset}}",
         "cancel": "{{common.cancel}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "help": "{{common.help}}",
         "edit-title": "Редагувати {{name}}",
         "add-title": "Додати бібліотеку",
@@ -551,8 +509,6 @@
         "allow-scrobbling-tooltip": "Якщо Kavita має перехоплювати події читання, бажає зчитувати статус, оцінки та відгуки налаштованим постачальникам? Це станеться, лише якщо на сервері є активна підписка Kavita+.",
         "allow-metadata-matching-label": "Дозволити зіставлення метаданих",
         "allow-metadata-matching-tooltip": "Чи має Kavita завантажувати метадані для серіалів у цій бібліотеці? Це станеться, лише якщо на сервері є активна підписка на Kavita+.",
-        "folder-watching-label": "Спостереження за папками",
-        "folder-watching-tooltip": "Перезаписати спостереження за папками сервера для цієї бібліотеки. Якщо вимкнено, спостереження за папками не виконуватиметься для папок, які містить ця бібліотека. Якщо бібліотеки мають спільні папки, то сканування папок все одно може виконуватися. Завжди чекатиме 10 хвилин перед запуском сканування.",
         "include-in-dashboard-label": "Додати до інформаційної панелі",
         "include-in-dashboard-tooltip": "Чи слід додавати серіали з бібліотеки на інформаційну панель? Це впливає на всі потоки, такі як «На старті», «Нещодавно оновлені», «Нещодавно додані» або будь-які користувацькі доповнення.",
         "include-in-search-label": "Включити в пошук",
@@ -714,12 +670,6 @@
     },
     "manage-media-issues": {
         "filter-label": "{{common.filter}}",
-        "description-part-1": "У цій таблиці наведено проблеми, виявлені під час сканування або читання медіафайлів. Ви можете очистити її будь-коли та скористатися скануванням бібліотеки (примусово) для виконання аналізу. Список деяких поширених помилок та їх значення можна знайти на ",
-        "description-part-2": "вікі.",
-        "clear-alerts": "Очистити сповіщення",
-        "file-header": "Файл",
-        "comment-header": "Коментар",
-        "created-header": "Створено",
         "no-data": "{{common.no-data}}"
     },
     "manage-email-settings": {
@@ -794,7 +744,6 @@
         "encode-as-description-part-1": "WebP/AVIF може значно зменшити вимоги до місця для файлів. WebP/AVIF підтримується не всіма браузерами та не всіма їх версіями. Щоб дізнатися, чи підходять ці налаштування для вашої конфігурації, відвідайте ",
         "encode-as-description-part-2": "Чи можу я використовувати WebP?",
         "encode-as-description-part-3": "Чи можна використовувати AVIF?",
-        "encode-as-warning": "Ви не можете конвертувати назад у PNG після переходу до WebP/AVIF. Вам потрібно буде оновити обкладинки у ваших бібліотеках, щоб заново створити всі обкладинки. Закладки та значки сайту не можна конвертувати.",
         "media-warning": "Після збереження потрібно запустити завдання конвертації медіафайлів на вкладці «Завдання».",
         "encode-as-label": "Зберегти медіафайл як",
         "encode-as-tooltip": "Усі медіафайли, якими керує Kavita (обкладинки, закладки, значки сайту), будуть закодовані як цей тип.",
@@ -847,10 +796,6 @@
         "logging-level-tooltip": "Використовуйте налагодження для виявлення проблем. Налагодження може займати багато місця на диску.",
         "cache-size-label": "Розмір кешу",
         "cache-size-tooltip": "Обсяг пам'яті, дозволений для кешування складних API. За замовчуванням — 75 МБ.",
-        "on-deck-last-progress-label": "Останній прогрес на палубі (дні)",
-        "on-deck-last-progress-tooltip": "Кількість днів з моменту останнього прогресу до початку чогось на сцені.",
-        "on-deck-last-chapter-add-label": "Додати останній розділ на палубі (дні)",
-        "on-deck-last-chapter-add-tooltip": "Кількість днів з моменту додавання останнього розділу, щоб включити щось на палубі.",
         "allow-stats-label": "Дозволити анонімний збір даних про використання",
         "allow-stats-tooltip-part-1": "Надсилати анонімні дані про використання на сервери Kavita. Це включає інформацію про певні використовувані функції, кількість файлів, версію ОС, версію встановлення Kavita, процесор і пам'ять. Ми використовуватимемо цю інформацію для визначення пріоритетів функцій, виправлення помилок і налаштування продуктивності. Для набрання чинності потрібен перезавантаження. Див. ",
         "allow-stats-tooltip-part-2": "за те, що зібрано.",
@@ -895,9 +840,6 @@
         "bust-cache-task": "Кеш-перебір",
         "bust-cache-task-desc": "Очищає кеш Kavita+ — слід використовувати лише під час налагодження поганих збігів.",
         "bust-cache-task-success": "Kavita+ Кеш викрито",
-        "bust-locale-task": "Кеш локалізації Bust",
-        "bust-locale-task-desc": "Очищає кеш локалізації. Це може вирішити проблеми з некоректним відображенням рядків після оновлення. Потрібне оновлення браузера.",
-        "bust-locale-task-success": "Кеш локалізації вилучено",
         "clear-reading-cache-task": "Очистити кеш читання",
         "clear-reading-cache-task-desc": "Очищає кешовані файли для читання. Корисно, коли ви щойно оновили файл, який читали протягом останніх 24 годин.",
         "clear-reading-cache-task-success": "Кеш вже очищено",
@@ -946,10 +888,8 @@
         "profile-link-alt": "Профіль"
     },
     "edit-collection-tags": {
-        "required-field": "{{validation.required-field}}",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
         "deselect-all": "{{common.deselect-all}}",
         "select-all": "{{common.select-all}}",
         "filter-label": "{{common.filter}}",
@@ -1073,17 +1013,7 @@
         "loading-alt": "{{pdf-reader.loading-message}}"
     },
     "events-widget": {
-        "close": "{{common.close}}",
         "title-alt": "Активність",
-        "dismiss-all": "Відхилити все",
-        "update-available": "Доступне оновлення",
-        "downloading-item": "Завантаження {{item}}",
-        "more-info": "Натисніть, щоб отримати більше інформації",
-        "users-online-count": "{{num}} Користувачі онлайн",
-        "active-events-title": "Активні події:",
-        "no-data": "Тут небагато чого відбувається",
-        "left-to-process": "Залишилося обробити: {{leftToProcess}} / {{totalToProcess}}",
-        "download-in-queue": "{{num}} завантажень у черзі",
         "reading-now": "{{num}} читає зараз"
     },
     "shortcuts-modal": {
@@ -1098,28 +1028,10 @@
         "toggle-menu": "Перемикання меню",
         "offset-double-page": "{{keybind-setting-description-pipe.key-bind-title-offset-double-page}}"
     },
-    "grouped-typeahead": {
-        "genres": "{{metadata-fields.genres-title}}",
-        "bookmarks": "{{side-nav.bookmarks}}",
-        "close": "{{common.close}}",
-        "loading": "{{common.loading}}",
-        "files": "Файли",
-        "chapters": "Розділи",
-        "people": "Люди",
-        "tags": "Теги",
-        "libraries": "{{common.libraries}}",
-        "reading-lists": "Списки для читання",
-        "collections": "Колекції",
-        "include-extras": "Включити розділи та файли",
-        "annotations": "{{tabs.annotations-tab}}"
-    },
     "nav-header": {
         "help": "{{common.help}}",
         "close": "{{common.close}}",
         "skip-alt": "Перейти до основного вмісту",
-        "search-series-alt": "Пошук серій",
-        "search-alt": "Пошук…",
-        "no-data": "Результатів не знайдено",
         "scroll-to-top-alt": "Прокрутити вгору",
         "server-settings": "Налаштування Сервера",
         "settings": "Налаштування",
@@ -1127,7 +1039,6 @@
         "logout": "Вийти",
         "all-filters": "Розумні фільтри",
         "nav-link-header": "Параметри Навігації",
-        "person-aka-status": "Збігається з псевдонімом",
         "browse-genres": "Переглянути жанри",
         "browse-tags": "Переглянути теги",
         "all-annotations": "Переглянути анотації",
@@ -1149,7 +1060,6 @@
     "edit-reading-list-modal": {
         "close": "{{common.close}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "title": "Редагувати список для читання: {{name}}",
         "year-validation": "Має бути більше ніж 1000, 0 або порожнім",
         "month-validation": "Має бути від 1 до 12 або порожнім",
@@ -1294,7 +1204,6 @@
         "location-label": "{{metadata-fields.locations-title}}",
         "language-label": "{{metadata-fields.language-title}}",
         "age-rating-label": "{{metadata-fields.age-rating-title}}",
-        "required-field": "{{validation.required-field}}",
         "close": "{{common.close}}",
         "release-year-label": "{{sort-field-pipe.release-year}}",
         "web-link-label": "{{tabs.weblink-tab}}",
@@ -1313,7 +1222,6 @@
         "summary-label": "Короткий зміст",
         "web-link-description": "Тут ви можете додати багато різних посилань на зовнішні сервіси.",
         "cover-image-description": "Завантажте та виберіть нове зображення обкладинки. Натисніть «Зберегти», щоб завантажити та змінити обкладинку.",
-        "field-locked-alt": "Поле заблоковано",
         "info-title": "Інформації",
         "library-title": "Бібліотека",
         "format-title": "Формат",
@@ -1363,7 +1271,6 @@
         "age-rating-label": "{{edit-series-modal.age-rating-label}}",
         "web-link-description": "{{edit-series-modal.web-link-description}}",
         "web-link-label": "{{edit-series-modal.web-link-label}}",
-        "field-locked-alt": "{{edit-series-modal.field-locked-alt}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "size-label": "{{edit-series-modal.size-title}}",
         "links-label": "{{metadata-fields.links-title}}",
@@ -1509,7 +1416,6 @@
         "save": "{{common.save}}",
         "edit-smart-filter": "Редагувати {{name}}",
         "name-label": "Ім'я",
-        "required-field": "Розумним фільтрам потрібна назва",
         "filter-name-unique": "Назви смарт-фільтрів мають бути унікальними"
     },
     "edit-external-source-item": {
@@ -1517,13 +1423,11 @@
         "edit": "{{common.edit}}",
         "cancel": "{{common.cancel}}",
         "delete": "{{common.delete}}",
-        "required": "{{validation.required-field}}",
         "not-unique": "Зовнішнє джерело існує на цьому хості. Переконайтеся, що у вас немає дублікатів",
         "title": "Нове зовнішнє джерело",
         "host-label": "Хост",
         "name-label": "Ім'я",
-        "api-key-label": "Ключ API",
-        "pattern": "Хост має бути дійсною URL-адресою http(s)://"
+        "api-key-label": "Ключ API"
     },
     "stream-pipe": {
         "on-deck": "{{dashboard.on-deck-title}}",
@@ -1692,7 +1596,6 @@
         "provider-tooltip": "Налаштування постачальника вимагають ручного натискання кнопки «Зберегти». Kavita має бути налаштована як конфіденційний клієнт і потребує URL-адреси перенаправлення. Докладніше див. у <a href='https://wiki.kavitareader.com/guides/admin-settings/open-id-connect/' target='_blank' rel='noreferrer noopener'>вікі</a>.",
         "behavior-title": "Поведінка",
         "other-field-required": "{{validation.other-field-required}}",
-        "invalid-uri": "{{validation.invalid-uri}}",
         "manual-save-label": "Зміна налаштувань постачальника вимагає ручного збереження",
         "authority-label": "Авторитет",
         "authority-tooltip": "URL-адреса вашого постачальника OIDC, не включайте шлях .well-known/openid-configuration",
@@ -1750,8 +1653,7 @@
         "close": "{{common.close}}",
         "save": "{{common.save}}",
         "delete": "{{common.delete}}",
-        "min-length": "Відгук має містити щонайменше {{count}} символів",
-        "required": "{{validation.required-field}}"
+        "min-length": "Відгук має містити щонайменше {{count}} символів"
     },
     "api-key": {
         "copy": "{{book-line-overlay.copy}}"
@@ -2280,9 +2182,7 @@
     },
     "infinite-scroller": {
         "continuous-reading-prev-chapter-alt": "Прокрутіть угору, щоб перейти до попереднього розділу",
-        "continuous-reading-prev-chapter": "Попередній розділ",
-        "continuous-reading-next-chapter-alt": "Прокрутіть угору, щоб перейти до наступного розділу",
-        "continuous-reading-next-chapter": "Наступний розділ"
+        "continuous-reading-prev-chapter": "Попередній розділ"
     },
     "sort-field-pipe": {
         "sort-name": "Сортувати за назвою",
@@ -2315,7 +2215,6 @@
         "asin-label": "ASIN",
         "asin-tooltip": "https://www.amazon.com/stores/J.K.-Rowling/author/{ASIN}",
         "description-label": "Опис",
-        "required-field": "{{validation.required-field}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "cover-image-description-extra": "Або ж ви можете завантажити обкладинку з CoversDB, якщо така є.",
         "save": "{{common.save}}",
@@ -2324,8 +2223,7 @@
         "alias-overlap": "Цей псевдонім вже вказує на іншу особу або є іменем цієї особи, розгляньте можливість їх об'єднання.",
         "aliases-tooltip": "Коли серію позначено псевдонімом особи, ця особа призначається, а не створюється нова особа. Під час видалення псевдоніма вам доведеться повторно просканувати серію, щоб зміни відобразилися.",
         "mal-tooltip-character": "https://myanimelist.net/character/{MalId}/",
-        "anilist-tooltip-character": "https://anilist.co/character/{AniListId}/",
-        "invalid-amazon-code": "ASIN має починатися з B0 або BT"
+        "anilist-tooltip-character": "https://anilist.co/character/{AniListId}/"
     },
     "merge-person-modal": {
         "title": "{{personName}}",
@@ -2912,7 +2810,6 @@
         "name-label": "Ім'я",
         "key-length-label": "Довжина ключа",
         "expiration-label": "Термін дії",
-        "required-field": "{{validations.required-field}}",
         "total-key-length": "Загальна довжина ключа: {{length}}",
         "cancel": "{{common.cancel}}",
         "close": "{{common.close}}",

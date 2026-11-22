@@ -34,18 +34,18 @@ export class VersionUpdateModalComponent {
     return this.isDocker() ? WikiLink.UpdateDocker : WikiLink.UpdateNative;
   });
   private readonly localePrefix: Record<string, string> = {
-    'refresh': 'new-version',
-    'update-available': 'update-notification',
-    'out-of-date': 'out-of-date',
+    'refresh': 'version-update-modal.new-version',
+    'update-available': 'version-update-modal.update-notification',
+    'out-of-date': 'version-update-modal.out-of-date',
   };
   title = computed(() => {
     const update = this.update();
     const mode = this.mode();
     if (mode === 'update-available' && update?.updateTitle != '') {
-        return update?.updateTitle ?? `${this.localePrefix[this.mode()]}.title`;
+        return update?.updateTitle ?? this.translocoService.translate(`${this.localePrefix[this.mode()]}.title`);
     }
 
-    return `${this.localePrefix[this.mode()]}.title`;
+    return this.translocoService.translate(`${this.localePrefix[this.mode()]}.title`);
 
   });
 
@@ -54,27 +54,10 @@ export class VersionUpdateModalComponent {
   }
 
   refresh() {
-    this.bustLocaleCache();
-    // Refresh manually
     location.reload();
 
     // Dismiss anyway in case reload doesn't work
     this.modal.dismiss();
-  }
-
-
-  private bustLocaleCache() {
-    localStorage.removeItem('@transloco/translations/timestamp');
-    localStorage.removeItem('@transloco/translations');
-    localStorage.removeItem('translocoLang');
-    const locale = localStorage.getItem('kavita-locale') || 'en';
-    (this.translocoService as any).cache.delete(locale);
-    (this.translocoService as any).cache.clear();
-
-    // Retrigger transloco
-    setTimeout(() => {
-      this.translocoService.setActiveLang(locale);
-    }, 10);
   }
 
 }

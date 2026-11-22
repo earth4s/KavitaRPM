@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Flurl.Http;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
+using Kavita.API.Services;
 using Kavita.API.Services.Plus;
 using Kavita.API.Services.SignalR;
 using Kavita.Common;
@@ -21,6 +22,7 @@ using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
 using Kavita.Models.Entities.User;
 using Kavita.Models.Extensions;
+using Kavita.Models.Images;
 using Microsoft.Extensions.Logging;
 
 namespace Kavita.Services.Plus;
@@ -56,7 +58,8 @@ public class SmartCollectionSyncService(
     ILogger<SmartCollectionSyncService> logger,
     IEventHub eventHub,
     ILicenseService licenseService,
-    IKavitaPlusAuditService auditService)
+    IKavitaPlusAuditService auditService,
+    ICompositeCoverService compositeCoverService)
     : ISmartCollectionSyncService
 {
     private const int SyncDelta = -2;
@@ -187,6 +190,7 @@ public class SmartCollectionSyncService(
             await unitOfWork.CommitAsync(ct);
 
             await unitOfWork.CollectionTagRepository.UpdateCollectionAgeRating(collection, ct);
+            await compositeCoverService.CreateIfMissingAsync(ImageKind.CollectionCover, collection.Id, ct);
 
             await eventHub.SendMessageAsync(MessageFactory.NotificationProgress,
                 MessageFactory.SmartCollectionProgressEvent(info.Title, string.Empty, info.TotalItems, info.TotalItems, ProgressEventType.Ended), ct: ct);
@@ -235,24 +239,28 @@ public class SmartCollectionSyncService(
             counter++;
             try
             {
-                var match = await MatchSeries(collection, seriesInfo, ct);
+                var matches = await MatchSeries(collection, seriesInfo, ct);
 
-                logger.LogDebug("Trying to find {SeriesName} ({Format}) within Kavita for linking. Found: {ExistingSeriesName} ({ExistingSeriesId})",
-                    seriesInfo.SeriesName, seriesInfo.PlusMediaFormat, match?.Name, match?.Id);
-
-                if (match == null)
+                if (matches.Count == 0)
                 {
                     logger.LogDebug("{Series} not found in the server", seriesInfo.SeriesName);
                     result.MissingCount++;
                     AppendMissingSeries(missingSeries, seriesInfo);
                 }
-                else if (IsAlreadyInCollection(collection, match))
+
+                foreach (var match in matches)
                 {
-                    logger.LogDebug("{SeriesName} already present in collection {CollectionName}", match.Name, collection.Title);
-                }
-                else
-                {
+                    logger.LogDebug("Trying to find {SeriesName} ({Format}) within Kavita for linking. Found: {ExistingSeriesName} ({ExistingSeriesId})",
+                        seriesInfo.SeriesName, seriesInfo.PlusMediaFormat, match.Name, match.Id);
+
+                    if (IsAlreadyInCollection(collection, match))
+                    {
+                        logger.LogDebug("{SeriesName} already present in collection {CollectionName}", match.Name, collection.Title);
+                        continue;
+                    }
+
                     collection.Items.Add(match);
+
                     await auditService.LogCollectionAsync(KavitaPlusEventType.CollectionItemAdded, collection.Id,
                         new AuditLogCollectionItemParamsDto { CollectionName = collection.Title, SeriesName = match.Name, SeriesId = match.Id, Url = collection.SourceUrl },
                         userId: collection.AppUserId, ct: ct);
@@ -277,7 +285,7 @@ public class SmartCollectionSyncService(
     /// Resolve the Kavita series that corresponds to an upstream stack entry. The <paramref name="seriesInfo"/> already
     /// carries the external ids, so id-priority matching is used first with a normalized name fallback.
     /// </summary>
-    private async Task<Series?> MatchSeries(AppUserCollection collection, ExternalMetadataIdsDto seriesInfo, CancellationToken ct)
+    private async Task<List<Series>> MatchSeries(AppUserCollection collection, ExternalMetadataIdsDto seriesInfo, CancellationToken ct)
     {
         var formats = seriesInfo.PlusMediaFormat.GetMangaFormats();
         var names = new[] { seriesInfo.SeriesName, seriesInfo.LocalizedSeriesName }

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
+using Kavita.Models.Attributes;
+using Kavita.Models.DTOs.Settings;
 
 namespace Kavita.Models.Entities.Enums;
 
@@ -92,11 +94,13 @@ public enum ServerSettingKey
     /// The Host name (ie Reverse proxy domain name) for the server. Used for email link generation
     /// </summary>
     [Description("HostName")]
+    [ExportScrub(ExportScrubKind.Host)]
     HostName = 20,
     /// <summary>
     /// Ip addresses the server listens on. Not managed in DB. Managed in appsettings.json and synced to DB.
     /// </summary>
     [Description("IpAddresses")]
+    [ExportScrub(ExportScrubKind.IpAddress)]
     IpAddresses = 21,
     /// <summary>
     /// Encode all media as PNG/WebP/AVIF/etc.
@@ -108,6 +112,7 @@ public enum ServerSettingKey
     /// A Kavita+ Subscription license key
     /// </summary>
     [Description("LicenseKey")]
+    [ExportScrub(ExportScrubKind.Random)]
     LicenseKey = 23,
     /// <summary>
     /// The size in MB for Caching API data
@@ -117,11 +122,13 @@ public enum ServerSettingKey
     /// <summary>
     /// How many Days since today in the past for reading progress, should content be considered for On Deck, before it gets removed automatically
     /// </summary>
+    [Obsolete("User preference")]
     [Description("OnDeckProgressDays")]
     OnDeckProgressDays = 25,
     /// <summary>
     /// How many Days since today in the past for chapter updates, should content be considered for On Deck, before it gets removed automatically
     /// </summary>
+    [Obsolete("User Preference")]
     [Description("OnDeckUpdateDays")]
     OnDeckUpdateDays = 26,
     /// <summary>
@@ -134,6 +141,7 @@ public enum ServerSettingKey
     /// The address of the emailer host
     /// </summary>
     [Description("EmailSenderAddress")]
+    [ExportScrub(ExportScrubKind.Email)]
     EmailSenderAddress = 28,
     /// <summary>
     /// What the email name should be
@@ -141,10 +149,13 @@ public enum ServerSettingKey
     [Description("EmailSenderDisplayName")]
     EmailSenderDisplayName = 29,
     [Description("EmailAuthUserName")]
+    [ExportScrub(ExportScrubKind.Random)]
     EmailAuthUserName = 30,
     [Description("EmailAuthPassword")]
+    [ExportScrub(ExportScrubKind.Random)]
     EmailAuthPassword = 31,
     [Description("EmailHost")]
+    [ExportScrub(ExportScrubKind.Host)]
     EmailHost = 32,
     [Description("EmailPort")]
     EmailPort = 33,
@@ -180,6 +191,7 @@ public enum ServerSettingKey
     /// A Json object of type <see cref="Kavita.Models.DTOs.Settings.OidcConfigDto"/>
     /// </summary>
     [Description("OidcConfiguration")]
+    [ExportScrub(ExportScrubKind.Json, typeof(OidcConfigDto))]
     OidcConfiguration = 40,
     /// <summary>
     /// The resolution to render PDFs as when delivering them as images.
@@ -196,5 +208,27 @@ public enum ServerSettingKey
     /// When the CBL Sync task should run
     /// </summary>
     [Description("TaskCblSync")]
-    TaskCblSync = 43
+    TaskCblSync = 43,
+    /// <summary>
+    /// Is kepub conversion enabled. Turned off by the server when the shipped kepubify fails its hash check
+    /// </summary>
+    [Description("EnableKepubify")]
+    EnableKepubify = 44,
+    /// <summary>
+    /// Is KoboSync enabled on this server
+    /// </summary>
+    [Description("EnableKobo")]
+    EnableKobo = 45,
+    /// <summary>
+    /// When the reading list and collection covers built from their items are refreshed
+    /// </summary>
+    [Description("TaskCompositeCovers")]
+    TaskCompositeCovers = 46,
+    /// <summary>The protected direct Comic Vine API key, managed by the Metadata Providers settings.</summary>
+    [Description("ComicVineApiKey")]
+    [ExportScrub(ExportScrubKind.Random)]
+    ComicVineApiKey = 1000,
+    [Description("GcdCredentials")]
+    [ExportScrub(ExportScrubKind.Random)]
+    GcdCredentials = 1001,
 }

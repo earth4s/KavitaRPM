@@ -6,6 +6,15 @@ namespace Kavita.Common.EnvironmentInfo;
 public static class BuildInfo
 {
     public static readonly Version Version = Assembly.GetExecutingAssembly().GetName().Version;
+    // Keep Version numeric for database migrations and upstream update comparisons.
+    public static string DisplayVersion { get; } =
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion.Split('+')[0] ?? Version.ToString(4);
     public static string AppName { get; } = "Kavita";
+    /// <summary>
+    /// New on every process start. Lets clients tell that the server restarted
+    /// </summary>
+    public static readonly Guid BootId = Guid.NewGuid();
+    public static readonly DateTime StartedUtc = DateTime.UtcNow;
 
 }

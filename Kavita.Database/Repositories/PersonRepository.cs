@@ -21,6 +21,7 @@ using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Person;
 using Kavita.Models.Extensions;
+using Kavita.Models.DTOs.Theme;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kavita.Database.Repositories;
@@ -53,18 +54,11 @@ public class PersonRepository(DataContext context, IMapper mapper) : IPersonRepo
         context.Person.Update(person);
     }
 
-    public async Task RemoveAllPeopleNoLongerAssociated(CancellationToken ct = default)
+    public async Task<int> RemoveAllPeopleNoLongerAssociated(CancellationToken ct = default)
     {
-        var peopleWithNoConnections = await context.Person
-            .Include(p => p.SeriesMetadataPeople)
-            .Include(p => p.ChapterPeople)
+        return await context.Person
             .Where(p => p.SeriesMetadataPeople.Count == 0 && p.ChapterPeople.Count == 0)
-            .AsSplitQuery()
-            .ToListAsync(ct);
-
-        context.Person.RemoveRange(peopleWithNoConnections);
-
-        await context.SaveChangesAsync(ct);
+            .ExecuteDeleteAsync(ct);
     }
 
 
@@ -92,13 +86,6 @@ public class PersonRepository(DataContext context, IMapper mapper) : IPersonRepo
             .ToListAsync(ct);
     }
 
-
-    public async Task<IList<string?>> GetAllCoverImagesAsync(CancellationToken ct = default)
-    {
-        return await context.Person
-            .Select(p => p.CoverImage)
-            .ToListAsync(ct);
-    }
 
     public async Task<IEnumerable<PersonRole>> GetRolesForPersonByName(int personId, int userId,
         CancellationToken ct = default)
@@ -169,7 +156,7 @@ public class PersonRepository(DataContext context, IMapper mapper) : IPersonRepo
             Id = p.Id,
             Name = p.Name,
             Description = p.Description,
-            CoverImage = p.CoverImage,
+            HasCoverImage = p.CoverImageFileId != null,
             SeriesCount = p.SeriesMetadataPeople
                 .Select(smp => smp.SeriesMetadata)
                 .Where(sm => allLibrariesCount == userLibs.Count || seriesIds.Contains(sm.SeriesId))
@@ -368,5 +355,13 @@ public class PersonRepository(DataContext context, IMapper mapper) : IPersonRepo
             .OrderBy(p => p.Name)
             .ProjectTo<PersonDto>(mapper.ConfigurationProvider)
             .ToListAsync(ct);
+    }
+
+    public async Task<ColorScapeDto?> GetColorScapeAsync(int personId, CancellationToken ct = default)
+    {
+        return await context.Person
+            .Where(p => p.Id == personId && p.CoverImageFile != null)
+            .Select(p => new ColorScapeDto(p.CoverImageFile!.PrimaryColor, p.CoverImageFile.SecondaryColor))
+            .FirstOrDefaultAsync(ct);
     }
 }

@@ -3,14 +3,13 @@ import {UserScrobbleProvider} from "../../../_models/kavitaplus/scrobble-provide
 import {ScrobbleProvider, ScrobblingService} from "../../../_services/scrobbling.service";
 import {NgbActiveModal, NgbTooltip} from "@ng-bootstrap/ng-bootstrap";
 import {translate, TranslocoDirective} from "@jsverse/transloco";
-import {FormControl, FormGroup, NonNullableFormBuilder, ReactiveFormsModule} from "@angular/forms";
 import {SettingItemComponent} from "../../../settings/_components/setting-item/setting-item.component";
 import {DefaultValuePipe} from "../../../_pipes/default-value.pipe";
 import {ScrobbleProviderNamePipe} from "../../../_pipes/scrobble-provider-name.pipe";
 import {TruncatePipe} from "../../../_pipes/truncate.pipe";
 import {UtcToLocalTimePipe} from "../../../_pipes/utc-to-local-time.pipe";
 import {UtcToLocalDatePipe} from "../../../_pipes/utc-to-locale-date.pipe";
-import {ToastrService} from "ngx-toastr";
+import {ToastrService} from '@openng/ngx-toastr';
 import {
   ScrobbleProviderImageComponent
 } from "../../../shared/_components/scrobble-provider-image/scrobble-provider-image.component";
@@ -20,15 +19,13 @@ import {NULL_DATE} from "../../../_pipes/date-year-range.pipe";
 import {AccountService} from "../../../_services/account.service";
 import {SafeUrlPipe} from "../../../_pipes/safe-url.pipe";
 import {APP_BASE_HREF} from "@angular/common";
-import {ActivatedRoute} from "@angular/router";
-import {filter} from "rxjs";
-import {map, tap} from "rxjs/operators";
+import {UpdateScrobbleProvider} from "../../../_models/kavitaplus/scrobble-providers/update-scrobble-provider";
+import {form, FormField} from "@angular/forms/signals";
 
 @Component({
   selector: 'app-manage-user-scrobble-provider-modal-modal',
   imports: [
     TranslocoDirective,
-    ReactiveFormsModule,
     SettingItemComponent,
     DefaultValuePipe,
     ScrobbleProviderNamePipe,
@@ -38,7 +35,8 @@ import {map, tap} from "rxjs/operators";
     ScrobbleProviderImageComponent,
     NgbTooltip,
     TimeDifferencePipe,
-    SafeUrlPipe
+    SafeUrlPipe,
+    FormField
   ],
   templateUrl: './manage-user-scrobble-provider-modal.component.html',
   styleUrl: './manage-user-scrobble-provider-modal.component.scss',
@@ -48,7 +46,6 @@ export class ManageUserScrobbleProviderModalComponent implements OnInit {
 
   private readonly scrobblingService = inject(ScrobblingService);
   private readonly modal = inject(NgbActiveModal);
-  private readonly fb = inject(NonNullableFormBuilder);
   private readonly toastr = inject(ToastrService);
   private readonly confirmService = inject(ConfirmService);
   private readonly accountService = inject(AccountService);
@@ -72,17 +69,20 @@ export class ManageUserScrobbleProviderModalComponent implements OnInit {
     return this.baseUrl + `api/oauth/start?upstream=${this.userScrobbleProvider().oAuthUpStream}&apiKey=${apiKey}`;
   });
 
-  formGroup!: FormGroup<{
-    userName: FormControl<string>,
-    authenticationToken: FormControl<string>,
-    refreshToken: FormControl<string>,
-  }>;
+  formModel = signal<UpdateScrobbleProvider>({
+    provider: ScrobbleProvider.Kavita,
+    userName: '',
+    authenticationToken: '',
+    refreshToken: '',
+  });
+  formGroup = form(this.formModel);
 
   ngOnInit() {
-    this.formGroup = this.fb.group({
-      userName: this.fb.control(this.userScrobbleProvider().userName),
-      authenticationToken: this.fb.control(this.userScrobbleProvider().authenticationToken),
-      refreshToken: this.fb.control(this.userScrobbleProvider().refreshToken ?? ''),
+    this.formModel.set({
+      provider: this.userScrobbleProvider().provider,
+      userName: this.userScrobbleProvider().userName,
+      authenticationToken: this.userScrobbleProvider().authenticationToken,
+      refreshToken: this.userScrobbleProvider().refreshToken ?? '',
     });
   }
 
@@ -103,10 +103,7 @@ export class ManageUserScrobbleProviderModalComponent implements OnInit {
   }
 
   save() {
-    this.scrobblingService.saveUserScrobbleProvider({
-      provider: this.userScrobbleProvider().provider,
-      ...this.formGroup.getRawValue(),
-    }).subscribe(() => this.close());
+    this.scrobblingService.saveUserScrobbleProvider(this.formModel()).subscribe(() => this.close());
   }
 
   protected readonly ScrobbleProvider = ScrobbleProvider;

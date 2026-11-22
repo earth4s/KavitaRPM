@@ -6,7 +6,7 @@ using Kavita.Models.Entities.MetadataMatching;
 
 namespace Kavita.Models.Entities;
 
-public class Volume : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMetadataIds, IHasKPlusMetadata
+public class Volume : IEntityDate, IHasReadTimeEstimate, IHasMetadataIds, IHasKPlusMetadata, IHasLockableCoverImageFile
 {
     public int Id { get; set; }
     /// <summary>
@@ -37,9 +37,14 @@ public class Volume : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     public DateTime CreatedUtc { get; set; }
     public DateTime LastModifiedUtc { get; set; }
 
+    [Obsolete("Use CoverImageFile")]
     public string? CoverImage { get; set; }
+    public int? CoverImageFileId { get; set; }
+    public ImageFile? CoverImageFile { get; set; }
     public bool CoverImageLocked { get; set; }
+    [Obsolete("Use CoverImageFile")]
     public string PrimaryColor { get; set; }
+    [Obsolete("Use CoverImageFile")]
     public string SecondaryColor { get; set; }
 
     /// <summary>
@@ -61,7 +66,7 @@ public class Volume : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     public int HardcoverId { get; set; }
     public long MetronId { get; set; }
     public string ComicVineId { get; set; }
-    public long MangaBakaId { get; set; }
+    public int MangaBakaId { get; set; }
     public int CbrId { get; set; }
 
     #endregion
@@ -90,11 +95,4 @@ public class Volume : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
 
         return $"{MinNumber.ToString(CultureInfo.InvariantCulture)}-{MaxNumber.ToString(CultureInfo.InvariantCulture)}";
     }
-
-    public void ResetColorScape()
-    {
-        PrimaryColor = string.Empty;
-        SecondaryColor = string.Empty;
-    }
-
 }

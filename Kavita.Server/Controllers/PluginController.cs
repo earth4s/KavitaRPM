@@ -7,6 +7,7 @@ using Kavita.API.Attributes;
 using Kavita.API.Database;
 using Kavita.API.Services;
 using Kavita.Common;
+using Kavita.Models.Constants;
 using Kavita.Models.DTOs;
 using Kavita.Models.DTOs.Account;
 using Kavita.Models.DTOs.Misc;
@@ -19,7 +20,8 @@ using Microsoft.Extensions.Logging;
 namespace Kavita.Server.Controllers;
 
 [SkipDeviceTracking]
-public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService, ILogger<PluginController> logger)
+public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService, ILogger<PluginController> logger,
+    ILocalizationService localizationService)
     : BaseApiController
 {
     /// <summary>
@@ -36,30 +38,37 @@ public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService
     {
         // NOTE: In order to log information about plugins, we need some Plugin Description information for each request
         // Should log into the access table so we can tell the user
+        var ct = HttpContext.RequestAborted;
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = HttpContext.Request.Headers.UserAgent;
 
-        var userId = await unitOfWork.UserRepository.GetUserIdByAuthKeyAsync(apiKey);
+        var userId = await unitOfWork.UserRepository.GetUserIdByAuthKeyAsync(apiKey, ct);
         if (userId <= 0)
         {
             logger.LogInformation("A Plugin ({PluginName}) tried to authenticate with an apiKey that doesn't match. Information {@Information}", pluginName.Replace(Environment.NewLine, string.Empty), new
             {
                 IpAddress = ipAddress,
-                UserAgent = userAgent,
-                ApiKey = apiKey
+                UserAgent = userAgent
             });
             throw new KavitaUnauthenticatedUserException();
         }
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(userId);
+
+        var roles = await unitOfWork.UserRepository.GetRoles(userId, ct);
+        if (!roles.Contains(PolicyConstants.LoginRole) && !roles.Contains(PolicyConstants.AdminRole))
+        {
+            return Unauthorized(await localizationService.TranslateAsync(userId, "disabled-account"));
+        }
+
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(userId, ct: ct);
         logger.LogInformation("Plugin {PluginName} has authenticated with {UserName} ({AppUserId})'s API Key", pluginName.Replace(Environment.NewLine, string.Empty), user!.UserName, userId);
 
         return new UserDto
         {
             Username = user.UserName!,
-            Token = await tokenService.CreateToken(user),
-            RefreshToken = await tokenService.CreateRefreshToken(user),
+            Token = await tokenService.CreateToken(user, ct),
+            RefreshToken = await tokenService.CreateRefreshToken(user, ct),
             ApiKey = apiKey,
-            KavitaVersion = (await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.InstallVersion)).Value
+            KavitaVersion = (await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.InstallVersion, ct)).Value
         };
     }
 
@@ -73,9 +82,10 @@ public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService
     [HttpGet("version")]
     public async Task<ActionResult<string>> GetVersion([Required] string apiKey)
     {
-        var userId = await unitOfWork.UserRepository.GetUserIdByAuthKeyAsync(apiKey);
+        var ct = HttpContext.RequestAborted;
+        var userId = await unitOfWork.UserRepository.GetUserIdByAuthKeyAsync(apiKey, ct);
         if (userId <= 0) throw new KavitaUnauthenticatedUserException();
-        return Ok((await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.InstallVersion)).Value);
+        return Ok((await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.InstallVersion, ct)).Value);
     }
 
     /// <summary>
@@ -86,11 +96,12 @@ public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService
     [HttpGet("authkey-expires")]
     public async Task<ActionResult<AuthKeyExpiresAtDto>> GetAuthKeyExpiration()
     {
+        var ct = HttpContext.RequestAborted;
         var authKey = AuthKey;
         if (string.IsNullOrEmpty(authKey))
             return BadRequest();
 
-        var exp = await unitOfWork.UserRepository.GetAuthKeyExpiration(authKey, UserId);
+        var exp = await unitOfWork.UserRepository.GetAuthKeyExpiration(authKey, UserId, ct);
 
         return Ok(new AuthKeyExpiresAtDto { ExpiresAt = exp?.ToUniversalTime() });
     }
@@ -155,21 +166,21 @@ public class PluginController(IUnitOfWork unitOfWork, ITokenService tokenService
 
             if (name.Length > 1000)
             {
-                errorParses.Add(name, "Length > 1000 characters");
+                errorParses.TryAdd(name, "Length > 1000 characters");
                 continue;
             }
 
             try
             {
-                successfulParses.Add(name, ParseText(name, dto.LibraryType));
+                successfulParses.TryAdd(name, ParseText(name, dto.LibraryType));
             }
             catch (RegexMatchTimeoutException)
             {
-                errorParses.Add(name, "Input could not be parsed in allowed time");
+                errorParses.TryAdd(name, "Input could not be parsed in allowed time");
             }
             catch (Exception)
             {
-                errorParses.Add(name, "Failed to parse input");
+                errorParses.TryAdd(name, "Failed to parse input");
             }
         }
 

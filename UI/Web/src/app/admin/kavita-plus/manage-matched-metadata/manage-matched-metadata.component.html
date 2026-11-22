@@ -1,27 +1,75 @@
 <ng-container *transloco="let t; prefix:'manage-matched-metadata'">
-  <p>{{t('description')}}</p>
+  <p>{{isDirect() ? t(formGroup.source().value() + '-description') : t('description')}}</p>
+  <div class="mb-3">
+    <label for="matching-source">{{t('source-label')}}</label>
+    <select class="form-select" id="matching-source" [formField]="formGroup.source">
+      @for (source of sources(); track source) {
+        <option [value]="source">{{t(source + '-source')}}</option>
+      }
+    </select>
+  </div>
 
-  <form [formGroup]="filterGroup">
-    <div class="row g-0">
-      <div class="col-auto ms-auto me-3">
-        <label for="libtype-filter">{{t('library-type')}}</label>
-        <select class="form-select" formControlName="libraryType" id="libtype-filter">
-          <option [value]="-1">{{t('all-status-label')}}</option>
-          @for(libType of metadataEnabledLibraryTypes(); track libType) {
-            <option [value]="libType">{{libType | libraryType}}</option>
-          }
-        </select>
+  <div class="stats-strip d-flex justify-content-between mb-4 gap-3">
+
+    <div class="stats-card card p-3 flex-fill">
+      <div class="stat-header">
+        <i class="fa-solid fa-percent" aria-hidden="true"></i>
+        <span>{{t('total-matched-label')}}</span>
       </div>
-      <div class="col-auto">
-        <label for="match-filter">{{t('matched-state-label')}}</label>
-        <select class="form-select" formControlName="matchState" id="match-filter">
-          @for(state of allMatchStates; track state) {
-            <option [value]="state">{{state | matchStateOption}}</option>
-          }
-        </select>
-      </div>
+      <div class="stat-value">{{ percentageMatched() | percent | defaultValue}}</div>
+      <div class="stat-subtitle phone-hidden">{{t('total-count', {count: matchedCounts()?.totalCount | number})}}</div>
     </div>
-  </form>
+
+    <div class="stats-card card p-3 flex-fill">
+      <div class="stat-header">
+        <i class="fa-solid fa-question" aria-hidden="true"></i>
+        <span>{{MatchStateOption.NotMatched | matchStateOption}}</span>
+      </div>
+      <div class="stat-value">{{ matchedCounts()?.notMatchedCount | number | defaultValue}}</div>
+    </div>
+
+    <div class="stats-card card p-3 flex-fill">
+      <div class="stat-header">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        <span>{{MatchStateOption.DontMatch | matchStateOption}}</span>
+      </div>
+      <div class="stat-value">{{ matchedCounts()?.dontMatchCount | number | defaultValue}}</div>
+    </div>
+
+    <div class="stats-card card p-3 flex-fill">
+      <div class="stat-header text-danger">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span>{{MatchStateOption.Error | matchStateOption}}</span>
+      </div>
+      <div class="stat-value text-danger">{{ matchedCounts()?.erroredCount | number | defaultValue}}</div>
+    </div>
+
+  </div>
+
+
+
+  <div class="row g-2">
+    <div class="col-12 col-md-auto ms-md-auto">
+      <label for="libtype-filter">{{t('library-type')}}</label>
+      <app-setting-select [formField]="formGroup.libraryType" inputId="libtype-filter" [options]="metadataEnabledLibraryTypes()">
+        <ng-template #template let-libType>
+          @if (libType === -1) {
+            {{t('all-status-label')}}
+          } @else {
+            {{libType | libraryType}}
+          }
+        </ng-template>
+      </app-setting-select>
+    </div>
+    <div class="col-12 col-md-auto">
+      <label for="match-filter">{{t('matched-state-label')}}</label>
+      <app-setting-select [formField]="formGroup.matchState" inputId="match-filter" [options]="allMatchStates()">
+        <ng-template #template let-state>
+          {{state | matchStateOption}}
+        </ng-template>
+      </app-setting-select>
+    </div>
+  </div>
 
   <app-responsive-table [rows]="data()"
                         [trackByFn]="trackBy"
@@ -84,7 +132,7 @@
           </ng-template>
         </ngx-datatable-column>
 
-        @if (filterGroup.get('matchState')?.value === MatchStateOption.Matched) {
+        @if (isMatchedState() && !isDirect()) {
           <ngx-datatable-column prop="validUntilUtc" [sortable]="false" [draggable]="false" [resizeable]="false" [flexGrow]="1">
             <ng-template let-column="column" ngx-datatable-header-template>
               {{t('valid-until-header')}}
@@ -115,6 +163,7 @@
     </ng-template>
 
     <ng-template #cardTemplate let-item let-idx="index">
+      <app-loading [loading]="isLoading()" />
       <div class="card mb-3">
         <div class="card-body">
           <!-- Header with cover, series name and action button -->
@@ -160,7 +209,7 @@
               </div>
             </div>
 
-            @if (filterGroup.get('matchState')?.value === MatchStateOption.Matched) {
+            @if (isMatchedState() && !isDirect()) {
               <div class="col-6">
                 <div class="text-muted small">{{t('valid-until-header')}}</div>
                 <div>

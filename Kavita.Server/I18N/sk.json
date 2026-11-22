@@ -114,7 +114,6 @@
     "age-restriction-not-applicable": "Bez obmedzenia",
     "generic-relationship": "Pri aktualizácii vzťahov sa vyskytol problém",
     "job-already-running": "Úloha už beží",
-    "encode-as-warning": "Nedá sa konvertovať do formátu PNG. Pre obaly použite možnosť Obnoviť obaly. Záložky a favicony sa nedajú spätne zakódovať.",
     "ip-address-invalid": "IP adresa „{0}“ je neplatná",
     "bookmark-dir-permissions": "Adresár záložiek nemá správne povolenia pre použitie v aplikácii Kavita",
     "total-backups": "Celkový počet záloh musí byť medzi 1 a 30",
@@ -277,5 +276,15 @@
     "email.send-to-device.description": "V prílohe zasielame súbor(y), ktorý(é) ste nám poslali.",
     "email.username-change.subject": "Vaše používateľské meno bolo zmenené na serveri používateľa {{InvitingUser}}",
     "email.username-change.title": "Aktualizácia zmeny používateľského mena",
-    "email.username-change.description": "Používateľské meno vášho účtu bolo aktualizované v inštancii Kavita používateľa {{InvitingUser}}. Nevyžaduje sa od vás žiadna akcia."
+    "email.username-change.description": "Používateľské meno vášho účtu bolo aktualizované v inštancii Kavita používateľa {{InvitingUser}}. Nevyžaduje sa od vás žiadna akcia.",
+    "series-name-exists": "V tejto knižnici už existuje séria s týmto názvom",
+    "series-name-orphans-files": "Zmena tohto názvu by rozdelila súbory, ktoré sú v súčasnosti zlúčené do tejto série",
+    "series-localized-name-exists": "Iná séria v tejto knižnici už používa tento názov",
+    "series-localized-name-orphans-files": "Zmena tohto lokalizovaného názvu by rozdelila súbory, ktoré sú v súčasnosti zlúčené do tejto série",
+    "unable-to-cancel-k+": "Predplatné Kavita+ sa nepodarilo zrušiť z dôvodu chyby. Kontaktujte podporu služby Kavita+",
+    "unable-to-renew-k+": "Predplatné Kavita+ sa nepodarilo obnoviť z dôvodu chyby. Kontaktujte podporu Kavita+",
+    "scrobble-provider-not-setup": "Poskytovateľ scrobblovania {0} nie je nastavený",
+    "mappings-re-run-in-progress": "Požiadavka na opätovné spustenie mapovania metadát sa práve spracováva. Pred opätovným zaradením do frontu počkajte na jej dokončenie",
+    "mappings-re-run-no-libraries-selected": "Vaša požiadavka musí obsahovať aspoň 1 knižnicu",
+    "mappings-re-run-libraries-overlap": "ExcludedLibraries a IncludedLibraries nemôžu obsahovať rovnaké knižnice"
 }

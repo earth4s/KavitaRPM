@@ -14,12 +14,24 @@ namespace Kavita.Models.DTOs.KavitaPlus.Metadata;
 public sealed record ExternalSeriesDetailDto
 {
     public string Name { get; set; }
+    public ALMediaTitle Titles { get; set; } = new();
+    /// <summary>
+    /// Every known title, grouped by normalized BCP-47 language tag ("en", "ja", "ja-Latn", "pt-BR", "zh-HK").
+    /// Each list is ordered best-first, so a client honoring a language preference can take [0] and stop.
+    /// Empty for providers that do not expose per-language titles.
+    /// </summary>
+    /// <remarks>v3 only.</remarks>
+    public Dictionary<string, IList<LocalizedTitleDto>> LocalizedTitles { get; set; } = [];
     public int? AniListId { get; set; }
     public long? MALId { get; set; }
     /// <summary>
     /// ComicBookRoundup Id for direct matching
     /// </summary>
     public int? CbrId { get; set; }
+    public int? ComicVineId { get; set; }
+    public string? CatalogLanguage { get; set; }
+    public string? CatalogCountry { get; set; }
+    public int? GcdId { get; set; }
     public int? HardcoverId { get; set; }
     public bool IsStandAlone { get; set; }
     public int? MangabakaId { get; set; }
@@ -40,6 +52,10 @@ public sealed record ExternalSeriesDetailDto
     /// <remarks>Unknown when the provider did not supply a mappable content rating.</remarks>
     [EnumDataType(typeof(AgeRating))]
     public AgeRating AgeRating { get; set; } = AgeRating.Unknown;
+    /// <summary>
+    /// Raw content rating string for manual mapping via <see cref="MetadataSettingsDto.ExternalAgeRatingMappings"/>
+    /// </summary>
+    public string? AgeRatingRaw { get; set; }
     [EnumDataType(typeof(ScrobbleProvider))]
     public ScrobbleProvider Provider { get; set; } = ScrobbleProvider.AniList;
 

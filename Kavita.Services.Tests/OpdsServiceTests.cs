@@ -1,4 +1,5 @@
 ﻿using System.IO.Abstractions;
+using System.Xml;
 using AutoMapper;
 using Hangfire;
 using Hangfire.InMemory;
@@ -39,6 +40,9 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
 {
     private readonly string _testFilePath = Path.Join(Path.Join(Directory.GetCurrentDirectory(), "../../../Test Data/OpdsService"), "test.zip");
 
+    private const string ValidEmoji = "\U0001F600";
+    private const string NulChar = "\u0000";
+
     #region Setup
 
     private static Tuple<IOpdsService, IReaderService> SetupService(IUnitOfWork unitOfWork, IMapper mapper)
@@ -48,7 +52,7 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
         var ds = new DirectoryService(Substitute.For<ILogger<DirectoryService>>(), new FileSystem());
 
         var readerService = new ReaderService(unitOfWork, Substitute.For<ILogger<ReaderService>>(),
-            Substitute.For<IEventHub>(), Substitute.For<IImageService>(), ds,
+            Substitute.For<IEventHub>(), Substitute.For<IImagePipeline>(), ds,
             Substitute.For<IScrobblingService>(), Substitute.For<IReadingSessionService>(),
             Substitute.For<IClientInfoAccessor>(), Substitute.For<IEntityNamingService>(),
             Substitute.For<ILocalizationService>(), Substitute.For<IBookService>());
@@ -59,15 +63,15 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
         var namingService = new EntityNamingService();
 
         var readingListService = new ReadingListService(unitOfWork, Substitute.For<ILogger<ReadingListService>>(),
-            Substitute.For<IEventHub>(), Substitute.For<IImageService>(), Substitute.For<IDirectoryService>(),
-            namingService);
+            namingService, Substitute.For<IImageFileService>(),
+            Substitute.For<ICompositeCoverService>());
 
         var seriesService = new SeriesService(unitOfWork, Substitute.For<IEventHub>(), Substitute.For<ITaskScheduler>(),
             Substitute.For<ILogger<SeriesService>>(),
             localizationService, Substitute.For<IReadingListService>(), namingService);
 
         var opdsService = new OpdsService(unitOfWork, localizationService,
-            seriesService, Substitute.For<DownloadService>(),
+            seriesService, Substitute.For<IDownloadService>(),
             ds, readerService, namingService, readingListService);
 
         return new Tuple<IOpdsService, IReaderService>(opdsService, readerService);
@@ -116,7 +120,7 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
 
         await unitOfWork.CommitAsync();
 
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(1, AppUserIncludes.Progress | AppUserIncludes.WantToRead | AppUserIncludes.Collections);
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(1, AppUserIncludes.WantToRead | AppUserIncludes.Collections);
         Assert.NotNull(user);
 
         // Setup SideNav streams for library
@@ -1087,8 +1091,7 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
         context.Series.Add(series);
         await unitOfWork.CommitAsync();
 
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(1,
-            AppUserIncludes.Progress | AppUserIncludes.WantToRead | AppUserIncludes.Collections);
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(1, AppUserIncludes.WantToRead | AppUserIncludes.Collections);
         Assert.NotNull(user);
         user.SideNavStreams = new List<AppUserSideNavStream>
         {
@@ -1164,6 +1167,88 @@ public class OpdsServiceTests(ITestOutputHelper testOutputHelper) : AbstractDbTe
         var xml = opdsService.SerializeXml(null);
 
         Assert.Empty(xml);
+    }
+
+    [Fact]
+    public async Task SerializeXml_StripsNulFromTopLevelStringField()
+    {
+        var (unitOfWork, _, mapper) = await CreateDatabase();
+        var (opdsService, _) = SetupService(unitOfWork, mapper);
+
+        var feed = new Feed
+        {
+            Id = "test",
+            Title = $"Fine Cuts{NulChar}: The Art of European Film Editing",
+        };
+
+        var xml = opdsService.SerializeXml(feed);
+
+        Assert.DoesNotContain(NulChar, xml, StringComparison.Ordinal);
+        Assert.Contains("Fine Cuts", xml);
+        Assert.Contains("The Art of European Film Editing", xml);
+    }
+
+    [Fact]
+    public async Task SerializeXml_StripsNulFromStringInsideEnumerable()
+    {
+        var (unitOfWork, _, mapper) = await CreateDatabase();
+        var (opdsService, _) = SetupService(unitOfWork, mapper);
+
+        var feed = new Feed
+        {
+            Id = "test",
+            Title = "Library",
+            Entries =
+            [
+                new FeedEntry { Title = $"Entry One{NulChar}With Bad Char", Id = "1" },
+                new FeedEntry { Title = "Entry Two (clean)", Id = "2" },
+            ],
+        };
+
+        var xml = opdsService.SerializeXml(feed);
+
+        Assert.DoesNotContain(NulChar, xml, StringComparison.Ordinal);
+        Assert.Contains("Entry One", xml);
+        Assert.Contains("With Bad Char", xml);
+        Assert.Contains("Entry Two (clean)", xml);
+    }
+
+    [Fact]
+    public async Task SerializeXml_PreservesValidSurrogatePairEmoji()
+    {
+        var (unitOfWork, _, mapper) = await CreateDatabase();
+        var (opdsService, _) = SetupService(unitOfWork, mapper);
+
+        var feed = new Feed
+        {
+            Id = "test",
+            Title = $"Fine Cuts {ValidEmoji}",
+        };
+
+        var xml = opdsService.SerializeXml(feed);
+
+        Assert.Contains(ValidEmoji, xml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SerializeXml_PreservesValidEmojiInsideEnumerable()
+    {
+        var (unitOfWork, _, mapper) = await CreateDatabase();
+        var (opdsService, _) = SetupService(unitOfWork, mapper);
+
+        var feed = new Feed
+        {
+            Id = "test",
+            Title = "Library",
+            Entries =
+            [
+                new FeedEntry { Title = $"Entry {ValidEmoji}", Id = "1" },
+            ],
+        };
+
+        var xml = opdsService.SerializeXml(feed);
+
+        Assert.Contains(ValidEmoji, xml, StringComparison.Ordinal);
     }
 
     #endregion

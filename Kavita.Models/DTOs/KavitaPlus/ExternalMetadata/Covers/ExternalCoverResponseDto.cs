@@ -20,6 +20,7 @@ public sealed record ExternalCoverResponseDto
     public required string Url { get; set; } = string.Empty;
     [EnumDataType(typeof(ExternalCoverImageType))]
     public ExternalCoverImageType? Type { get; set; }
+    public string? SourceUrl { get; set; }
     /// <summary>
     /// Represents Volume or Chapter Number
     /// </summary>

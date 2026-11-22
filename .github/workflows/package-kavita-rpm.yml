@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: kavita-rpm-release
@@ -26,6 +26,7 @@ env:
 
 jobs:
   prepare:
+    if: github.repository == 'earth4s/KavitaRPM' && github.ref == 'refs/heads/develop'
     name: Detect upstream release
     runs-on: ubuntu-24.04
     outputs:
@@ -302,6 +303,8 @@ jobs:
           retention-days: 14
 
   publish:
+    permissions:
+      contents: write
     name: Publish RPM release
     needs:
       - prepare
@@ -347,8 +350,8 @@ jobs:
           - kavita aarch64: kavita-linux-arm64.tar.gz
           - kavita-musl x86_64: kavita-linux-musl-x64.tar.gz
 
-          For Fedora, Rocky Linux, and RHEL on glibc, install the `kavita`
-          package matching the machine architecture. The `kavita-musl` RPM is
+          For Fedora, Rocky Linux, and RHEL on glibc, install the kavita
+          package matching the machine architecture. The kavita-musl RPM is
           a separate repackaging of upstream's musl build and is not the normal
           package for glibc-based Fedora/RHEL systems.
 

@@ -29,7 +29,6 @@ import {
   NgbNavOutlet,
   NgbTooltip
 } from "@ng-bootstrap/ng-bootstrap";
-import {VirtualScrollerModule} from "@iharbeck/ngx-virtual-scroller";
 import {ActivatedRoute, Router, RouterLink} from "@angular/router";
 import {ImageService} from "../_services/image.service";
 import {ChapterService} from "../_services/chapter.service";
@@ -37,6 +36,8 @@ import {tap} from "rxjs";
 import {AgeRating} from "../_models/metadata/age-rating";
 import {LibraryType} from "../_models/library/library";
 import {ThemeService} from "../_services/theme.service";
+import {ColorscapeService} from "../_services/colorscape.service";
+import {ColorScapeKind} from "../_models/theme/colorscape";
 import {TranslocoDirective} from "@jsverse/transloco";
 import {BulkSelectionService} from "../cards/bulk-selection.service";
 import {ReaderService} from "../_services/reader.service";
@@ -82,6 +83,8 @@ import {getResolvedData, getWritableResolvedData} from "../../libs/route-util";
 import {Tabs} from "../_models/tabs";
 import {TabTitlePipe} from "../_pipes/tab-title.pipe";
 import {NULL_DATE} from "../_pipes/date-year-range.pipe";
+import {ActionResult} from "../_models/actionables/action-result";
+import {Chapter} from "../_models/chapter";
 
 @Component({
   selector: 'app-chapter-detail',
@@ -96,8 +99,6 @@ import {NULL_DATE} from "../_pipes/date-year-range.pipe";
     NgbNavContent,
     NgbNavLink,
     NgbTooltip,
-    VirtualScrollerModule,
-    NgStyle,
     NgClass,
     TranslocoDirective,
     ReadMoreComponent,
@@ -135,6 +136,7 @@ export class ChapterDetailComponent implements OnInit {
   protected readonly imageService = inject(ImageService);
   private readonly chapterService = inject(ChapterService);
   private readonly themeService = inject(ThemeService);
+  private readonly colorScapeService = inject(ColorscapeService);
   private readonly bulkSelectionService = inject(BulkSelectionService);
   private readonly readerService = inject(ReaderService);
   protected readonly accountService = inject(AccountService);
@@ -238,7 +240,7 @@ export class ChapterDetailComponent implements OnInit {
       if (event.event === EVENTS.CoverUpdate) {
         const coverUpdateEvent = event.payload as CoverUpdateEvent;
         if (coverUpdateEvent.entityType === 'chapter' && coverUpdateEvent.id === this.chapterId()) {
-          this.themeService.refreshColorScape('chapter', coverUpdateEvent.id).subscribe();
+          this.colorScapeService.loadColorScape(ColorScapeKind.Chapter, coverUpdateEvent.id).subscribe();
         }
       } else if (event.event === EVENTS.ChapterRemoved) {
         const removedEvent = event.payload as ChapterRemovedEvent;
@@ -249,6 +251,7 @@ export class ChapterDetailComponent implements OnInit {
       }
     });
 
+    this.colorScapeService.loadColorScape(ColorScapeKind.Chapter, this.chapterId()).subscribe();
 
     this.chapterService.chapterDetailPlus(this.seriesId(), this.chapterId()).subscribe(chapterDetail => {
 
@@ -257,9 +260,6 @@ export class ChapterDetailComponent implements OnInit {
     this.rating.set(chapterDetail.rating);
     this.hasBeenRated.set(chapterDetail.hasBeenRated);
     this.ratings.set(chapterDetail.ratings);
-
-
-    this.themeService.setColorScape(this.chapter().primaryColor, this.chapter().secondaryColor);
 
     this.loadReadingListsForChapter(this.chapterId());
 
@@ -309,12 +309,12 @@ export class ChapterDetailComponent implements OnInit {
 
   openEditModal() {
     const ref = this.modalService.open(EditChapterModalComponent);
-    ref.componentInstance.chapter = this.chapter();
-    ref.componentInstance.libraryType = this.libraryType();
-    ref.componentInstance.libraryId = this.libraryId();
-    ref.componentInstance.seriesId = this.seriesId();
+    ref.setInput('chapter', this.chapter());
+    ref.setInput('libraryType', this.libraryType());
+    ref.setInput('seriesId', this.seriesId());
+    ref.setInput('libraryId', this.libraryId());
 
-    ref.closed.subscribe(res => {
+    ref.closed.subscribe(() => {
       this.loadData();
     });
   }
@@ -343,6 +343,20 @@ export class ChapterDetailComponent implements OnInit {
   handleRelatedReload(event: RelatedTabChangeEvent) {
     if (event.entity === 'readingList') {
       this.loadReadingListsForChapter(this.chapterId());
+    }
+  }
+
+  handleChapterActions(action: ActionResult<Chapter>) {
+    switch (action.effect) {
+      case "update":
+      case "reload":
+        this.loadData();
+        break;
+      case "remove":
+        break;
+      case "none":
+        break;
+
     }
   }
 

@@ -29,6 +29,11 @@ public static class ChapterListExtensions
     /// <returns></returns>
     public static Chapter? GetChapterByRange(this IEnumerable<Chapter> chapters, ParserInfo info)
     {
+        return chapters.GetChaptersByRange(info).FirstOrDefault();
+    }
+
+    public static IEnumerable<Chapter> GetChaptersByRange(this IEnumerable<Chapter> chapters, ParserInfo info)
+    {
         var normalizedPath = Scanner.Parser.NormalizePath(info.FullFilePath);
         var specialTreatment = info.IsSpecialInfo();
 
@@ -37,19 +42,21 @@ public static class ChapterListExtensions
         fakeChapter.UpdateFrom(info);
 
         return specialTreatment
-             ? chapters.FirstOrDefault(c =>
-                 c.Range == Scanner.Parser.RemoveExtensionIfSupported(info.Filename)
-                 || c.Files.Select(f => Scanner.Parser.NormalizePath(f.FilePath)).Contains(normalizedPath))
-             : chapters.FirstOrDefault(c => c.Range == fakeChapter.GetNumberTitle());
+            ? chapters.Where(c =>
+                c.Range == Scanner.Parser.RemoveExtensionIfSupported(info.Filename)
+                || c.Files.Select(f => Scanner.Parser.NormalizePath(f.FilePath)).Contains(normalizedPath))
+            : chapters.Where(c => c.Range == fakeChapter.GetNumberTitle());
     }
 
     /// <summary>
-    /// Returns the minimum Release Year from all Chapters that meets the year requirement (>= 1000)
+    /// Returns the minimum Release Year that meets the year requirement (>= 1000), or 0 when none does. Specials are
+    /// skipped unless every chapter is a special
     /// </summary>
-    /// <param name="chapters"></param>
-    /// <returns></returns>
     public static int MinimumReleaseYear(this IList<Chapter> chapters)
     {
-        return chapters.Select(v => v.ReleaseDate.Year).Where(NumberHelper.IsValidYear).DefaultIfEmpty().Min();
+        var regularChapters = chapters.Where(c => !c.IsSpecial).ToList();
+        var source = regularChapters.Count > 0 ? regularChapters : chapters;
+
+        return source.Select(v => v.ReleaseDate.Year).Where(NumberHelper.IsValidYear).DefaultIfEmpty().Min();
     }
 }

@@ -2,6 +2,7 @@
 using System.IO;
 using Kavita.API.Services;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Images;
 using Kavita.Models.Metadata;
 using Kavita.Models.Parser;
 using Kavita.Services.Scanner;
@@ -13,7 +14,6 @@ public class ReadingItemService : IReadingItemService
 {
     private readonly IArchiveService _archiveService;
     private readonly IBookService _bookService;
-    private readonly IImageService _imageService;
     private readonly IDirectoryService _directoryService;
     private readonly ILogger<ReadingItemService> _logger;
     private readonly BasicParser _basicParser;
@@ -21,17 +21,14 @@ public class ReadingItemService : IReadingItemService
     private readonly ImageParser _imageParser;
     private readonly BookParser _bookParser;
     private readonly PdfParser _pdfParser;
-    private readonly IMediaErrorService _mediaErrorService;
 
-    public ReadingItemService(IArchiveService archiveService, IBookService bookService, IImageService imageService,
-        IDirectoryService directoryService, ILogger<ReadingItemService> logger, IMediaErrorService mediaErrorService)
+    public ReadingItemService(IArchiveService archiveService, IBookService bookService,
+        IDirectoryService directoryService, ILogger<ReadingItemService> logger)
     {
         _archiveService = archiveService;
         _bookService = bookService;
-        _imageService = imageService;
         _directoryService = directoryService;
         _logger = logger;
-        _mediaErrorService = mediaErrorService;
 
         _imageParser = new ImageParser(directoryService);
         _basicParser = new BasicParser(directoryService, _imageParser);
@@ -46,55 +43,74 @@ public class ReadingItemService : IReadingItemService
     /// </summary>
     /// <param name="filePath">Fully qualified path of file</param>
     /// <param name="enableMetadata">If false, returns null</param>
-    /// <returns></returns>
-    private ComicInfo? GetComicInfo(string filePath, bool enableMetadata)
+    /// <param name="issue">Set when the metadata could not be read, or an epub only opened leniently. The file can still be imported</param>
+    private ComicInfo? ReadComicInfo(string filePath, bool enableMetadata, out ParseIssue? issue)
     {
+        issue = null;
         if (!enableMetadata) return null;
 
-        if (Parser.IsEpub(filePath) || Parser.IsPdf(filePath))
+        try
         {
-            return _bookService.GetComicInfo(filePath);
-        }
+            if (Parser.IsEpub(filePath) || Parser.IsPdf(filePath))
+            {
+                var comicInfo = _bookService.GetComicInfo(filePath, out var strictOpenError);
+                if (strictOpenError != null)
+                {
+                    issue = new ParseIssue(MediaErrorReason.EpubNotStrict, strictOpenError);
+                }
 
-        if (Parser.IsComicInfoExtension(filePath))
+                return comicInfo;
+            }
+
+            if (Parser.IsComicInfoExtension(filePath))
+            {
+                return _archiveService.GetComicInfo(filePath);
+            }
+        }
+        catch (Exception ex)
         {
-            return _archiveService.GetComicInfo(filePath);
+            _logger.LogWarning(ex, "There was an exception reading the metadata of {FilePath}, parsing without it", filePath);
+            issue = new ParseIssue(MediaErrorReason.MetadataUnreadable, ParseIssues.Describe(ex));
         }
 
         return null;
     }
 
     /// <summary>
-    /// Processes files found during a library scan.
+    /// Processes files found during a library scan. A failure is returned for the scanner to record, not reported here
     /// </summary>
     /// <param name="path">Path of a file</param>
     /// <param name="rootPath"></param>
     /// <param name="libraryRoot"></param>
     /// <param name="type">Library type to determine parsing to perform</param>
     /// <param name="enableMetadata">Enable Metadata parsing overriding filename parsing</param>
-    public ParserInfo? ParseFile(string path, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata)
+    public ParseFileResult ParseFile(string path, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata)
     {
+        var parser = ParserFor(path, type);
+        if (parser == null)
+        {
+            _logger.LogError("No parser can read file {FilePath}", path);
+            return ParseFileResult.Failed(ParseIssues.FromFailedParse(null));
+        }
+
+        var comicInfo = ReadComicInfo(path, enableMetadata, out var metadataIssue);
         try
         {
-            var info = Parse(path, rootPath, libraryRoot, type, enableMetadata);
-            if (info == null)
+            var parseResult = parser.Parse(path, rootPath, libraryRoot, type, enableMetadata, comicInfo);
+            if (!parseResult.Success)
             {
-                _logger.LogError("Unable to parse any meaningful information out of file {FilePath}", path);
-                _mediaErrorService.ReportMediaIssue(Path.GetFileName(path), MediaErrorProducer.Scanner,
-                    "Unable to parse any meaningful information out of file", string.Empty);
+                _logger.LogError("Unable to parse any meaningful information out of file {FilePath}. Found {@ParserInfo}",
+                    path, parseResult.Info);
 
-                return null;
+                return ParseFileResult.Failed(ParseIssues.FromFailedParse(parseResult.Info));
             }
 
-            return info;
+            return parseResult.Info == null ? new ParseFileResult(null) : new ParseFileResult(parseResult.Info, metadataIssue);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "There was an exception when parsing file {FilePath}", path);
-            _mediaErrorService.ReportMediaIssue(Path.GetFileName(path), MediaErrorProducer.Scanner,
-                "There was an exception when parsing file", ex.Message);
-
-            return null;
+            return ParseFileResult.Failed(ParseIssues.FromException(path, ex));
         }
     }
 
@@ -128,21 +144,18 @@ public class ReadingItemService : IReadingItemService
         }
     }
 
-    public string GetCoverImage(string filePath, string fileName, MangaFormat format, EncodeFormat encodeFormat, CoverImageSize size = CoverImageSize.Default)
+    public OpenedCover? OpenCover(string filePath, MangaFormat format)
     {
-        if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(fileName))
-        {
-            return string.Empty;
-        }
-
+        if (string.IsNullOrEmpty(filePath)) return null;
 
         return format switch
         {
-            MangaFormat.Epub => _bookService.GetCoverImage(filePath, fileName, _directoryService.CoverImageDirectory, encodeFormat, size),
-            MangaFormat.Archive => _archiveService.GetCoverImage(filePath, fileName, _directoryService.CoverImageDirectory, encodeFormat, size),
-            MangaFormat.Image => _imageService.GetCoverImage(filePath, fileName, _directoryService.CoverImageDirectory, encodeFormat, size),
-            MangaFormat.Pdf => _bookService.GetCoverImage(filePath, fileName, _directoryService.CoverImageDirectory, encodeFormat, size),
-            _ => string.Empty
+            MangaFormat.Epub or MangaFormat.Pdf => _bookService.OpenCover(filePath),
+            MangaFormat.Archive => _archiveService.OpenCover(filePath),
+            MangaFormat.Image => _directoryService.FileSystem.File.Exists(filePath)
+                ? new OpenedCover(new ImageSource.FromFile(filePath))
+                : null,
+            _ => null
         };
     }
 
@@ -162,7 +175,7 @@ public class ReadingItemService : IReadingItemService
                 _archiveService.ExtractArchive(fileFilePath, targetDirectory);
                 break;
             case MangaFormat.Image:
-                _imageService.ExtractImages(fileFilePath, targetDirectory, imageCount);
+                ExtractImages(fileFilePath, targetDirectory, imageCount);
                 break;
             case MangaFormat.Pdf:
                 _bookService.ExtractPdfImages(fileFilePath, targetDirectory);
@@ -176,36 +189,31 @@ public class ReadingItemService : IReadingItemService
     }
 
     /// <summary>
-    /// Parses information out of a file. If file is a book (epub), it will use book metadata regardless of LibraryType
+    /// The parser for a file. A book (epub) uses book metadata regardless of LibraryType
     /// </summary>
-    /// <param name="path"></param>
-    /// <param name="rootPath"></param>
-    /// <param name="type"></param>
-    /// <param name="enableMetadata"></param>
-    /// <returns></returns>
-    private ParserInfo? Parse(string path, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata)
+    private DefaultParser? ParserFor(string path, LibraryType type)
     {
-        if (_comicVineParser.IsApplicable(path, type))
-        {
-            return _comicVineParser.Parse(path, rootPath, libraryRoot, type, enableMetadata, GetComicInfo(path, enableMetadata));
-        }
-        if (_imageParser.IsApplicable(path, type))
-        {
-            return _imageParser.Parse(path, rootPath, libraryRoot, type, enableMetadata, GetComicInfo(path, enableMetadata));
-        }
-        if (_bookParser.IsApplicable(path, type))
-        {
-            return _bookParser.Parse(path, rootPath, libraryRoot, type, enableMetadata, GetComicInfo(path, enableMetadata));
-        }
-        if (_pdfParser.IsApplicable(path, type))
-        {
-            return _pdfParser.Parse(path, rootPath, libraryRoot, type, enableMetadata, GetComicInfo(path, enableMetadata));
-        }
-        if (_basicParser.IsApplicable(path, type))
-        {
-            return _basicParser.Parse(path, rootPath, libraryRoot, type, enableMetadata, GetComicInfo(path, enableMetadata));
-        }
+        if (_comicVineParser.IsApplicable(path, type)) return _comicVineParser;
+        if (_imageParser.IsApplicable(path, type)) return _imageParser;
+        if (_bookParser.IsApplicable(path, type)) return _bookParser;
+        if (_pdfParser.IsApplicable(path, type)) return _pdfParser;
+        if (_basicParser.IsApplicable(path, type)) return _basicParser;
 
         return null;
+    }
+
+    private void ExtractImages(string? fileFilePath, string targetDirectory, int fileCount)
+    {
+        if (string.IsNullOrEmpty(fileFilePath)) return;
+        _directoryService.ExistOrCreate(targetDirectory);
+        if (fileCount == 1)
+        {
+            _directoryService.CopyFileToDirectory(fileFilePath, targetDirectory);
+        }
+        else
+        {
+            _directoryService.CopyDirectoryToDirectory(_directoryService.FileSystem.Path.GetDirectoryName(fileFilePath), targetDirectory,
+                Parser.ImageFileExtensions);
+        }
     }
 }

@@ -2,9 +2,8 @@
     "login": {
         "username": "{{common.username}}",
         "password": "{{common.password}}",
-        "password-validation": "{{validation.password-validation}}",
         "title": "Logga in på ditt konto",
-        "forgot-password": "Glömt lösenord?",
+        "forgot-password": "Glömt lösenordet?",
         "submit": "Logga in",
         "oidc": "OpenID Connect"
     },
@@ -12,7 +11,6 @@
         "edit": "{{common.edit}}",
         "close": "{{common.close}}",
         "username": "{{common.username}}",
-        "required": "{{validation.required-field}}",
         "email": "{{common.email}}",
         "cancel": "{{common.cancel}}",
         "account-detail-title": "Kontodetaljer",
@@ -27,31 +25,6 @@
         "identity-provider-tooltip": "Kavita-användare synkroniseras aldrig med OIDC-konton.",
         "libraries-label": "{{common.libraries}}",
         "roles-label": "{{common.roles}}"
-    },
-    "user-scrobble-history": {
-        "filter-label": "{{common.filter}}",
-        "special": "{{entity-title.special}}",
-        "type-header": "Typ",
-        "created-header": "Skapad",
-        "last-modified-header": "Senast ändrad",
-        "series-header": "Serier",
-        "volume-and-chapter-num": "Volym {{v}} Kapitel {{n}}",
-        "no-data": "{{common.no-data}}",
-        "volume-num": "Volym {{num}}",
-        "chapter-num": "Kapitel {{num}}",
-        "rating": "Betyg {{r}}",
-        "not-applicable": "Inte applicerbart",
-        "processed": "Processad",
-        "not-processed": "Inte processad",
-        "description": "Här hittar du all scrobble-aktivitet länkat till ditt konto. För att aktiviteter ska finnas måste du ha en aktiv scrobble-tjänst konfigurerad. All aktivitet som registrerats rensas efter en månad. Om några aktiviteter inte processats kan det bero på att de inte kan matchas. Kontakta din administratör för att få det åtgärdat.",
-        "data-header": "Data",
-        "title": "Scrobble-historik",
-        "not-read-warning": "Leverantör av tjänsten kommer alltid ha högst nummer",
-        "is-processed-header": "Är processad",
-        "scrobbling-disabled": "Scrobbling är inaktiverat i dina Kontoinställningar.",
-        "token-expired": "Din AniList-token är Utgången! Scrobbling kommer inte processeras förrän du har förnyat det under Konto.",
-        "select-all-label": "Markera alla",
-        "delete-selected-label": "Ta bort markerade"
     },
     "review-card-modal": {
         "close": "{{common.close}}",
@@ -191,8 +164,6 @@
         "save": "{{common.save}}",
         "close": "{{common.close}}",
         "cancel": "{{common.cancel}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "title": "Ändra Epostenhet",
         "email-tooltip": "Denna e-postadress kommer att användas för att ta emot filen via \"Skicka till\"",
         "device-platform-label": "{{manage-devices.platform-label}}"
@@ -201,7 +172,6 @@
         "password-label": "{{common.password}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "permission-error": "Du har inte behörighet att ändra ditt lösenord. Kontakta serveradministratören.",
         "current-password-label": "Nuvarande lösenord",
         "new-password-label": "Nytt lösenord",
@@ -209,8 +179,6 @@
         "confirm-password-label": "Bekräfta lösenord"
     },
     "change-email": {
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
         "has-invalid-email": "Det verkar som att du inte har en giltig e-postadress angiven. För att ändra e-post krävs det att administratören skickar en länk till dig för att slutföra denna åtgärd.",
@@ -315,8 +283,6 @@
     },
     "reset-password": {
         "email-label": "{{common.email}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "submit": "{{common.submit}}",
         "description": "Ange e-postadressen för ditt konto. Kavita kommer att skicka ett e-postmeddelande om en giltig adress finns registrerad, annars be administratören att återställa ditt lösenord.",
         "title": "Lösenordsåterställning"
@@ -340,7 +306,6 @@
     "invite-user": {
         "close": "{{common.close}}",
         "email": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
         "cancel": "{{common.cancel}}",
         "email-not-sent": "{{toasts.email-not-sent}}",
         "notice": "{{manage-settings.notice}}",
@@ -364,7 +329,6 @@
     },
     "book-line-overlay": {
         "close": "{{common.close}}",
-        "required-field": "{{common.required-field}}",
         "save": "{{common.save}}",
         "bookmark-label": "Bokmärkesnamn",
         "copy": "Kopiera",
@@ -392,8 +356,6 @@
         "username-label": "{{common.username}}",
         "password-label": "{{common.password}}",
         "email-label": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
-        "valid-email": "{{common.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "description": "Fyll i formuläret för att slutföra din registrering",
         "error-label": "Error:",
@@ -402,7 +364,6 @@
     },
     "confirm-reset-password": {
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
         "submit": "{{common.submit}}",
         "password-validation": "{{validation.password-validation}}",
         "title": "Lösenordsåterställning",
@@ -412,8 +373,6 @@
         "username-label": "{{common.username}}",
         "email-label": "{{common.email}}",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "description": "Fyll i formuläret för att registrera ett administratörskonto",
         "register": "Registrera",
@@ -513,7 +472,6 @@
         "reset": "{{common.reset}}",
         "cancel": "{{common.cancel}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "help": "{{common.help}}",
         "edit-title": "Ändra {{name}}",
         "name-label": "Namn",
@@ -524,7 +482,6 @@
         "force-scan-tooltip": "Detta kommer att tvinga en genomsökning av biblioteket, som om det vore en ny skanning",
         "type-label": "Typ",
         "naming-conventions-part-1": "Kavita har ",
-        "folder-watching-tooltip": "Åsidosätt serverns mappövervakning för detta bibliotek. Om avstängt kommer mappövervakning inte att köras på de mappar som detta bibliotek innehåller. Om bibliotek delar mappar kan de ändå genomsökas. Skanning kommer alltid att vänta 10 minuter innan den triggas.",
         "add-title": "Lägg till Bibliotek",
         "folder-description": "Lägg till mappar till ditt bibliotek",
         "browse": "Bläddra efter Mediamappar",
@@ -551,7 +508,6 @@
         "include-in-search-label": "Inkludera i Sök",
         "include-in-search-tooltip": "Ska serier och all härledd information (genrer, personer, filer) från biblioteket inkluderas i sökresultaten?",
         "include-in-dashboard-tooltip": "Ska serier från biblioteket inkluderas på instrumentpanelen? Detta påverkar alla flöden, som 'På Hyllan', 'Nyligen Uppdaterad', 'Nyligen Tillagd' eller andra anpassade tillägg.",
-        "folder-watching-label": "Mapp-bevakning",
         "include-in-dashboard-label": "Inkludera i instrumentpanelen",
         "force-scan": "Tvinga Skanning",
         "help-us-part-3": "för att namnge och organisera din media.",
@@ -701,13 +657,7 @@
     },
     "manage-media-issues": {
         "filter-label": "{{common.filter}}",
-        "file-header": "Fil",
-        "no-data": "{{common.no-data}}",
-        "clear-alerts": "Rensa Varningar",
-        "description-part-1": "Denna tabell innehåller problem som upptäckts under genomsökning eller läsning av din media. Du kan rensa den när som helst och använda '(Tvinga) Skanna Bibliotek' för att utföra en analys. En lista över vanliga fel och vad de betyder kan hittas på ",
-        "description-part-2": "wiki.",
-        "created-header": "Skapad",
-        "comment-header": "Kommentar"
+        "no-data": "{{common.no-data}}"
     },
     "manage-email-settings": {
         "reset": "{{common.reset}}",
@@ -783,7 +733,6 @@
         "media-warning": "Du måste aktivera mediekonverteringsuppgiften i fliken 'Uppgifter' efter att du har sparat.",
         "change": "Ändra",
         "encode-as-label": "Spara Media Som",
-        "encode-as-warning": "Du kan inte konvertera tillbaka till PNG när du har gått över till WebP/AVIF. Du måste uppdatera omslagsbilderna på dina bibliotek för att regenerera alla omslag. Bokmärken och favicons kan inte konverteras.",
         "encode-as-tooltip": "All media som Kavita hanterar (omslag, bokmärken, favicons) kommer bli omkodad till denna typ.",
         "cover-image-size-tooltip": "Hur stora bör omslagsbilder genereras? Observera: Allt som är större än standard kommer att medföra längre laddningstider på sidan.",
         "bookmark-dir-label": "Bokmärkeskatalog",
@@ -823,20 +772,16 @@
         "min-cache-validation": "Måste vara 50 MB.",
         "max-backup-validation": "Du kan inte lagra mer än {{num}} backuper",
         "logging-level-label": "Loggnivå",
-        "on-deck-last-progress-tooltip": "Antal dagar sedan senaste framsteg innan något tas bort från hyllan.",
         "allow-stats-label": "Tillåt anonym användningsinsamling",
         "opds-label": "OPDS",
         "opds-tooltip": "OPDS-stöd tillåter användare att använda OPDS att läsa och ladda ner innehåll från servern.",
         "enable-opds": "Aktivera OPDS",
         "log-label": "Dagar av loggar",
         "customization-settings-title": "Anpassning",
-        "on-deck-last-chapter-add-label": "Senaste kapitlet tillagt på Hyllan (dagar)",
-        "on-deck-last-chapter-add-tooltip": "Antal dagar sedan det senaste kapitlet lades till för att inkludera något på Hyllan.",
         "enable-folder-watching": "Aktivera Mappövervakning",
         "cache-size-validation": "Du behöver minst 50 MB.",
         "backup-label": "Dagar av Backuper",
         "backup-tooltip": "Antal backuper att lagra. Standard är 30, minimum är 1, maximum är 30.",
-        "on-deck-last-progress-label": "Senaste framsteg på hyllan (dagar)",
         "send-data": "Skicka data",
         "folder-watching-tooltip": "Tillåter Kavita att övervaka biblioteksmappar för att upptäcka ändringar och initiera skanning av dessa ändringar. Detta gör det möjligt att uppdatera innehåll utan att manuellt initiera skanningar eller vänta på nattliga skanningar. Kommer alltid att vänta 10 minuter innan en skanning utlöses.",
         "base-url-validation": "Bas-URL måste starta och sluta med /",
@@ -863,7 +808,6 @@
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
         "library-database-backup-tooltip": "Hur ofta Kavita tar backup av databasen och relaterade filer.",
-        "bust-locale-task-desc": "Rensar Språk Cache. Detta kan fixa problem med stringar som inte dyker upp korrekt efter en uppdatering. Du behöver uppdatera webläsaren.",
         "title": "Återkommande Uppgifter",
         "library-scan-label": "Biblioteksskanning",
         "library-database-backup-label": "Kavita Backup",
@@ -880,7 +824,6 @@
         "convert-media-task": "Konvertera Media till Mål-omkodning",
         "library-scan-tooltip": "Hur ofta Kavita kommer skanna och uppdatera metadata omkring biblioteksfiler.",
         "bust-cache-task-desc": "Rensa Kavita+ Cache - bör bara användas när debugging av dåliga matchningar sker.",
-        "bust-locale-task": "Rensa Språk Cache",
         "convert-media-task-desc": "Kör ett tidskrävande uppdrag som kommer konvertera all Kavita-hanterad media till den valda omkodningen. Dertta är långsamt (speciellt på ARM enheter).",
         "action-header": "Åtgärd",
         "convert-media-task-success": "Konvertering av Media till den valda omkodningen har lagts i kö",
@@ -894,7 +837,6 @@
         "download-logs-task": "Ladda ner Loggar",
         "clean-up-task": "Allmän Rensning",
         "clean-up-want-to-read-task-success": "Vill Läsa har rensats",
-        "bust-locale-task-success": "Språk Cache rensad",
         "clear-reading-cache-task-success": "Cache har rensats",
         "clean-up-task-success": "Rensning färdig",
         "clear-reading-cache-task-desc": "Rensar cachade filer för läsning. Hjälpsamt när du precis har uppdaterat en fil som du läst inom det senaste dygnet.",
@@ -933,10 +875,8 @@
         "profile-link-alt": "Profil"
     },
     "edit-collection-tags": {
-        "required-field": "{{validation.required-field}}",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
         "deselect-all": "{{common.deselect-all}}",
         "select-all": "{{common.select-all}}",
         "filter-label": "{{common.filter}}",
@@ -1060,17 +1000,7 @@
         "loading-alt": "{{pdf-reader.loading-message}}"
     },
     "events-widget": {
-        "close": "{{common.close}}",
-        "users-online-count": "{{num}} Användare online",
-        "active-events-title": "Aktiva Händelser:",
-        "update-available": "Uppdatering tillgänglig",
         "title-alt": "Aktivitet",
-        "downloading-item": "Laddar ner {{item}}",
-        "dismiss-all": "Avvisa alla",
-        "more-info": "Klicka för mer information",
-        "download-in-queue": "{{num}} nedladdningar i Kö",
-        "no-data": "Här händer inte mycket",
-        "left-to-process": "Återstår att bearbeta: {{leftToProcess}} / {{totalToProcess}}",
         "reading-now": "{{num}} läser nu"
     },
     "shortcuts-modal": {
@@ -1085,36 +1015,17 @@
         "title": "Tangentbordsgenvägar",
         "offset-double-page": "{{keybind-setting-description-pipe.key-bind-title-offset-double-page}}"
     },
-    "grouped-typeahead": {
-        "genres": "{{metadata-fields.genres-title}}",
-        "bookmarks": "{{side-nav.bookmarks}}",
-        "close": "{{common.close}}",
-        "loading": "{{common.loading}}",
-        "chapters": "Kapitel",
-        "files": "Filer",
-        "include-extras": "Inkludera Kapitel & Filer",
-        "libraries": "{{common.libraries}}",
-        "reading-lists": "Läslistor",
-        "collections": "Samlingar",
-        "people": "Personer",
-        "tags": "Taggar",
-        "annotations": "{{tabs.annotations-tab}}"
-    },
     "nav-header": {
         "help": "{{common.help}}",
         "close": "{{common.close}}",
         "nav-link-header": "Navigeringsinställningar",
         "announcements": "Meddelanden",
-        "search-series-alt": "Sök serier",
-        "search-alt": "Sök…",
         "skip-alt": "Skippa till huvudinnehållet",
         "server-settings": "Serverinställningar",
-        "no-data": "Inga resultat funna",
         "settings": "Inställningar",
         "all-filters": "Smarta Filter",
         "scroll-to-top-alt": "Skrolla till Toppen",
         "logout": "Logga ut",
-        "person-aka-status": "Matchar ett alias",
         "browse-genres": "Bläddra bland Genrer",
         "browse-tags": "Bläddra bland Taggar",
         "all-annotations": "Bläddra bland anteckningar",
@@ -1136,7 +1047,6 @@
     "edit-reading-list-modal": {
         "close": "{{common.close}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "summary-label": "Handling",
         "promote-label": "Tipsa",
         "promote-tooltip": "Tipsa betyder att samlingen kan ses över hela servern, inte bara av dig. Alla serier inom denna samling kommer fortfarande att ha användarbegränsningar som gäller för dem.",
@@ -1281,7 +1191,6 @@
         "location-label": "{{metadata-fields.locations-title}}",
         "language-label": "{{metadata-fields.language-title}}",
         "age-rating-label": "{{metadata-fields.age-rating-title}}",
-        "required-field": "{{validation.required-field}}",
         "close": "{{common.close}}",
         "release-year-label": "{{sort-field-pipe.release-year}}",
         "web-link-label": "{{tabs.weblink-tab}}",
@@ -1305,7 +1214,6 @@
         "max-items-title": "Max Objekt",
         "publication-status-title": "Publikationsstatus",
         "chapter-title": "Kapitel",
-        "field-locked-alt": "Fältet är låst",
         "publication-status-label": "Publikationsstatus",
         "web-link-description": "Här kan du lägga till många olika länkar till externa tjänster.",
         "localized-name-label": "Lokaliserat Namn",
@@ -1350,7 +1258,6 @@
         "age-rating-label": "{{edit-series-modal.age-rating-label}}",
         "web-link-description": "{{edit-series-modal.web-link-description}}",
         "web-link-label": "{{edit-series-modal.web-link-label}}",
-        "field-locked-alt": "{{edit-series-modal.field-locked-alt}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "size-label": "{{edit-series-modal.size-title}}",
         "links-label": "{{metadata-fields.links-title}}",
@@ -1491,7 +1398,6 @@
         "edit-smart-filter": "Ändra {{name}}",
         "edit": "{{common.edit}}",
         "no-data": "Inga Smarta Filter skapat",
-        "required-field": "Smarta Filter behöver ett namn",
         "errored": "Det finns ett kodningsfel i filtret. Du måste återskapa det.",
         "cancel": "{{common.cancel}}",
         "close": "{{common.close}}",
@@ -1504,12 +1410,10 @@
         "edit": "{{common.edit}}",
         "cancel": "{{common.cancel}}",
         "delete": "{{common.delete}}",
-        "required": "{{validation.required-field}}",
         "host-label": "Värd",
         "name-label": "Namn",
         "api-key-label": "API-Nyckel",
         "not-unique": "En extern källa finns redan med den här värden. Se till att du inte har några dubbletter",
-        "pattern": "Värd måste vara en giltig http(s):// url",
         "title": "Ny Extern Källa"
     },
     "stream-pipe": {
@@ -2013,7 +1917,7 @@
         "never": "Aldrig"
     },
     "entity-type": {
-        "bookmark": "bokmärk",
+        "bookmark": "bokmärke",
         "series": "serier",
         "chapter": "kapitel",
         "logs": "loggar",
@@ -2325,7 +2229,6 @@
         "anilist-tooltip": "https://anilist.co/staff/{AniListId}/",
         "asin-tooltip": "https://www.amazon.com/stores/J.K.-Rowling/author/{ASIN}",
         "description-label": "Beskrivning",
-        "required-field": "{{validation.required-field}}",
         "download-coversdb": "Ladda ner från CoversDB",
         "mal-id-label": "MAL Id",
         "anilist-id-label": "AniList Id",
@@ -2339,7 +2242,6 @@
         "title": "{{personName}} Detaljer",
         "mal-tooltip-character": "https://myanimelist.net/character/{MalId}/",
         "anilist-tooltip-character": "https://anilist.co/character/{AniListId}/",
-        "invalid-amazon-code": "ASIN måste börja med B0 eller BT",
         "aliases-label": "Ändra alias",
         "alias-overlap": "Aliaset pekar redan på en annan person eller är personens namn. Överväg att slå ihop dem.",
         "aliases-tooltip": "När en serie taggas med ett alias för en person kopplas serien till den personen i stället för att en ny person skapas. Om du tar bort ett alias måste du skanna om serien för att ändringen ska upptäckas."
@@ -2405,10 +2307,8 @@
         "even": "Jämna Spridningar"
     },
     "infinite-scroller": {
-        "continuous-reading-next-chapter": "Nästa Kapitel",
         "continuous-reading-prev-chapter-alt": "Skrolla upp för att hoppa till föregående kaptiel",
-        "continuous-reading-prev-chapter": "Föregående Kapitel",
-        "continuous-reading-next-chapter-alt": "Skrolla upp för att hoppa till nästa kapitel"
+        "continuous-reading-prev-chapter": "Föregående Kapitel"
     },
     "filter-comparison-pipe": {
         "is-before": "Är före",
@@ -2496,7 +2396,7 @@
     },
     "manage-oidc-connect": {
         "save": "{{common.save}}",
-        "reset-label": "Återställ ids",
+        "reset-label": "Återställ id:n",
         "reset-tooltip": "Nollställ externa ID:n för alla användare. Detta rensar kopplingen mellan användare i Kavita och din identitetsleverantör",
         "reset-confirm": "Är du säker att du vill återställa externa ids från alla användare?",
         "reset-success": "Externa ID:n är nollställda för alla användare. Autentisera igen för att länka kontona på nytt",
@@ -2509,7 +2409,6 @@
         "behavior-title": "Beteende",
         "other-field-required": "{{validation.other-field-required}}",
         "other-field-invalid": "{{validation.other-field-invalid}}",
-        "invalid-uri": "{{validation.invalid-uri}}",
         "tls-required": "OIDC-leverantören måste använda tls (https)",
         "manual-save-label": "Ändring av leverantörsinställningar kräver manuell sparning",
         "authority-label": "Befogenhet",
@@ -2572,7 +2471,6 @@
         "name-label": "Namn",
         "key-length-label": "Nyckellängd",
         "expiration-label": "Upphör att gälla",
-        "required-field": "{{validations.required-field}}",
         "total-key-length": "Total nyckellängd: {{length}}",
         "cancel": "{{common.cancel}}",
         "close": "{{common.close}}",
@@ -2593,8 +2491,7 @@
         "close": "{{common.close}}",
         "save": "{{common.save}}",
         "delete": "{{common.delete}}",
-        "min-length": "En recension måste innehålla minst {{count}} tecken",
-        "required": "{{validation.required-field}}"
+        "min-length": "En recension måste innehålla minst {{count}} tecken"
     },
     "review-list-item": {
         "by-label": "Av",
@@ -3256,5 +3153,18 @@
         "unread": "Oläst",
         "dropped": "Nedlagd",
         "on-hold": "Pausad"
+    },
+    "title": {
+        "reading-list": "Läslistor",
+        "home": "Hem",
+        "bookmarks": "Bokmärken",
+        "collections": "Samlingar",
+        "browse-genres": "Utforska Genrer",
+        "browse-tags": "Utforska Etiketter",
+        "want-to-read": "Vill läsa",
+        "reading-lists": "Läslistor",
+        "settings": "Inställningar",
+        "all-series": "Alla bokserier",
+        "profile": "{{username}}s profil"
     }
 }

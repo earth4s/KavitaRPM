@@ -3,7 +3,6 @@
         "title": "Log in op uw account",
         "username": "{{common.username}}",
         "password": "{{common.password}}",
-        "password-validation": "{{validation.password-validation}}",
         "forgot-password": "Wachtwoord vergeten?",
         "submit": "Inloggen",
         "oidc": "OpenID Connect"
@@ -21,7 +20,6 @@
         "edit": "{{common.edit}}",
         "close": "{{common.close}}",
         "username": "{{common.username}}",
-        "required": "{{validation.required-field}}",
         "email": "{{common.email}}",
         "cancel": "{{common.cancel}}",
         "saving": "Opslaan…",
@@ -29,31 +27,6 @@
         "invalid-email-warning": "Een ongeldig e-mailadres blokkeert bepaalde functionaliteiten van Kavita",
         "account-detail-title": "Accountgegevens",
         "oidc-managed": "Deze gebruiker wordt beheerd via OIDC. Neem contact op met uw OIDC-beheerder om eventuele wijzigingen aan te vragen."
-    },
-    "user-scrobble-history": {
-        "title": "Scrobble geschiedenis",
-        "description": "Hier vindt u alle scrobble-evenementen die aan uw account zijn gekoppeld. Om evenementen te hebben, moet u een actieve scrobble provider geconfigureerd hebben. Alle verwerkte gebeurtenissen worden na een maand gewist. Als er niet-verwerkte gebeurtenissen zijn, is het waarschijnlijk dat deze online geen matches kunnen vormen. Neem contact op met uw beheerder om ze te laten corrigeren.",
-        "filter-label": "{{common.filter}}",
-        "created-header": "Gemaakt",
-        "last-modified-header": "Laatst gewijzigd",
-        "type-header": "Type",
-        "series-header": "Reeks",
-        "data-header": "Data",
-        "is-processed-header": "Is verwerkt",
-        "no-data": "{{common.no-data}}",
-        "volume-and-chapter-num": "Deel {{v}} Hoofdstuk {{n}}",
-        "rating": "Beoordeling {{r}}",
-        "not-applicable": "Niet toepasbaar",
-        "processed": "Verwerkt",
-        "not-processed": "Niet Verwerkt",
-        "special": "{{entity-title.special}}",
-        "scrobbling-disabled": "Scrobbelen is uitgeschakeld in uw Accountinstellingen.",
-        "volume-num": "Deel {{num}}",
-        "chapter-num": "Hoofdstuk {{num}}",
-        "not-read-warning": "Upstream-providers behouden altijd het hoogste aantal",
-        "token-expired": "Uw AniList-token is verlopen! Scrobbling-evenementen zullen niet verwerkt worden totdat u deze verlengt op de Accounts-pagina.",
-        "select-all-label": "Alles selecteren",
-        "delete-selected-label": "Geselecteerde verwijderen"
     },
     "scrobble-event-type-pipe": {
         "chapter-read": "Leesvoortgang",
@@ -190,8 +163,6 @@
         "save": "{{common.save}}",
         "close": "{{common.close}}",
         "cancel": "{{common.cancel}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "title": "Apparaat bewerken",
         "device-platform-label": "Apparaatplatform"
     },
@@ -202,7 +173,6 @@
         "confirm-password-label": "Bevestig wachtwoord",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "passwords-must-match": "Wachtwoorden moeten overeenkomen",
         "permission-error": "U heeft geen toestemming om uw wachtwoord te wijzigen. Neem contact op met de beheerder van de server."
     },
@@ -214,8 +184,6 @@
         "setup-user-account": "Gebruikersaccount instellen",
         "invite-url-label": "Uitnodigings-URL",
         "invite-url-tooltip": "Kopieer dit en plak in een nieuw tabblad",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
         "email-title": "E-mail",
@@ -425,8 +393,6 @@
         "title": "Wachtwoord reset",
         "description": "Voer het e-mailadres van je account in. Als er een geldig e-mailadres is geregistreerd, stuurt Kavita je een e-mail. Neem anders contact op met de beheerder om je wachtwoord te resetten.",
         "email-label": "{{common.email}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "submit": "{{common.submit}}"
     },
     "reset-password-modal": {
@@ -458,7 +424,6 @@
         "close": "{{common.close}}",
         "description": "Nodig een gebruiker uit voor uw server. Voer hun e-mailadres in en we sturen ze een e-mail om een account aan te maken. Als u onze e-mailservice niet wilt gebruiken, kunt u <a href=\"https://wiki.kavitareader.com/guides/admin-settings/email\" rel=\"noopener noreferrer\" target=\"_blank\">uw eigen hosten</a> e-mailservice of gebruik een nep-e-mail (gebruiker vergeten werkt niet). Er wordt hoe dan ook een link gepresenteerd die kan worden gebruikt om het account handmatig in te stellen.",
         "email": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
         "setup-user-title": "Gebruiker uitgenodigd",
         "setup-user-description": "U kunt de volgende link hieronder gebruiken om het account voor uw gebruiker in te stellen of de kopieerknop gebruiken. Mogelijk moet u zich afmelden voordat u de link gebruikt om een nieuwe gebruiker te registreren. Als uw server extern toegankelijk is, is er een e-mail naar de gebruiker verzonden en kunnen de links door hen worden gebruikt om het instellen van hun account te voltooien.",
         "setup-user-account": "Gebruikersaccount instellen",
@@ -480,7 +445,6 @@
         "copy": "Kopiëren",
         "bookmark": "Bladwijzer",
         "close": "{{common.close}}",
-        "required-field": "{{common.required-field}}",
         "bookmark-label": "Bladwijzernaam",
         "save": "{{common.save}}"
     },
@@ -507,8 +471,6 @@
         "username-label": "{{common.username}}",
         "password-label": "{{common.password}}",
         "email-label": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
-        "valid-email": "{{common.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "register": "Registreren"
     },
@@ -522,7 +484,6 @@
         "title": "Wachtwoord reset",
         "description": "Voer het nieuwe wachtwoord in",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
         "submit": "{{common.submit}}",
         "password-validation": "{{validation.password-validation}}"
     },
@@ -533,8 +494,6 @@
         "email-label": "{{common.email}}",
         "email-tooltip": "E-mail hoeft geen echt adres te zijn, maar geeft toegang tot wachtwoord vergeten. Het wordt niet buiten de server verzonden, tenzij wachtwoord vergeten wordt gebruikt zonder een aangepaste e-mailservicehost.",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "register": "Registreer"
     },
@@ -639,8 +598,6 @@
         "manage-reading-list-tooltip": "Moet Kavita leeslijsten maken van StoryArc/StoryArcNumber en AlternativeSeries/AlternativeCount-tags gevonden in ComicInfo.xml/opf-bestanden",
         "allow-scrobbling-label": "Scrobbelen toestaan",
         "allow-scrobbling-tooltip": "Mocht Kavita leesgebeurtenissen scrobblen, status, beoordelingen en recensies willen lezen voor geconfigureerde providers. Dit gebeurt alleen als de server een actief Kavita+ abonnement heeft.",
-        "folder-watching-label": "Mappen bekijken",
-        "folder-watching-tooltip": "Negeer het bewaken van servermappen voor deze bibliotheek. Indien uitgeschakeld, wordt mapbewaking niet uitgevoerd op de mappen die deze bibliotheek bevat. Als bibliotheken mappen delen, kunnen mappen nog steeds worden aangevallen.",
         "include-in-dashboard-label": "Opnemen in dashboard",
         "include-in-dashboard-tooltip": "Moeten series uit de bibliotheek worden opgenomen op het Dashboard. Dit is van invloed op alle streams, zoals Aan Het Lezen, Onlangs bijgewerkt, Onlangs toegevoegd of andere aangepaste toevoegingen.",
         "include-in-search-label": "Opnemen in Zoeken",
@@ -651,7 +608,6 @@
         "cancel": "{{common.cancel}}",
         "next": "Volgende",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "help": "{{common.help}}"
     },
     "reader-settings": {
@@ -839,7 +795,6 @@
         "encode-as-description-part-1": "WebP/AVIF kan de benodigde ruimte voor bestanden drastisch verminderen. WebP/AVIF wordt niet door alle browsers of versies ondersteund. Als u wilt weten of deze instellingen geschikt zijn voor uw installatie, gaat u naar ",
         "encode-as-description-part-2": "Kan ik WebP gebruiken?",
         "encode-as-description-part-3": "Kan ik AVIF gebruiken?",
-        "encode-as-warning": "U kunt niet terug converteren naar PNG als u eenmaal naar WebP/AVIF bent gegaan. U moet omslagen in uw bibliotheken vernieuwen om alle omslagen opnieuw te genereren. Bladwijzers en favicons kunnen niet worden geconverteerd.",
         "media-warning": "U moet de mediaconversietaak activeren op het tabblad Taken.,",
         "encode-as-label": "Media opslaan als",
         "encode-as-tooltip": "Alle media die Kavita beheert (omslagen, bladwijzers, favicons) worden als dit type gecodeerd.",
@@ -890,10 +845,6 @@
         "logging-level-tooltip": "Gebruik foutopsporing om problemen te identificeren. Debuggen kan veel schijfruimte in beslag nemen.",
         "cache-size-label": "Cache grootte",
         "cache-size-tooltip": "De hoeveelheid geheugen die is toegestaan voor het cachen van zware API's. Standaard is 75 MB.",
-        "on-deck-last-progress-label": "Aan Het Lezen Laatste voortgang (dagen)",
-        "on-deck-last-progress-tooltip": "Het aantal dagen sinds de laatste voortgang voordat iets van Aan Het Lezen aftrad.",
-        "on-deck-last-chapter-add-label": "Aan Het Lezen Laatste hoofdstuk toevoegen (dagen)",
-        "on-deck-last-chapter-add-tooltip": "Het aantal dagen sinds het laatste hoofdstuk is toegevoegd om iets Aan Het Lezen op te nemen.",
         "allow-stats-label": "Verzameling van anonieme gebruiksgegevens toestaan",
         "allow-stats-tooltip-part-1": "Stuur anonieme gebruiksgegevens naar de servers van Kavita. Dit omvat informatie over bepaalde gebruikte functies, aantal bestanden, OS-versie, Kavita-installatieversie, CPU en geheugen. We zullen deze informatie gebruiken om prioriteit te geven aan functies, bugfixes en prestatieafstemming. Vereist opnieuw opstarten om van kracht te worden. Zie de ",
         "allow-stats-tooltip-part-2": "voor wat er wordt verzameld.",
@@ -989,10 +940,8 @@
     },
     "edit-collection-tags": {
         "title": "Collectie {{collectionName}} bewerken",
-        "required-field": "{{validation.required-field}}",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
         "name-label": "Naam",
         "name-validation": "Naam moet uniek zijn",
         "promote-label": "Aanprijzen",
@@ -1074,15 +1023,7 @@
         "characters-title": "{{metadata-fields.characters-title}}"
     },
     "events-widget": {
-        "title-alt": "Activiteit",
-        "dismiss-all": "Alles afkeuren",
-        "update-available": "Update beschikbaar",
-        "downloading-item": "{{item}} downloaden",
-        "more-info": "Klik voor meer informatie",
-        "close": "{{common.close}}",
-        "users-online-count": "{{num}} Gebruikers online",
-        "active-events-title": "Actieve gebeurtenissen:",
-        "no-data": "Er gebeurt hier niet veel"
+        "title-alt": "Activiteit"
     },
     "shortcuts-modal": {
         "title": "Sneltoetsen",
@@ -1095,24 +1036,8 @@
         "close-reader": "Sluit lezer",
         "toggle-menu": "Schakelmenu"
     },
-    "grouped-typeahead": {
-        "files": "Bestanden",
-        "chapters": "Hoofdstukken",
-        "people": "Mensen",
-        "tags": "Labels",
-        "genres": "{{metadata-fields.genres-title}}",
-        "bookmarks": "{{side-nav.bookmarks}}",
-        "libraries": "Bibliotheken",
-        "reading-lists": "Leeslijsten",
-        "collections": "Collecties",
-        "close": "{{common.close}}",
-        "loading": "{{common.loading}}"
-    },
     "nav-header": {
         "skip-alt": "Ga verder naar de hoofdinhoud",
-        "search-series-alt": "Zoek serie",
-        "search-alt": "Zoek…",
-        "no-data": "Geen resultaten gevonden",
         "scroll-to-top-alt": "Scroll naar boven",
         "server-settings": "Serverinstellingen",
         "settings": "Instellingen",
@@ -1142,7 +1067,6 @@
         "year-validation": "Moet groter zijn dan 1000, 0 of blanco",
         "month-validation": "Moet tussen 1 en 12 liggen of blanco zijn",
         "name-unique-validation": "Naam moet uniek zijn",
-        "required-field": "{{validation.required-field}}",
         "summary-label": "Samenvatting",
         "year-label": "Jaar",
         "month-label": "Maand",
@@ -1171,9 +1095,7 @@
     },
     "infinite-scroller": {
         "continuous-reading-prev-chapter-alt": "Scroll omhoog om naar het vorige hoofdstuk te gaan",
-        "continuous-reading-prev-chapter": "Vorig hoofdstuk",
-        "continuous-reading-next-chapter-alt": "Scroll omhoog om naar het volgende hoofdstuk te gaan",
-        "continuous-reading-next-chapter": "Volgende hoofdstuk"
+        "continuous-reading-prev-chapter": "Vorig hoofdstuk"
     },
     "manga-reader": {
         "back": "Terug",
@@ -1290,7 +1212,6 @@
         "language-label": "{{metadata-fields.language-title}}",
         "age-rating-label": "{{metadata-fields.age-rating-title}}",
         "publication-status-label": "Publicatiestatus",
-        "required-field": "{{validation.required-field}}",
         "close": "{{common.close}}",
         "name-label": "Naam",
         "sort-name-label": "Sorteernaam",
@@ -1301,7 +1222,6 @@
         "web-link-label": "{{tabs.weblink-tab}}",
         "cover-image-description": "Upload en kies een nieuwe omslagfoto. Druk op Opslaan om de omslag te uploaden en te negeren.",
         "save": "{{common.save}}",
-        "field-locked-alt": "Veld is vergrendeld",
         "info-title": "Informatie",
         "library-title": "Bibliotheek",
         "format-title": "Formaat",
@@ -1349,7 +1269,6 @@
         "age-rating-label": "{{edit-series-modal.age-rating-label}}",
         "web-link-description": "{{edit-series-modal.web-link-description}}",
         "web-link-label": "{{edit-series-modal.web-link-label}}",
-        "field-locked-alt": "{{edit-series-modal.field-locked-alt}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "size-label": "{{edit-series-modal.size-title}}",
         "links-label": "{{metadata-fields.links-title}}",
@@ -1453,7 +1372,6 @@
         "edit": "{{common.edit}}",
         "cancel": "{{common.cancel}}",
         "delete": "{{common.delete}}",
-        "required": "{{validation.required-field}}",
         "name-label": "Naam"
     },
     "stream-pipe": {
@@ -1508,8 +1426,7 @@
         "close": "{{common.close}}",
         "save": "{{common.save}}",
         "delete": "{{common.delete}}",
-        "min-length": "Recensie moet minimaal {{count}} tekens bevatten",
-        "required": "{{validation.required-field}}"
+        "min-length": "Recensie moet minimaal {{count}} tekens bevatten"
     },
     "common": {
         "book-num-shorthand": "Boek {{num}}",

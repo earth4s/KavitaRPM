@@ -21,6 +21,8 @@ using Kavita.Models.DTOs.Settings;
 using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Kavita.Services.Helpers;
+using Kavita.Services.Scanner;
+using Kavita.Models.Entities.MetadataMatching;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -31,7 +33,7 @@ namespace Kavita.Services;
 public class SettingsService(
     IUnitOfWork unitOfWork,
     IDirectoryService directoryService,
-    ILibraryWatcher libraryWatcher,
+    IFolderWatchService folderWatchService,
     ITaskScheduler taskScheduler,
     ILogger<SettingsService> logger,
     IOidcService oidcService,
@@ -55,6 +57,7 @@ public class SettingsService(
         existingMetadataSetting.EnableLocalizedName = dto.EnableLocalizedName;
         existingMetadataSetting.EnableName = dto.EnableName;
         existingMetadataSetting.EnablePublicationStatus = dto.EnablePublicationStatus;
+        existingMetadataSetting.EnableAgeRating = dto.EnableAgeRating;
         existingMetadataSetting.EnableRelationships = dto.EnableRelationships;
         existingMetadataSetting.EnablePeople = dto.EnablePeople;
         existingMetadataSetting.EnableStartDate = dto.EnableStartDate;
@@ -72,11 +75,24 @@ public class SettingsService(
         existingMetadataSetting.EnableVolumeCoverImage = dto.EnableVolumeCoverImage;
 
         existingMetadataSetting.AgeRatingMappings = dto.AgeRatingMappings ?? [];
+        existingMetadataSetting.ExternalAgeRatingMappings = dto.ExternalAgeRatingMappings ?? [];
 
         existingMetadataSetting.Blacklist = TagHelper.SortAndCleanTagList(dto.Blacklist);
         existingMetadataSetting.Whitelist = TagHelper.SortAndCleanTagList(dto.Whitelist);
         existingMetadataSetting.Overrides = [.. dto.Overrides ?? []];
         existingMetadataSetting.PersonRoles = dto.PersonRoles ?? [];
+        existingMetadataSetting.FilterAboveWeight = dto.FilterAboveWeight;
+
+        // Sanitize the tags by shape only as Windows/Linux will differ on supported codes from CultureInfo.GetCultures, like ja-Latn
+        existingMetadataSetting.GlobalNameLanguages = LanguageCodeHelper.Sanitize(dto.GlobalLanguageTitleSettings.Name);
+        existingMetadataSetting.GlobalLocalizedNameLanguages = LanguageCodeHelper.Sanitize(dto.GlobalLanguageTitleSettings?.LocalizedName);
+        existingMetadataSetting.LibraryLanguageTitleOverrides = (dto.LibraryLanguageTitleOverrides ?? [])
+            .Where(kvp => kvp is { Key: > 0, Value: not null })
+            .ToDictionary(kvp => kvp.Key, kvp => new SeriesNameLanguage
+            {
+                Name = LanguageCodeHelper.Sanitize(kvp.Value.Name),
+                LocalizedName = LanguageCodeHelper.Sanitize(kvp.Value.LocalizedName),
+            });
 
         // Handle Field Mappings
 
@@ -153,6 +169,7 @@ public class SettingsService(
         {
             existingMetadataSetting.AgeRatingMappings = dto.AgeRatingMappings;
         }
+
 
         if (settings.FieldMappings)
         {
@@ -265,7 +282,6 @@ public class SettingsService(
         // We do not allow CacheDirectory changes, so we will ignore.
         var currentSettings = await unitOfWork.SettingsRepository.GetSettingsAsync(ct);
         var updateBookmarks = false;
-        var originalBookmarkDirectory = directoryService.BookmarkDirectory;
 
         var bookmarkDirectory = updateSettingsDto.BookmarksDirectory;
         if (!updateSettingsDto.BookmarksDirectory.EndsWith("bookmarks") &&
@@ -397,21 +413,14 @@ public class SettingsService(
                 unitOfWork.SettingsRepository.Update(setting);
             }
 
-            if (setting.Key == ServerSettingKey.BookmarkDirectory && bookmarkDirectory != setting.Value)
+            if (setting.Key == ServerSettingKey.BookmarkDirectory && !IsSameFolder(bookmarkDirectory, setting.Value))
             {
-                // Validate new directory can be used
                 if (!await directoryService.CheckWriteAccess(bookmarkDirectory))
                 {
                     throw new KavitaException("bookmark-dir-permissions");
                 }
 
-                originalBookmarkDirectory = setting.Value;
-
-                // Normalize the path deliminators. Just to look nice in DB, no functionality
-                setting.Value = directoryService.FileSystem.Path.GetFullPath(bookmarkDirectory);
-                unitOfWork.SettingsRepository.Update(setting);
                 updateBookmarks = true;
-
             }
 
             if (setting.Key == ServerSettingKey.AllowStatCollection &&
@@ -451,6 +460,19 @@ public class SettingsService(
                 setting.Value = updateSettingsDto.EnableFolderWatching + string.Empty;
                 unitOfWork.SettingsRepository.Update(setting);
             }
+
+            if (setting.Key == ServerSettingKey.EnableKobo &&
+                updateSettingsDto.EnableKobo + string.Empty != setting.Value)
+            {
+                setting.Value = updateSettingsDto.EnableKobo + string.Empty;
+                unitOfWork.SettingsRepository.Update(setting);
+            }
+        }
+
+        if (updateBookmarks)
+        {
+            // The job saves the setting once the files have moved, so no bookmark points at a folder its file has not reached
+            BackgroundJob.Enqueue<IBookmarkService>(s => s.MoveBookmarkDirectory(bookmarkDirectory, CancellationToken.None));
         }
 
         if (!unitOfWork.HasChanges()) return updateSettingsDto;
@@ -465,17 +487,12 @@ public class SettingsService(
             }
             else
             {
-                await taskScheduler.ScheduleStatsTasks();
-            }
-
-            if (updateBookmarks)
-            {
-                UpdateBookmarkDirectory(originalBookmarkDirectory, bookmarkDirectory);
+                await taskScheduler.ScheduleStatsTasks(ct);
             }
 
             if (updateTask)
             {
-                BackgroundJob.Enqueue(() => taskScheduler.ScheduleTasks());
+                BackgroundJob.Enqueue(() => taskScheduler.ScheduleTasks(CancellationToken.None));
             }
 
             if (updatedOidcSettings)
@@ -491,11 +508,11 @@ public class SettingsService(
 
             if (updateSettingsDto.EnableFolderWatching)
             {
-                BackgroundJob.Enqueue(() => libraryWatcher.StartWatching());
+                BackgroundJob.Enqueue(() => folderWatchService.StartWatching());
             }
             else
             {
-                BackgroundJob.Enqueue(() => libraryWatcher.StopWatching());
+                BackgroundJob.Enqueue(() => folderWatchService.StopWatching());
             }
         }
         catch (Exception ex)
@@ -541,11 +558,11 @@ public class SettingsService(
         }
     }
 
-    private void UpdateBookmarkDirectory(string originalBookmarkDirectory, string bookmarkDirectory)
+    private bool IsSameFolder(string first, string second)
     {
-        directoryService.ExistOrCreate(bookmarkDirectory);
-        directoryService.CopyDirectoryToDirectory(originalBookmarkDirectory, bookmarkDirectory);
-        directoryService.ClearAndDeleteDirectory(originalBookmarkDirectory);
+        var path = directoryService.FileSystem.Path;
+        return Parser.NormalizePath(path.GetFullPath(first)).TrimEnd('/') ==
+               Parser.NormalizePath(path.GetFullPath(second)).TrimEnd('/');
     }
 
     private bool UpdateSchedulingSettings(ServerSetting setting, ServerSettingDto updateSettingsDto)
@@ -575,6 +592,13 @@ public class SettingsService(
         if (setting.Key == ServerSettingKey.TaskCblSync && updateSettingsDto.TaskCblSync != setting.Value)
         {
             setting.Value = updateSettingsDto.TaskCblSync;
+            unitOfWork.SettingsRepository.Update(setting);
+            return true;
+        }
+
+        if (setting.Key == ServerSettingKey.TaskCompositeCovers && updateSettingsDto.TaskCompositeCovers != setting.Value)
+        {
+            setting.Value = updateSettingsDto.TaskCompositeCovers;
             unitOfWork.SettingsRepository.Update(setting);
             return true;
         }

@@ -9,8 +9,7 @@ export interface MatchSeriesInfo {
   isLegacy: boolean;
   plusMediaFormat: PlusMediaFormat;
   libraryType: LibraryType;
-  matchedProvider?: MetadataProvider | null;
-  primaryProvider: MetadataProvider;
+  metadataProvider: MetadataProvider;
   seriesFormat: MangaFormat;
   mangaBakaId?: number;
   /** The currently selected MangaBaka edition, if any */
@@ -18,6 +17,8 @@ export interface MatchSeriesInfo {
   hardcoverId?: number;
   /** This is here since pre-v0.9.1 series will only have AniList **/
   aniListId?: number;
+  comicVineId?: number | null;
+  gcdId?: number | null;
   cbrId?: number;
   isStandAlone: boolean;
 }

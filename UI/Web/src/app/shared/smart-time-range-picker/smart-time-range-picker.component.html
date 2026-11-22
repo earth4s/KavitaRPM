@@ -35,19 +35,21 @@
           }
         }
         @case ('date') {
-          <form class="px-3 py-2" [formGroup]="formGroup">
+          <form class="px-3 py-2">
             <div class="mb-2">
               <input
                 type="date"
                 class="form-control form-control-sm"
-                formControlName="startDate"
+                [formField]="formGroup.startDate"
+                [appFormField]="formGroup.startDate"
               >
             </div>
             <div class="mb-2">
               <input
                 type="date"
                 class="form-control form-control-sm"
-                formControlName="endDate"
+                [formField]="formGroup.endDate"
+                [appFormField]="formGroup.endDate"
               >
             </div>
           </form>

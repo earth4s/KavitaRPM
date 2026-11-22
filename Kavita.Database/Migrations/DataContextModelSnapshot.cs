@@ -18,7 +18,7 @@ namespace Kavita.Database.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("AppUserCollectionSeries", b =>
                 {
@@ -179,6 +179,9 @@ namespace Kavita.Database.Migrations
                     b.Property<bool>("ColoristLocked")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("GcdId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ComicVineId")
                         .HasColumnType("TEXT");
 
@@ -188,8 +191,14 @@ namespace Kavita.Database.Migrations
                     b.Property<bool>("CoverArtistLocked")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("CoverFileWriteTimeUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
@@ -252,7 +261,7 @@ namespace Kavita.Database.Migrations
                     b.Property<long>("MalId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("MangaBakaId")
+                    b.Property<int>("MangaBakaId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("MaxHoursToRead")
@@ -354,6 +363,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.HasIndex("TitleName")
                         .HasDatabaseName("IX_Chapter_TitleName");
@@ -545,9 +556,6 @@ namespace Kavita.Database.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("LastScanned")
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("LibraryId")
                         .HasColumnType("INTEGER");
 
@@ -605,6 +613,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("Payload")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ScrobbleErrorId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("SeriesId")
                         .HasColumnType("INTEGER");
 
@@ -624,6 +635,8 @@ namespace Kavita.Database.Migrations
 
                     b.HasIndex("CreatedUtc")
                         .HasDatabaseName("IX_KavitaPlusAuditLog_CreatedUtc");
+
+                    b.HasIndex("ScrobbleErrorId");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_KavitaPlusAuditLog_UserId");
@@ -709,6 +722,136 @@ namespace Kavita.Database.Migrations
                     b.ToTable("ScrobbleRuleHistory");
                 });
 
+            modelBuilder.Entity("Kavita.Models.Entities.ImageFile", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Format")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("InputHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrimaryColor")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SecondaryColor")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SourceHeight")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SourceWidth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileName", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ImageFile_FileName_Kind");
+
+                    b.HasIndex("Kind", "Key")
+                        .HasDatabaseName("IX_ImageFile_Kind_Key");
+
+                    b.ToTable("ImageFile");
+                });
+
+            modelBuilder.Entity("Kavita.Models.Entities.Kobo.KoboSyncPoint", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.PrimitiveCollection<string>("ChapterIds")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ChapterIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ChapterSyncTime")
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("CollectionsIds")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CollectionsSyncTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CollectionsSyncedUntilIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("KoboDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KoboStoreSyncToken")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ProgressSyncTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProgressSyncedUntilId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProgressSyncedUntilIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.PrimitiveCollection<string>("ReadingListsIds")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReadingListsSyncTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReadingListsSyncedUntilIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RemovedChapterIds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("KoboSyncPoints");
+                });
+
             modelBuilder.Entity("Kavita.Models.Entities.Library", b =>
                 {
                     b.Property<int>("Id")
@@ -728,6 +871,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 
@@ -744,8 +890,14 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
-                    b.Property<bool>("FolderWatching")
+                    b.Property<int>("FolderWatchMode")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FolderWatchState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("{\"Mounts\":[],\"Downgrade\":null}");
 
                     b.Property<bool>("IncludeInDashboard")
                         .HasColumnType("INTEGER");
@@ -786,6 +938,12 @@ namespace Kavita.Database.Migrations
                     b.Property<bool>("RemovePrefixForSortName")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ScanInfo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("{\"Normal\":null,\"Forced\":null}");
+
                     b.Property<string>("SecondaryColor")
                         .HasColumnType("TEXT");
 
@@ -793,6 +951,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.ToTable("Library");
                 });
@@ -841,6 +1001,9 @@ namespace Kavita.Database.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("AnalyzedFileWriteTimeUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("Bytes")
                         .HasColumnType("INTEGER");
 
@@ -854,6 +1017,9 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Extension")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FileLastWriteTimeUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FileName")
@@ -899,8 +1065,8 @@ namespace Kavita.Database.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Comment")
-                        .HasColumnType("TEXT");
+                    b.Property<long?>("Bytes")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
@@ -909,13 +1075,22 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Details")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FileLastWriteTimeUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FilePath")
+                        .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDismissed")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
@@ -923,7 +1098,26 @@ namespace Kavita.Database.Migrations
                     b.Property<DateTime>("LastModifiedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Producer")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SeriesId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("LibraryId");
+
+                    b.HasIndex("SeriesId");
 
                     b.ToTable("MediaError");
                 });
@@ -941,9 +1135,6 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("ChapterId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("FavoriteCount")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Provider")
@@ -1359,6 +1550,11 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("Blacklist")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("EnableAgeRating")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("EnableChapterCoverImage")
                         .HasColumnType("INTEGER");
 
@@ -1417,8 +1613,29 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
+                    b.Property<string>("ExternalAgeRatingMappings")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FilterAboveWeight")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("FirstLastPeopleNaming")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("GlobalLocalizedNameLanguages")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("ja-Latn");
+
+                    b.Property<string>("GlobalNameLanguages")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("en");
+
+                    b.Property<string>("LibraryLanguageTitleOverrides")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("{}");
 
                     b.Property<string>("Overrides")
                         .HasColumnType("TEXT");
@@ -1473,6 +1690,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
 
@@ -1498,6 +1718,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.ToTable("Person");
                 });
@@ -1569,6 +1791,9 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KoboSpan")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastModified")
@@ -1819,6 +2044,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
 
@@ -1892,6 +2120,8 @@ namespace Kavita.Database.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppUserId");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.ToTable("ReadingList");
                 });
@@ -2014,6 +2244,9 @@ namespace Kavita.Database.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ChapterId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Comment")
                         .HasColumnType("TEXT");
 
@@ -2045,6 +2278,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ChapterId");
 
                     b.HasIndex("ScrobbleEventId1");
 
@@ -2207,11 +2442,17 @@ namespace Kavita.Database.Migrations
                     b.Property<int>("CbrId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("GcdId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ComicVineId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
@@ -2276,10 +2517,13 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("MangaBakaEditionId")
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("MangaBakaId")
+                    b.Property<int>("MangaBakaId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("MaxHoursToRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MetadataProviderOverride")
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("MetronId")
@@ -2325,6 +2569,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.HasIndex("LibraryId")
                         .HasDatabaseName("IX_Series_LibraryId");
@@ -2530,6 +2776,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 
@@ -2620,6 +2869,8 @@ namespace Kavita.Database.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CoverImageFileId");
+
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
 
@@ -2671,6 +2922,9 @@ namespace Kavita.Database.Migrations
 
                     b.Property<int>("HighlightCount")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("KoboId")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastModified")
                         .HasColumnType("TEXT");
@@ -2782,6 +3036,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("FileName")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("ImageOffset")
                         .HasColumnType("INTEGER");
 
@@ -2806,6 +3063,8 @@ namespace Kavita.Database.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ChapterId");
+
+                    b.HasIndex("ImageFileId");
 
                     b.HasIndex("SeriesId");
 
@@ -2881,6 +3140,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
 
@@ -2932,6 +3194,8 @@ namespace Kavita.Database.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppUserId");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.ToTable("AppUserCollection");
                 });
@@ -3115,6 +3379,11 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("KoboSyncPreferences")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("{\"SyncItemLimit\":100,\"ForwardToKoboStore\":true,\"LibrarySyncEnabled\":false,\"SyncLibraries\":[],\"ReadingListSyncEnabled\":false,\"SyncReadingLists\":[],\"CollectionSyncEnabled\":false,\"SyncCollections\":[],\"ManagedCollection\":0,\"HasManagedCollection\":false}");
+
                     b.Property<int>("LayoutMode")
                         .HasColumnType("INTEGER");
 
@@ -3126,6 +3395,16 @@ namespace Kavita.Database.Migrations
 
                     b.Property<bool>("NoTransitions")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int>("OnDeckProgressDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(30);
+
+                    b.Property<int>("OnDeckUpdateDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(7);
 
                     b.Property<string>("OpdsPreferences")
                         .ValueGeneratedOnAdd()
@@ -3617,6 +3896,9 @@ namespace Kavita.Database.Migrations
                     b.Property<string>("CoverImage")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CoverImageFileId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("CoverImageLocked")
                         .HasColumnType("INTEGER");
 
@@ -3646,7 +3928,7 @@ namespace Kavita.Database.Migrations
                     b.Property<long>("MalId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("MangaBakaId")
+                    b.Property<int>("MangaBakaId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("MaxHoursToRead")
@@ -3686,6 +3968,8 @@ namespace Kavita.Database.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CoverImageFileId");
 
                     b.HasIndex("SeriesId");
 
@@ -3930,11 +4214,18 @@ namespace Kavita.Database.Migrations
 
             modelBuilder.Entity("Kavita.Models.Entities.Chapter", b =>
                 {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kavita.Models.Entities.Volume", "Volume")
                         .WithMany("Chapters")
                         .HasForeignKey("VolumeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("CoverImageFile");
 
                     b.Navigation("Volume");
                 });
@@ -3974,10 +4265,17 @@ namespace Kavita.Database.Migrations
 
             modelBuilder.Entity("Kavita.Models.Entities.History.KavitaPlusAuditLog", b =>
                 {
+                    b.HasOne("Kavita.Models.Entities.Scrobble.ScrobbleError", "ScrobbleError")
+                        .WithMany()
+                        .HasForeignKey("ScrobbleErrorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kavita.Models.Entities.User.AppUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ScrobbleError");
 
                     b.Navigation("User");
                 });
@@ -4015,6 +4313,27 @@ namespace Kavita.Database.Migrations
                     b.Navigation("Series");
                 });
 
+            modelBuilder.Entity("Kavita.Models.Entities.Kobo.KoboSyncPoint", b =>
+                {
+                    b.HasOne("Kavita.Models.Entities.User.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Kavita.Models.Entities.Library", b =>
+                {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CoverImageFile");
+                });
+
             modelBuilder.Entity("Kavita.Models.Entities.LibraryExcludePattern", b =>
                 {
                     b.HasOne("Kavita.Models.Entities.Library", "Library")
@@ -4048,18 +4367,37 @@ namespace Kavita.Database.Migrations
                     b.Navigation("Chapter");
                 });
 
+            modelBuilder.Entity("Kavita.Models.Entities.MediaError", b =>
+                {
+                    b.HasOne("Kavita.Models.Entities.Library", "Library")
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Kavita.Models.Entities.Series", "Series")
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Library");
+
+                    b.Navigation("Series");
+                });
+
             modelBuilder.Entity("Kavita.Models.Entities.Metadata.ExternalRating", b =>
                 {
                     b.HasOne("Kavita.Models.Entities.Chapter", null)
                         .WithMany("ExternalRatings")
-                        .HasForeignKey("ChapterId");
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.Metadata.ExternalReview", b =>
                 {
                     b.HasOne("Kavita.Models.Entities.Chapter", null)
                         .WithMany("ExternalReviews")
-                        .HasForeignKey("ChapterId");
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.Metadata.ExternalSeriesMetadata", b =>
@@ -4172,6 +4510,16 @@ namespace Kavita.Database.Migrations
                     b.Navigation("Chapter");
 
                     b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("Kavita.Models.Entities.Person.Person", b =>
+                {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CoverImageFile");
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.Person.PersonAlias", b =>
@@ -4300,13 +4648,20 @@ namespace Kavita.Database.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("CoverImageFile");
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.ReadingLists.ReadingListItem", b =>
                 {
                     b.HasOne("Kavita.Models.Entities.Chapter", "Chapter")
-                        .WithMany()
+                        .WithMany("ReadingListItems")
                         .HasForeignKey("ChapterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -4373,6 +4728,11 @@ namespace Kavita.Database.Migrations
 
             modelBuilder.Entity("Kavita.Models.Entities.Scrobble.ScrobbleError", b =>
                 {
+                    b.HasOne("Kavita.Models.Entities.Chapter", "Chapter")
+                        .WithMany()
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Kavita.Models.Entities.Scrobble.ScrobbleEvent", "ScrobbleEvent")
                         .WithMany()
                         .HasForeignKey("ScrobbleEventId1");
@@ -4382,6 +4742,8 @@ namespace Kavita.Database.Migrations
                         .HasForeignKey("SeriesId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Chapter");
 
                     b.Navigation("ScrobbleEvent");
 
@@ -4398,7 +4760,8 @@ namespace Kavita.Database.Migrations
 
                     b.HasOne("Kavita.Models.Entities.Chapter", "Chapter")
                         .WithMany()
-                        .HasForeignKey("ChapterId");
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Kavita.Models.Entities.Library", "Library")
                         .WithMany()
@@ -4442,13 +4805,30 @@ namespace Kavita.Database.Migrations
 
             modelBuilder.Entity("Kavita.Models.Entities.Series", b =>
                 {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kavita.Models.Entities.Library", "Library")
                         .WithMany("Series")
                         .HasForeignKey("LibraryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("CoverImageFile");
+
                     b.Navigation("Library");
+                });
+
+            modelBuilder.Entity("Kavita.Models.Entities.User.AppUser", b =>
+                {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CoverImageFile");
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.User.AppUserAnnotation", b =>
@@ -4511,6 +4891,11 @@ namespace Kavita.Database.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "ImageFile")
+                        .WithMany()
+                        .HasForeignKey("ImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kavita.Models.Entities.Series", "Series")
                         .WithMany()
                         .HasForeignKey("SeriesId")
@@ -4526,6 +4911,8 @@ namespace Kavita.Database.Migrations
                     b.Navigation("AppUser");
 
                     b.Navigation("Chapter");
+
+                    b.Navigation("ImageFile");
 
                     b.Navigation("Series");
 
@@ -4567,7 +4954,14 @@ namespace Kavita.Database.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("CoverImageFile");
                 });
 
             modelBuilder.Entity("Kavita.Models.Entities.User.AppUserDashboardStream", b =>
@@ -4781,11 +5175,18 @@ namespace Kavita.Database.Migrations
 
             modelBuilder.Entity("Kavita.Models.Entities.Volume", b =>
                 {
+                    b.HasOne("Kavita.Models.Entities.ImageFile", "CoverImageFile")
+                        .WithMany()
+                        .HasForeignKey("CoverImageFileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kavita.Models.Entities.Series", "Series")
                         .WithMany("Volumes")
                         .HasForeignKey("SeriesId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("CoverImageFile");
 
                     b.Navigation("Series");
                 });
@@ -4852,6 +5253,8 @@ namespace Kavita.Database.Migrations
                     b.Navigation("People");
 
                     b.Navigation("Ratings");
+
+                    b.Navigation("ReadingListItems");
 
                     b.Navigation("UserProgress");
                 });

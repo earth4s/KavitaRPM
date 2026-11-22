@@ -1,6 +1,6 @@
-import {ComponentRef, inject, Injectable, InputSignal, ModelSignal, Type, WritableSignal} from '@angular/core';
+import {ComponentRef, inject, Injectable, InputSignal, ModelSignal, Type} from '@angular/core';
 import {NgbModal, NgbModalOptions, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
-import {environment} from "src/environments/environment";
+import {environment} from "../../environments/environment";
 
 export type UnwrapSignal<T> =
   T extends ModelSignal<infer R> ? R :
@@ -16,7 +16,7 @@ export interface TypedModalRef<C> extends NgbModalRef {
 })
 export class ModalService {
 
-  private modal = inject(NgbModal);
+  private readonly modal = inject(NgbModal);
 
   /** * TODO: This is a hack to get the ComponentRef because NgbModalRef does not expose it.
    * See https://github.com/ng-bootstrap/ng-bootstrap/issues/4688 */

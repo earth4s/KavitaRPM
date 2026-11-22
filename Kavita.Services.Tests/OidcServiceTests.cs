@@ -16,6 +16,7 @@ using Kavita.Models.Entities.User;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -583,7 +584,19 @@ public class OidcServiceTests(ITestOutputHelper outputHelper): AbstractDbTest(ou
 
         var principal = BuildPrincipal(claims);
 
-        Assert.NotNull(await oidcService.LoginOrCreate(null!, principal));
+        var user = await oidcService.LoginOrCreate(null!, principal);
+        Assert.NotNull(user);
+
+        context.ChangeTracker.Clear();
+        var saved = await context.AppUser
+            .Include(u => u.AuthKeys)
+            .Include(u => u.DashboardStreams)
+            .Include(u => u.SideNavStreams)
+            .Include(u => u.ReadingProfiles)
+            .Include(u => u.UserPreferences)
+            .AsSplitQuery()
+            .SingleAsync(u => u.Id == user.Id);
+        AccountServiceTests.AssertSeeded(saved);
     }
 
     [Fact]
@@ -640,7 +653,7 @@ public class OidcServiceTests(ITestOutputHelper outputHelper): AbstractDbTest(ou
         => new(
             unitOfWork,
             Substitute.For<IDirectoryService>(),
-            Substitute.For<ILibraryWatcher>(),
+            Substitute.For<IFolderWatchService>(),
             Substitute.For<ITaskScheduler>(),
             Substitute.For<ILogger<SettingsService>>(),
             Substitute.For<IOidcService>(),
@@ -740,7 +753,8 @@ public class OidcServiceTests(ITestOutputHelper outputHelper): AbstractDbTest(ou
         var accountService = new AccountService(userManager, Substitute.For<ILogger<AccountService>>(),
             unitOfWork, mapper, Substitute.For<ILocalizationService>());
         var oidcService = new OidcService(Substitute.For<ILogger<OidcService>>(), userManager, unitOfWork,
-            accountService, Substitute.For<IEmailService>(), Substitute.For<ICoverDbService>());
+            accountService, Substitute.For<IEmailService>(), Substitute.For<ICoverDbService>(),
+            Substitute.For<IAuthKeyService>());
 
         return (oidcService, user, accountService, userManager);
     }

@@ -1,0 +1,265 @@
+import {inject, Pipe, PipeTransform} from '@angular/core';
+import {TranslocoService} from '@jsverse/transloco';
+import {MessageEventCode} from '../_models/events/core/message-event-code';
+import {FolderWatchFallbackReason} from '../_models/events/core/folder-watch-fallback-reason';
+import {DateTime} from 'luxon';
+import {BytesPipe} from './bytes.pipe';
+import {UtcToLocalTimePipe} from './utc-to-local-time.pipe';
+import {KepubifyOffReasonPipe} from './kepubify-off-reason.pipe';
+import {KepubifyStatus} from '../admin/_models/kepubify-status';
+import {KepubifyCheckStatus} from '../admin/_models/kepubify-check-status';
+
+const PREFIX = 'event-message-pipe';
+// Mirrors the 24-hour cutoff in CleanupService.CleanupDebugExports
+const DebugExportKeptHours = 24;
+
+export interface EventMessageSource {
+  code: MessageEventCode | null;
+  title: string;
+  subTitle: string;
+  body: unknown;
+  updatedUtc: string;
+}
+
+export type EventMessagePart = 'label' | 'description';
+
+type MessageBody = Partial<{
+  libraryName: string;
+  seriesName: string;
+  folders: string[];
+  folderCount: number;
+  folder: string;
+  path: string;
+  filePath: string;
+  reason: FolderWatchFallbackReason;
+  message: string | null;
+  bytes: number;
+  status: KepubifyStatus;
+  corrected: number;
+  deleted: number;
+  bytesSaved: number;
+  missing: number;
+  unreadable: number;
+  moved: number;
+  skipped: number;
+}>;
+
+type Params = Record<string, string | undefined>;
+
+/**
+ * Title and second line of a coded Info or Error. Falls back to the server's English Title / SubTitle when the code is
+ * unknown or a value it needs is missing
+ */
+@Pipe({
+  name: 'eventMessage',
+  standalone: true
+})
+export class EventMessagePipe implements PipeTransform {
+  private readonly translocoService = inject(TranslocoService);
+  private readonly bytesPipe = new BytesPipe();
+  private readonly utcToLocalTimePipe = new UtcToLocalTimePipe();
+  private readonly kepubifyOffReasonPipe = new KepubifyOffReasonPipe();
+
+  transform(source: EventMessageSource, part: EventMessagePart): string {
+    const body = (source.body ?? {}) as MessageBody;
+    return part === 'label' ? this.label(source, body) : this.description(source, body);
+  }
+
+  private label(source: EventMessageSource, body: MessageBody): string {
+    const fallback = source.title;
+    const seriesName = body.seriesName;
+    const libraryName = body.libraryName;
+
+    switch (source.code) {
+      case MessageEventCode.RootFoldersInaccessible:
+        return this.translate(`${PREFIX}.root-folders-inaccessible-label`, {}, fallback);
+      case MessageEventCode.RootFoldersEmpty:
+        return this.translate(`${PREFIX}.root-folders-empty-label`, {libraryName}, fallback);
+      case MessageEventCode.RootFoldersUnreadable:
+        return this.translate(`${PREFIX}.root-folders-unreadable-label`, {libraryName}, fallback);
+      case MessageEventCode.UnreadableFolders:
+        return this.translate(`${PREFIX}.unreadable-folders-label`, {libraryName}, fallback);
+      case MessageEventCode.SeriesCollision:
+        return this.translate(`${PREFIX}.series-collision-label`, {seriesName, libraryName}, fallback);
+      case MessageEventCode.FilesOutsideFolder:
+        return this.translate(`${PREFIX}.files-outside-folder-label`, {seriesName}, fallback);
+      case MessageEventCode.ScanSeriesNoRoot:
+        return this.translate(`${PREFIX}.scan-series-no-root-label`, {seriesName}, fallback);
+      case MessageEventCode.ScanSeriesNotNested:
+        return this.translate(`${PREFIX}.scan-series-not-nested-label`, {seriesName}, fallback);
+      case MessageEventCode.ScanSeriesNoFiles:
+        return this.translate(`${PREFIX}.scan-series-no-files-label`, {seriesName}, fallback);
+      case MessageEventCode.ScanSeriesFolderMissing:
+        return this.translate(`${PREFIX}.scan-series-folder-missing-label`, {seriesName}, fallback);
+      case MessageEventCode.ScanNoWork:
+        return this.translate(`${PREFIX}.scan-no-work-label`, {seriesName}, fallback);
+      case MessageEventCode.DbWriteFailed:
+        return this.translate(`${PREFIX}.db-write-failed-label`, {seriesName}, fallback);
+      case MessageEventCode.LibraryScanFailed:
+        return this.translate(`${PREFIX}.library-scan-failed-label`, {libraryName}, fallback);
+      case MessageEventCode.SeriesUpdateFailed:
+        return this.translate(`${PREFIX}.series-update-failed-label`, {seriesName}, fallback);
+      case MessageEventCode.SeriesRemovalFailed:
+        return this.translate(`${PREFIX}.series-removal-failed-label`, {libraryName}, fallback);
+      case MessageEventCode.ScanLibrariesDelayed:
+        return this.translate(`${PREFIX}.scan-libraries-delayed-label`, {}, fallback);
+      case MessageEventCode.ScanLibraryDelayed:
+        return this.translate(`${PREFIX}.scan-library-delayed-label`, {libraryName}, fallback);
+      case MessageEventCode.ScanSeriesDelayed:
+        return this.translate(`${PREFIX}.scan-series-delayed-label`, {seriesName}, fallback);
+      case MessageEventCode.FolderWatchFallback:
+        return this.translate(`${PREFIX}.folder-watch-fallback-label`, {}, fallback);
+      case MessageEventCode.BackupFolderUnwritable:
+        return this.translate(`${PREFIX}.backup-folder-unwritable-label`, {}, fallback);
+      case MessageEventCode.BackupExists:
+        return this.translate(`${PREFIX}.backup-exists-label`, {}, fallback);
+      case MessageEventCode.CleanupOnHold:
+        return this.translate(`${PREFIX}.cleanup-on-hold-label`, {}, fallback);
+      case MessageEventCode.WordCountFailed:
+        return this.translate(`${PREFIX}.word-count-failed-label`, {seriesName}, fallback);
+      case MessageEventCode.DebugExportReady:
+        return this.translate(`${PREFIX}.debug-export-ready-label`, {}, fallback);
+      case MessageEventCode.DebugExportFailed:
+        return this.translate(`${PREFIX}.debug-export-failed-label`, {}, fallback);
+      case MessageEventCode.ImageMigrationSummary:
+        return this.translate(`${PREFIX}.image-migration-summary-label`, {}, fallback);
+      case MessageEventCode.MediaConversionSummary:
+        return this.translate(`${PREFIX}.media-conversion-summary-label`, {}, fallback);
+      case MessageEventCode.BookmarkDirectoryMoved:
+        return this.translate(`${PREFIX}.bookmark-directory-moved-label`, {}, fallback);
+      case MessageEventCode.KepubifyChecked:
+        return body.status?.status === KepubifyCheckStatus.NotSupported
+          ? this.translate(`${PREFIX}.kepubify-checked-failed-label`, {}, fallback)
+          : fallback;
+      default:
+        return fallback;
+    }
+  }
+
+  private description(source: EventMessageSource, body: MessageBody): string {
+    const fallback = source.subTitle;
+
+    switch (source.code) {
+      case MessageEventCode.RootFoldersInaccessible:
+        return this.translate(`${PREFIX}.root-folders-inaccessible-description`, {folders: body.folders?.join(', ')}, fallback);
+      case MessageEventCode.RootFoldersEmpty:
+        return this.translate(`${PREFIX}.root-folders-empty-description`, {}, fallback);
+      case MessageEventCode.RootFoldersUnreadable:
+        return this.translate(`${PREFIX}.root-folders-unreadable-description`, {folders: body.folders?.join(', ')}, fallback);
+      case MessageEventCode.UnreadableFolders:
+        return this.unreadableFoldersDescription(body, fallback);
+      case MessageEventCode.SeriesCollision:
+        return this.translate(`${PREFIX}.series-collision-description`, {}, fallback);
+      case MessageEventCode.FilesOutsideFolder:
+        return this.translate(`${PREFIX}.files-outside-folder-description`, {}, fallback);
+      case MessageEventCode.ScanSeriesNoRoot:
+        return this.translate(`${PREFIX}.scan-series-no-root-description`, {}, fallback);
+      case MessageEventCode.ScanSeriesNotNested:
+        return this.translate(`${PREFIX}.scan-series-not-nested-description`, {}, fallback);
+      case MessageEventCode.ScanSeriesNoFiles:
+        return this.translate(`${PREFIX}.scan-series-no-files-description`, {}, fallback);
+      case MessageEventCode.ScanSeriesFolderMissing:
+        return this.translate(`${PREFIX}.scan-series-folder-missing-description`, {}, fallback);
+      case MessageEventCode.ScanNoWork:
+        return this.translate(`${PREFIX}.scan-no-work-description`, {}, fallback);
+      case MessageEventCode.DbWriteFailed:
+      case MessageEventCode.LibraryScanFailed:
+      case MessageEventCode.DebugExportFailed:
+        // SubTitle is the raw exception message
+        return source.subTitle;
+      case MessageEventCode.SeriesUpdateFailed:
+        return body.message ?? this.translate(`${PREFIX}.series-update-failed-description`, {}, fallback);
+      case MessageEventCode.SeriesRemovalFailed:
+        return this.translate(`${PREFIX}.series-removal-failed-description`, {}, fallback);
+      case MessageEventCode.ScanLibrariesDelayed:
+      case MessageEventCode.ScanLibraryDelayed:
+      case MessageEventCode.ScanSeriesDelayed:
+        return this.translate(`${PREFIX}.scan-delayed-description`, {}, fallback);
+      case MessageEventCode.FolderWatchFallback: {
+        const key = body.reason === FolderWatchFallbackReason.MissedChange
+          ? 'folder-watch-fallback-missed-change-description'
+          : 'folder-watch-fallback-errors-description';
+        return this.translate(`${PREFIX}.${key}`, {folder: body.folder, libraryName: body.libraryName}, fallback);
+      }
+      case MessageEventCode.BackupFolderUnwritable:
+        return this.translate(`${PREFIX}.backup-folder-unwritable-description`, {folder: body.folder}, fallback);
+      case MessageEventCode.BackupExists:
+        return this.translate(`${PREFIX}.backup-exists-description`, {path: body.path}, fallback);
+      case MessageEventCode.CleanupOnHold:
+        return this.translate(`${PREFIX}.cleanup-on-hold-description`, {}, fallback);
+      case MessageEventCode.WordCountFailed:
+        return this.translate(`${PREFIX}.word-count-failed-description`, {filePath: body.filePath}, fallback);
+      case MessageEventCode.DebugExportReady:
+        return this.debugExportReadyDescription(source, body, fallback);
+      case MessageEventCode.ImageMigrationSummary:
+      case MessageEventCode.MediaConversionSummary:
+        return this.imageCleanupSummaryDescription(body, fallback);
+      case MessageEventCode.BookmarkDirectoryMoved:
+        return this.bookmarkDirectoryMovedDescription(body, fallback);
+      case MessageEventCode.KepubifyChecked: {
+        const status = body.status;
+        if (status?.status !== KepubifyCheckStatus.NotSupported) return fallback;
+
+        const reason = this.kepubifyOffReasonPipe.transform(status.reason);
+        return this.translate(`${PREFIX}.kepubify-checked-failed-description`, {path: status.path, reason}, fallback);
+      }
+      default:
+        return fallback;
+    }
+  }
+
+  private debugExportReadyDescription(source: EventMessageSource, body: MessageBody, fallback: string): string {
+    if (body.bytes === undefined) return fallback;
+
+    const size = this.bytesPipe.transform(body.bytes);
+    const keptUntilUtc = DateTime.fromISO(source.updatedUtc, {zone: 'utc'}).plus({hours: DebugExportKeptHours}).toISO();
+    const time = this.utcToLocalTimePipe.transform(keptUntilUtc, 'weekdayTime');
+    return this.translate(`${PREFIX}.debug-export-ready-description`, {size, time}, fallback);
+  }
+
+  private imageCleanupSummaryDescription(body: MessageBody, fallback: string): string {
+    if (body.corrected === undefined || body.deleted === undefined || body.bytesSaved === undefined) return fallback;
+
+    const params: Params = {
+      corrected: body.corrected.toLocaleString(),
+      deleted: body.deleted.toLocaleString(),
+      size: this.bytesPipe.transform(Math.max(body.bytesSaved, 0)),
+    };
+    const missing = body.missing ?? 0;
+    const unreadable = body.unreadable ?? 0;
+    if (missing + unreadable === 0) {
+      return this.translate(`${PREFIX}.image-cleanup-summary-description`, params, fallback);
+    }
+
+    return this.translate(`${PREFIX}.image-cleanup-summary-skipped-description`,
+      {...params, missing: missing.toLocaleString(), unreadable: unreadable.toLocaleString()}, fallback);
+  }
+
+  private bookmarkDirectoryMovedDescription(body: MessageBody, fallback: string): string {
+    if (body.moved === undefined || body.path === undefined) return fallback;
+
+    const params: Params = {moved: body.moved.toLocaleString(), path: body.path};
+    const skipped = body.skipped ?? 0;
+    if (skipped === 0) {
+      return this.translate(`${PREFIX}.bookmark-directory-moved-description`, params, fallback);
+    }
+
+    return this.translate(`${PREFIX}.bookmark-directory-moved-skipped-description`,
+      {...params, skipped: skipped.toLocaleString()}, fallback);
+  }
+
+  private unreadableFoldersDescription(body: MessageBody, fallback: string): string {
+    const folders = body.folders?.join(', ');
+    const rest = (body.folderCount ?? 0) - (body.folders?.length ?? 0);
+    if (rest > 0) {
+      return this.translate(`${PREFIX}.unreadable-folders-more-description`, {folders, count: `${rest}`}, fallback);
+    }
+    return this.translate(`${PREFIX}.unreadable-folders-description`, {folders}, fallback);
+  }
+
+  private translate(key: string, params: Params, fallback: string): string {
+    if (Object.values(params).some(v => !v)) return fallback;
+    return this.translocoService.translate(key, params);
+  }
+
+}

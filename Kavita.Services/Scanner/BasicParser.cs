@@ -14,15 +14,20 @@ namespace Kavita.Services.Scanner;
 /// </summary>
 public class BasicParser(IDirectoryService directoryService, IDefaultParser imageParser) : DefaultParser(directoryService)
 {
-    public override ParserInfo? Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null)
+    public override ParseInfoResult Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null)
     {
         var fileName = directoryService.FileSystem.Path.GetFileNameWithoutExtension(filePath);
         // TODO: Potential Bug: This will return null, but on Image libraries, if all images, we would want to include this.
-        if (type != LibraryType.Image && Parser.IsCoverImage(directoryService.FileSystem.Path.GetFileName(filePath))) return null;
+        if (Parser.IsSkippedCoverImage(directoryService.FileSystem.Path.GetFileName(filePath), type))
+        {
+            return ParseInfoResult.SkippedParse();
+        }
 
         if (Parser.IsImage(filePath))
         {
-            return imageParser.Parse(filePath, rootPath, libraryRoot, LibraryType.Image, enableMetadata, comicInfo);
+            var image = imageParser.Parse(filePath, rootPath, libraryRoot, LibraryType.Image, enableMetadata, comicInfo);
+            if (image.Info != null) ApplyComicSpecialsFolder(image.Info, libraryRoot, type);
+            return image;
         }
 
         var ret = new ParserInfo()
@@ -124,9 +129,11 @@ public class BasicParser(IDirectoryService directoryService, IDefaultParser imag
             ret.Volumes = Parser.SpecialVolume;
         }
 
+        ApplyComicSpecialsFolder(ret, libraryRoot, type);
+
         FinalizeNumbers(ret);
 
-        return ret.Series == string.Empty ? null : ret;
+        return ParseInfoResult.FromParserInfo(ret);
     }
 
     /// <summary>

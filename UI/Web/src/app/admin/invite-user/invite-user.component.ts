@@ -1,12 +1,6 @@
-import {ChangeDetectorRef, Component, computed, DestroyRef, inject, OnInit, signal} from '@angular/core';
-import {FormControl, FormGroup, NonNullableFormBuilder, ReactiveFormsModule, Validators} from '@angular/forms';
+import {ChangeDetectionStrategy, Component, computed, inject, OnInit, signal} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
-import {ToastrService} from 'ngx-toastr';
-import {AgeRestriction} from 'src/app/_models/metadata/age-restriction';
-import {InviteUserResponse} from 'src/app/_models/auth/invite-user-response';
-import {Library} from 'src/app/_models/library/library';
-import {AgeRating} from 'src/app/_models/metadata/age-rating';
-import {AccountService, allRoles, Role} from 'src/app/_services/account.service';
+import {ToastrService} from '@openng/ngx-toastr';
 import {ApiKeyComponent} from '../../user-settings/api-key/api-key.component';
 import {RestrictionSelectorComponent} from '../../user-settings/restriction-selector/restriction-selector.component';
 import {translate, TranslocoDirective} from "@jsverse/transloco";
@@ -16,44 +10,55 @@ import {
   MultiCheckBoxItem,
   SettingMultiCheckBox
 } from "../../settings/_components/setting-multi-check-box/setting-multi-check-box.component";
-import {debounceTime, distinctUntilChanged, Observable, startWith} from "rxjs";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {map} from "rxjs/operators";
-import {AsyncPipe} from "@angular/common";
+import {AccountService, allRoles, Role} from "../../_services/account.service";
+import {AgeRestriction} from "../../_models/metadata/age-restriction";
+import {AgeRating} from "../../_models/metadata/age-rating";
+import {Library} from "../../_models/library/library";
+import {InviteUserResponse} from "../../_models/auth/invite-user-response";
+import {FormFieldDirective} from "../../_directives/form-field.directive";
+import {ValidationErrorsComponent} from "../../shared/_components/validation-errors/validation-errors.component";
+import {form, FormField, required} from "@angular/forms/signals";
+
+interface InviteFormModel {
+  email: string;
+  libraries: number[],
+  roles: Role[]
+}
+
 
 @Component({
-    selector: 'app-invite-user',
-    templateUrl: './invite-user.component.html',
-    styleUrls: ['./invite-user.component.scss'],
-  imports: [ReactiveFormsModule, RestrictionSelectorComponent,
-    ApiKeyComponent, TranslocoDirective, SafeHtmlPipe, SettingMultiCheckBox, AsyncPipe]
+  selector: 'app-invite-user',
+  templateUrl: './invite-user.component.html',
+  styleUrls: ['./invite-user.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RestrictionSelectorComponent, ApiKeyComponent, TranslocoDirective, SafeHtmlPipe,
+    SettingMultiCheckBox, FormFieldDirective, ValidationErrorsComponent, FormField]
 })
 export class InviteUserComponent implements OnInit {
 
-  private readonly cdRef = inject(ChangeDetectorRef);
   private readonly accountService = inject(AccountService);
   private readonly toastr = inject(ToastrService);
   protected readonly modal = inject(NgbActiveModal);
   private readonly libraryService = inject(LibraryService);
-  private readonly destroyRef = inject(DestroyRef);
 
   /**
    * Maintains if the backend is sending an email
    */
-  isSending: boolean = false;
-  inviteForm: FormGroup<{
-    email: FormControl<string>,
-    libraries: FormControl<number[]>,
-    roles: FormControl<Role[]>,
-  }> = new FormGroup({
-    email: new FormControl<string>(''),
-    libraries: new FormControl<number[]>([]),
-    roles: new FormControl<Role[]>([Role.Login]),
-  }) as any;
+  isSending = signal<boolean>(false);
+
+  private readonly inviteFormModel = signal<InviteFormModel>({
+    email: '',
+    libraries: [],
+    roles: [Role.Login]
+  });
+  inviteForm = form(this.inviteFormModel, (path) => {
+    required(path.email);
+  })
+
   selectedRestriction: AgeRestriction = {ageRating: AgeRating.NotApplicable, includeUnknowns: false};
-  emailLink: string = '';
-  invited: boolean = false;
-  inviteError: boolean = false;
+  emailLink = signal<string>('');
+  invited = signal<boolean>(false);
+  inviteError = signal<boolean>(false);
 
   libraries = signal<Library[]>([]);
   libraryOptions = computed<MultiCheckBoxItem<number>[]>(() => this.libraries().map(l => {
@@ -65,27 +70,25 @@ export class InviteUserComponent implements OnInit {
       }}
   });
 
-  readOnlyWarning$!: Observable<string | undefined>;
+  readOnlyWarning = computed(() => {
+    const roles = this.inviteForm.roles().value();
+    return roles.includes(Role.ReadOnly)
+      ? translate('edit-user.warning-read-only')
+      : undefined;
+  });
 
+  canSave = computed(() => {
+    return this.isSending() || !this.inviteForm().valid  || this.emailLink() !== '';
+  });
 
-  makeLink: (val: string) => string = (_: string) => {return this.emailLink};
+  hasAdminRoleSelected = computed(() => {
+    return this.inviteForm.roles().value().includes(Role.Admin);
+  });
 
-  get hasAdminRoleSelected() { return this.inviteForm.get('roles')!.value.includes(Role.Admin); };
-
-  get email() { return this.inviteForm.get('email'); }
 
 
   ngOnInit(): void {
     this.libraryService.getLibraries().subscribe(libraries => this.libraries.set(libraries));
-
-    this.readOnlyWarning$ = this.inviteForm.get('roles')!.valueChanges.pipe(
-      startWith([Role.Login]),
-      takeUntilDestroyed(this.destroyRef),
-      distinctUntilChanged(),
-      debounceTime(10),
-      map((roles: string[]) => roles.includes(Role.ReadOnly)),
-      map(readOnlySelected => readOnlySelected ? translate('edit-user.warning-read-only') : undefined),
-    );
   }
 
   close() {
@@ -93,23 +96,21 @@ export class InviteUserComponent implements OnInit {
   }
 
   invite() {
-    this.isSending = true;
+    this.isSending.set(true);
 
-    const email = this.inviteForm.get('email')!.value;
+    const email = this.inviteForm.email().value();
 
     this.accountService.inviteUser({
-      ...this.inviteForm.getRawValue(),
+      ...this.inviteFormModel(),
       ageRestriction: this.selectedRestriction
     }).subscribe((data: InviteUserResponse) => {
-      this.emailLink = data.emailLink;
-      this.isSending = false;
-      this.invited = true;
-      this.cdRef.markForCheck();
+      this.emailLink.set(data.emailLink);
+      this.isSending.set(false);
+      this.invited.set(true);
 
       if (data.invalidEmail) {
         this.toastr.info(translate('toasts.email-not-sent'));
-        this.inviteError = true;
-        this.cdRef.markForCheck();
+        this.inviteError.set(true);
         return;
       }
 
@@ -120,14 +121,12 @@ export class InviteUserComponent implements OnInit {
 
     }, err => {
       // Note to self: If you need to catch an error, do it, but don't toast because interceptor handles that
-      this.isSending = false;
-      this.cdRef.markForCheck();
+      this.isSending.set(false);
     });
   }
 
   updateRestrictionSelection(restriction: AgeRestriction) {
     this.selectedRestriction = restriction;
-    this.cdRef.markForCheck();
   }
 
 }

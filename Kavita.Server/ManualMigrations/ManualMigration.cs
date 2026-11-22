@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using Kavita.API.Services;
 using Kavita.Database;
 using Kavita.Models.Entities.History;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Kavita.Server.ManualMigrations;
 
+/// <summary>
+/// Runs a Migration before/after EF Core
+/// </summary>
+/// <remarks>Update .editorconfig to suppress warnings once a minor/major release bump has occured (v0.8 -> v0.9)</remarks>
 public abstract class ManualMigration
 {
     protected abstract string MigrationName { get; }
@@ -13,10 +18,10 @@ public abstract class ManualMigration
     /// <summary>
     /// Execute the migration logic. Handle your own exceptions.
     /// </summary>
-    protected abstract Task ExecuteAsync(DataContext context, ILogger<Program> logger);
+    protected abstract Task ExecuteAsync(DataContext context, ILogger logger);
 
 
-    public async Task RunAsync(DataContext context, ILogger<Program> logger)
+    public async Task RunAsync(DataContext context, ILogger logger)
     {
         // Ensure we clear the ChangeTracker between migration runs, so we are starting fresh
         context.ChangeTracker.Clear();

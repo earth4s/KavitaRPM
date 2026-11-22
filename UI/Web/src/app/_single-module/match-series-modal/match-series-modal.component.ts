@@ -8,17 +8,16 @@ import {
   linkedSignal,
   OnInit,
   signal,
-  Signal
+  Signal,
+  untracked
 } from '@angular/core';
 import {Series} from "../../_models/series";
 import {SeriesService} from "../../_services/series.service";
-import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {NgbActiveModal, NgbTooltip} from "@ng-bootstrap/ng-bootstrap";
 import {TranslocoDirective} from "@jsverse/transloco";
 import {ExternalSeriesMatch} from "../../_models/series-detail/external-series-match";
-import {ToastrService} from "ngx-toastr";
-import {catchError, filter, of, skip, startWith, tap} from "rxjs";
-import {takeUntilDestroyed, toSignal} from "@angular/core/rxjs-interop";
+import {catchError, filter, of, skip, tap} from "rxjs";
+import {takeUntilDestroyed, toObservable} from "@angular/core/rxjs-interop";
 import {EmptyStateComponent} from "../../shared/_components/empty-state/empty-state.component";
 import {
   MatchSeriesResultItemComponent
@@ -30,15 +29,30 @@ import {
   ScrobbleProviderTagBadgeComponent
 } from "../../shared/_components/scrobble-provider-tag-badge/scrobble-provider-tag-badge.component";
 import {MatchSeriesInfo} from "../../_models/kavitaplus/match-series-info";
-import {MetadataProvider} from "../../_models/kavitaplus/metadata-provider.enum";
+import {AllMetadataProviders, MetadataProvider} from "../../_models/kavitaplus/metadata-provider.enum";
 import {ScrobbleProvider} from "../../_services/scrobbling.service";
 import {MetadataProviderTitlePipe} from "../../_pipes/metadata-provider-title.pipe";
-import {ExternalEditionDto, PlusMediaFormat} from "../../_models/series-detail/external-series-detail";
+import {ExternalEditionDto} from "../../_models/series-detail/external-series-detail";
+import {SeriesFormatComponent} from "../../shared/series-format/series-format.component";
+import {LibraryTypePipe} from "../../_pipes/library-type.pipe";
+import {SeriesMetadata} from "../../_models/metadata/series-metadata";
+import {disabled, form, FormField} from "@angular/forms/signals";
+import {MatchSeriesRequest} from "../../_models/kavitaplus/match-series-request";
+import {SettingSelectComponent} from "../../settings/_components/setting-enum-select/setting-select.component";
+
+import {LicenseService} from "../../_services/license.service";
+import {LibraryType} from "../../_models/library/library";
+
+interface MatchSeriesFormModel {
+  query: string;
+  isStandAlone: boolean;
+  dontMatch: boolean;
+  provider: MetadataProvider;
+}
 
 @Component({
   selector: 'app-match-series-modal',
   imports: [
-    ReactiveFormsModule,
     TranslocoDirective,
     NgbTooltip,
     EmptyStateComponent,
@@ -46,6 +60,10 @@ import {ExternalEditionDto, PlusMediaFormat} from "../../_models/series-detail/e
     ImageComponent,
     ScrobbleProviderTagBadgeComponent,
     MetadataProviderTitlePipe,
+    SeriesFormatComponent,
+    LibraryTypePipe,
+    FormField,
+    SettingSelectComponent,
   ],
   templateUrl: './match-series-modal.component.html',
   styleUrl: './match-series-modal.component.scss',
@@ -55,23 +73,33 @@ export class MatchSeriesModalComponent implements OnInit {
 
   private readonly seriesService = inject(SeriesService);
   private readonly modalService = inject(NgbActiveModal);
-  private readonly toastr = inject(ToastrService);
   private readonly imageService = inject(ImageService);
 
   series = input.required<Series>();
+  initialProvider = input<MetadataProvider>();
+  private readonly licenseService = inject(LicenseService);
+  private searchRequest = 0;
+  protected readonly allMetadataProviders = computed(() => this.licenseService.hasActiveLicense()
+    ? AllMetadataProviders.filter(p => ![MetadataProvider.ComicVine, MetadataProvider.Gcd].includes(p) ||
+        [LibraryType.Comic, LibraryType.ComicVine].includes(this.matchInfo()?.libraryType as LibraryType))
+    : []);
 
-  formGroup = new FormGroup({
-    query: new FormControl('', []),
-    isStandAlone: new FormControl(false),
-    dontMatch: new FormControl(false, []),
+  formModel = signal<MatchSeriesFormModel>({
+    query: '',
+    isStandAlone: false,
+    dontMatch: false,
+    provider: MetadataProvider.Mangabaka
+  });
+  formGroup = form(this.formModel, (path) => {
+    disabled(path.query, {when: ({valueOf}) => valueOf(path.dontMatch)});
   });
 
-  protected readonly isDontMatch = toSignal(
-    this.formGroup.controls.dontMatch.valueChanges.pipe(
-      startWith(this.formGroup.controls.dontMatch.value)
-    ),
-    { initialValue: false }
-  );
+  protected readonly isDontMatch = computed(() => {
+    return this.formGroup.dontMatch().value();
+  });
+  protected readonly queryString = computed(() => {
+    return this.formGroup.query().value() ?? '';
+  });
 
   canSaveDontMatch!: Signal<boolean>;
   matches = signal<ExternalSeriesMatch[]>([]);
@@ -81,6 +109,8 @@ export class MatchSeriesModalComponent implements OnInit {
   selectedEdition = signal<ExternalEditionDto | null>(null);
   selectedEditionId = linkedSignal<string | null>(() => this.selectedEdition()?.id ?? null);
   lastQuery = signal<string>('');
+  /** Provider the results on screen came from. */
+  resultProvider = signal<MetadataProvider | null>(null);
 
   protected bodyState = computed<'empty' | 'dont-match' | 'loading' | 'results' | 'no-results'>(() => {
     if (this.isDontMatch()) return 'dont-match';
@@ -94,78 +124,146 @@ export class MatchSeriesModalComponent implements OnInit {
   kavitaChapterCount!: Signal<number>;
   kavitaSpecialCount!: Signal<number>;
   seriesDetail = signal<SeriesDetail | null>(null);
+  seriesMetadata = signal<SeriesMetadata | null>(null);
   matchInfo = signal<MatchSeriesInfo | null>(null);
+
+  peopleHint = computed(() => {
+    const metadata = this.seriesMetadata();
+    if (!metadata) return null;
+
+    return metadata.writers
+      .concat(metadata.colorists)
+      .concat(metadata.coverArtists)
+      .slice(0, 3)
+      .map(person => person.name)
+      .join(', ');
+  });
 
   mangaBakaSearchUrl = computed(() => {
     return `https://mangabaka.org/search?q=${encodeURIComponent(this.series().name)}`;
   });
 
+  hardcoverSearchUrl = computed(() => {
+    const isStandalone = this.series().isStandAlone;
+    const extraQuery = (isStandalone) ? '&type=Series' : '';
+    return `https://hardcover.app/search?q=${encodeURIComponent(this.series().name)}${extraQuery}`;
+  });
+
+  cbrSearchUrl = computed(() => {
+    return `https://comicbookroundup.com/search-results?keyword=${encodeURIComponent(this.series().name)}`;
+  });
+
+  /** Provider the results came from, falling back to the series' own before the first search lands */
+  protected activeProvider = computed(() => this.resultProvider() ?? this.formGroup.provider().value());
+  /** The search ran against another provider than the series own, so applying a match will switch the Series over */
+  protected isProviderSwitched = computed(() => {
+    const provider = this.resultProvider();
+    return provider !== null && provider !== this.matchInfo()?.metadataProvider;
+  });
+
+  private lastProvider: MetadataProvider | null = null;
+
+
   constructor() {
-    this.canSaveDontMatch = computed(() => this.isDontMatch() === true && !this.series().dontMatch);
+    this.canSaveDontMatch = computed(() => this.isDontMatch() && !this.series().dontMatch);
     this.coverImageUrl = computed(() => this.imageService.getSeriesCoverImage(this.series().id));
     this.kavitaVolumeCount = computed(() => (this.seriesDetail()?.volumes ?? []).length);
     this.kavitaChapterCount = computed(() => (this.seriesDetail()?.chapters ?? []).length);
     this.kavitaSpecialCount = computed(() => (this.seriesDetail()?.specials ?? []).length);
 
-    effect(() => {
-      if (this.series().mangaBakaEditionId) {
-        this.selectedEditionId.set(this.series().mangaBakaEditionId);
-      }
 
-      this.seriesService.getMatchInfo(this.series().id).subscribe(res => {
-        this.matchInfo.set(res);
-        this.autoSelectExistingMatch(this.matches());
-      });
-    });
-
-    effect(() => {
-      if (this.isDontMatch()) {
-        this.formGroup.controls.query.disable({ emitEvent: false });
-      } else {
-        this.formGroup.controls.query.enable({ emitEvent: false });
-      }
-    });
-
-    this.formGroup.controls.dontMatch.valueChanges.pipe(
+    toObservable(this.isDontMatch).pipe(
       skip(1),
-      filter(v => v === false),
+      filter(v => !v),
       takeUntilDestroyed()
     ).subscribe(() => this.search());
+
+    toObservable(this.formGroup.provider().value).pipe(
+      skip(1),
+      takeUntilDestroyed(),
+      tap(provider => {
+        if (!this.matchInfo() || provider === this.lastProvider) return;
+
+        this.lastProvider = provider;
+
+        this.selectedItem.set(null);
+        this.selectedEdition.set(null);
+        this.search();
+      })
+    ).subscribe();
   }
 
   ngOnInit() {
-    this.formGroup.patchValue({ dontMatch: this.series().dontMatch || false });
+    if (this.series().mangaBakaEditionId) {
+      this.selectedEditionId.set(this.series().mangaBakaEditionId);
+    }
+
+    this.seriesService.getMatchInfo(this.series().id).subscribe(res => {
+      this.matchInfo.set(res);
+      const requested = this.initialProvider() ?? res.metadataProvider;
+      const provider = this.allMetadataProviders().includes(requested) ? requested : this.allMetadataProviders()[0];
+      if (provider === undefined) return;
+      this.lastProvider = provider;
+      this.formGroup.provider().value.set(provider);
+      this.search();
+    });
+
+    this.formGroup.dontMatch().value.set(this.series().dontMatch || false);
+
     this.seriesService.getSeriesDetail(this.series().id).pipe(
       tap(detail => {
         this.seriesDetail.set(detail)
 
         const isStandAlone = detail.chapters.length + detail.specials.length == 1;
-        this.formGroup.get('isStandAlone')?.setValue(isStandAlone);
-
-        this.search();
+        this.formGroup.isStandAlone().value.set(isStandAlone);// This will trigger the initial search
       }),
+    ).subscribe();
+
+    this.seriesService.getMetadata(this.series().id).pipe(
+      tap(metadata => this.seriesMetadata.set(metadata)),
     ).subscribe();
   }
 
   search() {
-    if (this.isDontMatch()) return;
+    if (this.isDontMatch() || !this.matchInfo()) return;
+    const request = ++this.searchRequest;
+    this.selectedItem.set(null);
+    this.selectedEdition.set(null);
+    this.matches.set([]);
+    this.resultProvider.set(null);
+
+    const query = this.queryString();
 
     this.isLoading.set(true);
-    this.lastQuery.set(this.formGroup.value.query ?? '');
+    this.lastQuery.set(query);
 
-    const model: any = { ...this.formGroup.value, seriesId: this.series().id };
+
+    const model = {
+      ...this.formModel(),
+      seriesId: this.series().id
+    } as MatchSeriesRequest;
+
 
     this.seriesService.matchSeries(model).pipe(
-      tap(results => {
+      tap(res => {
+        if (request !== this.searchRequest) return;
         this.isLoading.set(false);
         this.hasSearched.set(true);
-        this.matches.set(results);
-        this.autoSelectExistingMatch(results);
+        this.matches.set(res.matches);
+
+        // The backend can search against another provider than the one asked for, when the query is a
+        // provider specific url/header. Show what the results actually came from
+        this.resultProvider.set(res.provider);
+        this.lastProvider = res.provider;
+        this.formGroup.provider().value.set(res.provider);
+
+        this.autoSelectExistingMatch(res.matches);
       }),
       catchError(() => {
+        if (request !== this.searchRequest) return of(null);
         this.isLoading.set(false);
         this.hasSearched.set(true);
-        return of([]);
+        return of(null);
       })
     ).subscribe();
   }
@@ -195,7 +293,11 @@ export class MatchSeriesModalComponent implements OnInit {
       return !!info.aniListId && s.aniListId === info.aniListId;
     }
 
-    switch (info.matchedProvider) {
+    switch (info.metadataProvider) {
+      case MetadataProvider.Gcd:
+        return !!info.gcdId && s.gcdId === info.gcdId;
+      case MetadataProvider.ComicVine:
+        return !!info.comicVineId && s.comicVineId === info.comicVineId;
       case MetadataProvider.Mangabaka:
         return !!info.mangaBakaId && s.mangabakaId === info.mangaBakaId;
       case MetadataProvider.ComicBookRoundup:
@@ -208,11 +310,11 @@ export class MatchSeriesModalComponent implements OnInit {
   }
 
   clearQuery() {
-    this.formGroup.get('query')?.setValue('');
+    this.formGroup.query().value.set('');
   }
 
   matchKey(item: ExternalSeriesMatch) {
-    return `${item.series.provider}_${item.series.mangabakaId}_${item.series.hardcoverId}_${item.series.cbrId}_${item.series.aniListId}_${item.series.malId}`;
+    return `${item.series.provider}_${item.series.comicVineId}_${item.series.mangabakaId}_${item.series.hardcoverId}_${item.series.cbrId}_${item.series.aniListId}_${item.series.malId}`;
   }
 
   private findDefaultEdition(item: ExternalSeriesMatch): ExternalEditionDto | null {
@@ -254,20 +356,19 @@ export class MatchSeriesModalComponent implements OnInit {
     data.tags = data.tags || [];
     data.genres = data.genres || [];
 
-    this.seriesService.updateMatch(this.series().id, data, this.selectedEdition()).subscribe(() => {
+    // Sending the provider the results came from lets the backend switch the Series over to it, if it differs
+    this.seriesService.updateMatch(this.series().id, data, this.selectedEdition(), this.resultProvider()).subscribe(() => {
       this.modalService.close(true);
     });
   }
 
   saveDontMatch() {
-    this.seriesService.updateDontMatch(this.series().id, true).subscribe(() => {
+    this.seriesService.updateDontMatch(this.series().id, true, this.formGroup.provider().value()).subscribe(() => {
       this.modalService.close(true);
     });
   }
 
-
-
   protected readonly MetadataProvider = MetadataProvider;
   protected readonly ScrobbleProvider = ScrobbleProvider;
-  protected readonly PlusMediaFormat = PlusMediaFormat;
+
 }

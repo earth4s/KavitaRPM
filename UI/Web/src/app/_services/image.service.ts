@@ -1,5 +1,5 @@
 import {computed, DestroyRef, inject, Injectable} from '@angular/core';
-import {environment} from 'src/environments/environment';
+import {environment} from '../../environments/environment';
 import {ThemeService} from './theme.service';
 import {AccountService} from './account.service';
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
@@ -137,7 +137,7 @@ export class ImageService {
             ? label
             : label + langSuffix;
 
-          return { url: d.url, title } as CoverImageOption;
+          return { url: d.url, title, sourceUrl: d.sourceUrl } as CoverImageOption;
       })
       )
     );

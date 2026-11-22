@@ -18,10 +18,6 @@ export interface User extends IHasCover {
   scrobbleEventGenerationRan: string; // datetime
   identityProvider: IdentityProvider;
   authKeys: AuthKey[];
-
-  coverImage?: string;
-  primaryColor: string;
-  secondaryColor: string;
 }
 
 export enum IdentityProvider {
@@ -29,4 +25,4 @@ export enum IdentityProvider {
   OpenIdConnect = 1,
 }
 
-export const IdentityProviders: IdentityProvider[] = [IdentityProvider.Kavita, IdentityProvider.OpenIdConnect];
+export const allIdentityProviders: IdentityProvider[] = [IdentityProvider.Kavita, IdentityProvider.OpenIdConnect];

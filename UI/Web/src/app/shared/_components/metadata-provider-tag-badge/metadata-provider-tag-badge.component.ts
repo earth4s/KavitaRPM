@@ -15,6 +15,7 @@ import {ScrobbleProviderTagBadgeComponent} from "../scrobble-provider-tag-badge/
 export class MetadataProviderTagBadgeComponent {
 
   metadataProvider = input.required<MetadataProvider>();
+  protected readonly MetadataProvider = MetadataProvider;
 
   protected mappedScrobbleProvider = computed(() => {
     switch (this.metadataProvider()) {
@@ -24,6 +25,8 @@ export class MetadataProviderTagBadgeComponent {
         return ScrobbleProvider.MangaBaka;
       case MetadataProvider.ComicBookRoundup:
         return ScrobbleProvider.Cbr;
+      default:
+        return ScrobbleProvider.Kavita;
     }
   });
 

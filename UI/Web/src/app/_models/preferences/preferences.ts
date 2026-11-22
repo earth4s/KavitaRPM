@@ -18,6 +18,8 @@ export interface Preferences {
   colorScapeEnabled: boolean;
   dataSaver: boolean;
   promptForRereadsAfter: number;
+  onDeckProgressDays: number;
+  onDeckUpdateDays: number;
   customKeyBinds: Partial<Record<KeyBindTarget, KeyBind[]>>;
 
   // Kavita+
@@ -28,6 +30,7 @@ export interface Preferences {
   socialPreferences: SocialPreferences;
 
   opdsPreferences: OpdsPreferences;
+  koboSyncPreferences: KoboSyncPreferences;
 }
 
 export interface SocialPreferences {
@@ -45,6 +48,18 @@ export interface OpdsPreferences {
   includeContinueFrom: boolean;
 }
 
+export interface KoboSyncPreferences {
+  syncItemLimit: number;
+  forwardToKoboStore: boolean;
+  librarySyncEnabled: boolean;
+  syncLibraries: number[];
+  readingListSyncEnabled: boolean;
+  syncReadingLists: number[];
+  collectionSyncEnabled: boolean;
+  syncCollections: number[];
+  managedCollection: number;
+}
+
 export interface KeyBind {
   meta?: boolean;
   control?: boolean;
@@ -58,6 +73,7 @@ export enum KeyBindTarget {
   NavigateToSettings = 'NavigateToSettings',
   OpenSearch = 'OpenSearch',
   NavigateToScrobbling = 'NavigateToScrobbling',
+  OpenEventWidget = 'OpenEventWidget',
 
   ToggleFullScreen = 'ToggleFullScreen',
   BookmarkPage = 'BookmarkPage',

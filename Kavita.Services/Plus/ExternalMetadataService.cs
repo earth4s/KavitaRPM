@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -35,6 +38,7 @@ using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
 using Kavita.Models.Entities.Enums.KavitaPlus;
 using Kavita.Models.Entities.Interfaces;
+using Kavita.Models.Images;
 using Kavita.Models.Entities.Metadata;
 using Kavita.Models.Entities.MetadataMatching;
 using Kavita.Models.Entities.Person;
@@ -43,6 +47,8 @@ using Kavita.Models.Extensions;
 using Kavita.Services.Extensions;
 using Kavita.Services.Helpers;
 using Kavita.Services.Scanner;
+using Markdig;
+using Markdig.Renderers;
 using Microsoft.Extensions.Logging;
 
 namespace Kavita.Services.Plus;
@@ -56,16 +62,19 @@ public class ExternalMetadataService : IExternalMetadataService
     private readonly IScrobblingService _scrobblingService;
     private readonly IEventHub _eventHub;
     private readonly ICoverDbService _coverDbService;
+    private readonly IImageFileService _imageFileService;
     private readonly IKavitaPlusApiService _kavitaPlusApiService;
     private readonly IFileCacheService _fileCacheService;
     private readonly IKavitaPlusAuditService _auditService;
+    private readonly IComicVineService _comicVine;
+    private readonly IGcdService? _gcd;
 
-    private const int SeriesPerRefresh = 25;
+    private const int SeriesPerRefresh = 40; // 50 - overhead for scans
     private readonly TimeSpan _externalSeriesMetadataCache = TimeSpan.FromDays(30);
     private readonly string[] _artistRoleStrings = [
         "Art", "Story & Art",  // AniList
         "Artist", // MangaBaka, Hardcover
-        "Illustrations", "Cover Artist" // Hardcover
+        "Illustrations", "Cover Artist", "Illustrator" // Hardcover
     ];
     private readonly string[] _writerRoleStrings = [
         "Story", "Story & Art", // AniList
@@ -78,14 +87,20 @@ public class ExternalMetadataService : IExternalMetadataService
         Ratings = [],
         Reviews = []
     };
+
     // Allow 50 requests per 24 hours
-    private static readonly RateLimiter RateLimiter = new RateLimiter(50, TimeSpan.FromHours(24), false);
-    private static bool IsRomanCharacters(string input) => Regex.IsMatch(input, @"^[\p{IsBasicLatin}\p{IsLatin-1Supplement}]+$");
+    private static readonly RateLimiter RateLimiter = new(50, TimeSpan.FromHours(24), false);
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> SeriesWriteLocks = new();
+    private static SemaphoreSlim GetSeriesWriteLock(int seriesId) => SeriesWriteLocks.GetOrAdd(seriesId, static _ => new SemaphoreSlim(1, 1));
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder().UseKavitaPlus().Build();
 
     public ExternalMetadataService(IUnitOfWork unitOfWork, ILogger<ExternalMetadataService> logger, IMapper mapper,
         ILicenseService licenseService, IScrobblingService scrobblingService, IEventHub eventHub, ICoverDbService coverDbService,
-        IKavitaPlusApiService kavitaPlusApiService, IFileCacheService fileCacheService, IKavitaPlusAuditService auditService)
+        IKavitaPlusApiService kavitaPlusApiService, IFileCacheService fileCacheService, IKavitaPlusAuditService auditService,
+        IImageFileService imageFileService,
+        IComicVineService comicVine, IGcdService? gcd = null)
     {
+        _imageFileService = imageFileService;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _mapper = mapper;
@@ -96,6 +111,8 @@ public class ExternalMetadataService : IExternalMetadataService
         _kavitaPlusApiService = kavitaPlusApiService;
         _fileCacheService = fileCacheService;
         _auditService = auditService;
+        _comicVine = comicVine;
+        _gcd = gcd;
 
         FlurlConfiguration.ConfigureClientForUrl(Configuration.KavitaPlusApiUrl);
     }
@@ -124,12 +141,12 @@ public class ExternalMetadataService : IExternalMetadataService
 
         if (ids.Count == 0)
         {
-            _logger.LogInformation("[Kavita+ Data Refresh] No series need matching or refreshing (stale data)");
+            _logger.LogDebug("[Kavita+ Data Refresh] No series need matching or refreshing (stale data)");
             return;
         }
 
 
-        _logger.LogInformation("[Kavita+ Data Refresh] Started Refreshing {Count} series data from Kavita+: {Ids}", ids.Count, string.Join(',', ids));
+        _logger.LogDebug("[Kavita+ Data Refresh] Started Refreshing {Count} series data from Kavita+: {Ids}", ids.Count, string.Join(',', ids));
         var count = 0;
         var successfulMatches = new List<int>();
         var libTypes = await _unitOfWork.LibraryRepository.GetLibraryTypesBySeriesIdsAsync(ids, ct);
@@ -144,7 +161,7 @@ public class ExternalMetadataService : IExternalMetadataService
             }
             await Task.Delay(10000, ct); // Currently AL is degraded and has 30 requests/min, give a little padding since this is a background request
         }
-        _logger.LogInformation("[Kavita+ Data Refresh] Finished Refreshing {Count} / {Total} series data from Kavita+: {Ids}", count, ids.Count, string.Join(',', successfulMatches));
+        _logger.LogDebug("[Kavita+ Data Refresh] Finished Refreshing {Count} / {Total} series data from Kavita+: {Ids}", count, ids.Count, string.Join(',', successfulMatches));
     }
 
     public async Task<SeriesDetailPlusDto?> TryMatchAndLoadMetadataForSeries(int seriesId, LibraryType libraryType, MetadataFetchTrigger trigger,
@@ -153,10 +170,16 @@ public class ExternalMetadataService : IExternalMetadataService
         if (!IsPlusEligible(libraryType)) return null;
         if (!await _licenseService.HasActiveLicense(ct: ct)) return null;
 
-        var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library | SeriesIncludes.Chapters, ct: ct);
+        var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library | SeriesIncludes.Chapters | SeriesIncludes.Metadata, ct: ct);
         if (series == null) return null;
+        if (series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd)
+        {
+            if (trigger != MetadataFetchTrigger.OnDemand || series.DontMatch) return null;
+            var detail = await ReadComicVineDetail(series, ct);
+            return detail == null ? null : new SeriesDetailPlusDto { Series = detail, Reviews = [], Ratings = [] };
+        }
 
-        if (!series.WillScrobble() || !series.Library.AllowMetadataMatching) return null;
+        if (trigger != MetadataFetchTrigger.OnDemand && (!series.WillScrobble() || !series.Library.AllowMetadataMatching)) return null;
 
         // OnDemand (Page visit) is allowed to bypass the rate limit to allow for a nicer user experience
         // TODO: Check if this is correct. Do we want a stricter RateLimit on it?
@@ -166,11 +189,15 @@ public class ExternalMetadataService : IExternalMetadataService
             return null;
         }
 
-        if (HasRequiredId(series, series.Library.MetadataProvider))
+        if (HasRequiredId(series, series.GetEffectiveMetadataProvider()))
         {
             return await GetSeriesDetailPlus(seriesId, libraryType, trigger, ct: ct);
         }
 
+        // When metadata is off, never do automatic match flow
+        if (!series.WillScrobble() || !series.Library.AllowMetadataMatching) return null;
+
+        var format = series.Library.Type.ConvertToPlusMediaFormat(series.Format);
         var matchRequest = new MatchRequestV3Dto
         {
             AniListId = series.AniListId,
@@ -181,10 +208,12 @@ public class ExternalMetadataService : IExternalMetadataService
             MetronId = series.MetronId,
             ComicVineId = series.ComicVineId,
             IsStandAlone = series.Volumes.Sum(v => v.Chapters.Count) == 1,
-            Provider = series.Library.MetadataProvider,
+            Provider = series.GetEffectiveMetadataProvider(),
             SeriesName = series.Name,
             AlternativeNames = ExtractAlternativeNames(series),
-            Format = series.Library.Type.ConvertToPlusMediaFormat(series.Format),
+            Year = GetReleaseYear(series, format),
+            IssueCount = await GetIssueCount(series.Id, ct),
+            Format = format,
         };
 
         var result = await _kavitaPlusApiService.MatchSeriesV3Async(matchRequest, ct);
@@ -194,41 +223,10 @@ public class ExternalMetadataService : IExternalMetadataService
             return null;
         }
 
-        var validAutomatedMatches = result.Data
-            .Where(m => m.MatchRating > 0.9)
-            .OrderBy(m => m.MatchRating)
-            .ToList();
+        var match = await PickBestMatch(series, result.Data, ct);
+        if (match == null) return null;
 
-        if (validAutomatedMatches.Count == 0)
-        {
-            series.IsBlacklisted = true;
-            await _unitOfWork.CommitAsync(ct);
-
-            await _auditService.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesBlacklisted,
-                AuditStatus.Failure, seriesId: seriesId, error: "no-matches", ct: ct);
-
-            _logger.LogInformation("No good enough matches out of {TotalMatch} found for Series {SeriesId}", result.Data.Count, seriesId);
-            return null;
-        }
-
-        // WE can add a new case for validatedAutomatedMatches.Count == 2 && validatedAutomatedMatches[1] < 1f && validatedAutomatedMatches[0] == 1f
-
-        if (validAutomatedMatches.Count > 1)
-        {
-            series.IsBlacklisted = true;
-            await _unitOfWork.CommitAsync(ct);
-
-            await _auditService.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesBlacklisted,
-                AuditStatus.Failure, seriesId: seriesId, error: "too-many-matches", ct: ct);
-
-            _logger.LogInformation("Found {GoodMatch} good enough matches out of {TotalMatch} found for Series {SeriesId}. Will not automatically choose",
-                validAutomatedMatches.Count, result.Data.Count, seriesId);
-            return null;
-        }
-
-        var match = validAutomatedMatches[0];
-
-        _logger.LogInformation("Matches series {SeriesId} to MangaBaka: {MangaBakaId}, HardcoverId: {HardcoverId}, CbrId: {CbrId} with {Certainty}% certainty",
+        _logger.LogDebug("Matches series {SeriesId} to MangaBaka: {MangaBakaId}, HardcoverId: {HardcoverId}, CbrId: {CbrId} with {Certainty}% certainty",
             seriesId, match.Series.MangabakaId, match.Series.HardcoverId, match.Series.CbrId, match.MatchRating * 100);
 
         var beforeIds = new AuditLogMatchExternalIdsParamsDto
@@ -248,7 +246,7 @@ public class ExternalMetadataService : IExternalMetadataService
         series.CbrId = match.Series.CbrId ?? 0;
         series.IsStandAlone = match.Series.IsStandAlone;
 
-        if (series.Library.MetadataProvider == MetadataProvider.Mangabaka)
+        if (series.GetEffectiveMetadataProvider() == MetadataProvider.Mangabaka)
         {
             var editionMatch = PickBestEdition(series, match.Series.Editions);
 
@@ -287,8 +285,56 @@ public class ExternalMetadataService : IExternalMetadataService
             MetadataProvider.Hardcover => series.HardcoverId > 0,
             MetadataProvider.Mangabaka => series.MangaBakaId > 0 || series.AniListId > 0 || series.MalId > 0,
             MetadataProvider.ComicBookRoundup => series.CbrId > 0,
+            MetadataProvider.Gcd => series.GcdId.HasValue,
+            MetadataProvider.ComicVine => !string.IsNullOrEmpty(series.ComicVineId),
             _ => throw new ArgumentOutOfRangeException(nameof(metadataProvider), metadataProvider, null)
         };
+    }
+
+    private async Task<ExternalSeriesMatchDto?> PickBestMatch(Series series, IList<ExternalSeriesMatchDto> matches, CancellationToken ct)
+    {
+        var perfectAutomatedMatches = matches
+            .Where(m => m.MatchRating == 1f)
+            .ToList();
+
+        // Exactly one perfect match, use it regardless of other good (> 0.9) matches
+        if (perfectAutomatedMatches.Count == 1)
+        {
+            return perfectAutomatedMatches[0];
+        }
+
+        var validAutomatedMatches = matches
+            .Where(m => m.MatchRating > 0.9)
+            .OrderBy(m => m.MatchRating)
+            .ToList();
+
+        // Exactly one good enough match, use it
+        if (validAutomatedMatches.Count == 1)
+        {
+            return validAutomatedMatches[0];
+        }
+
+        if (validAutomatedMatches.Count == 0)
+        {
+            series.IsBlacklisted = true;
+            await _unitOfWork.CommitAsync(ct);
+
+            await _auditService.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesBlacklisted,
+                AuditStatus.Failure, seriesId: series.Id, error: "no-matches", ct: ct);
+
+            _logger.LogDebug("No good enough matches out of {TotalMatch} found for Series {SeriesId}",matches.Count, series.Id);
+            return null;
+        }
+
+        series.IsBlacklisted = true;
+        await _unitOfWork.CommitAsync(ct);
+
+        await _auditService.LogAsync(KavitaPlusAuditCategory.Match, KavitaPlusEventType.SeriesBlacklisted,
+            AuditStatus.Failure, seriesId: series.Id, error: "too-many-matches", ct: ct);
+
+        _logger.LogDebug("Found {GoodMatch} good enough matches out of {TotalMatch} found for Series {SeriesId}. Will not automatically choose",
+            validAutomatedMatches.Count, matches.Count, series.Id);
+        return null;
     }
 
     private static ExternalEditionDto? PickBestEdition(Series series, IList<ExternalEditionDto> editions)
@@ -371,86 +417,20 @@ public class ExternalMetadataService : IExternalMetadataService
     /// <param name="dto"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    public async Task<IList<ExternalSeriesMatchDto>> MatchSeries(MatchSeriesDto dto, CancellationToken ct = default)
+    public async Task<MatchSeriesResultDto?> MatchSeries(MatchSeriesDto dto, CancellationToken ct = default)
     {
-        const SeriesIncludes includes = SeriesIncludes.Metadata | SeriesIncludes.ExternalMetadata | SeriesIncludes.Library;
+        const SeriesIncludes includes = SeriesIncludes.Metadata | SeriesIncludes.ExternalMetadata | SeriesIncludes.Library | SeriesIncludes.Chapters;
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(dto.SeriesId, includes, ct);
-        if (series == null) return [];
+        if (series == null) return null;
 
-        var query = dto.Query ?? string.Empty;
+        var queried = ParseQueriedIds(dto.Query);
 
-        var potentialAnilistId = ExternalIdParser.TryParseAniListHeader(query, out var aniListId)
-            ? aniListId : ExternalIdParser.GetAniListId(query);
+        var provider = queried.Provider ?? dto.Provider ?? series.GetEffectiveMetadataProvider();
+        if (provider is MetadataProvider.ComicVine or MetadataProvider.Gcd)
+            throw new KavitaException("Use the direct catalog matching endpoint.");
 
-        var potentialMalId = ExternalIdParser.TryParseMalHeader(query, out var malId)
-            ? malId : ExternalIdParser.GetMalId(query);
-
-        var potentialMangabakaId = ExternalIdParser.TryParseMangaBakaHeader(query, out var mangabakaId)
-            ? mangabakaId : ExternalIdParser.GetMangaBakaId(query);
-
-        var potentialHardcoverSlug = ExternalIdParser.TryParseHardcoverHeader(query, out var hardcoverId)
-            ? hardcoverId : null;
-
-        var potentialCbrSlug = query.Contains("comicbookroundup.com/") ? query : null;
-
-        // If any ID was extracted (header syntax or URL), the raw query string is meaningless to the backend
-        var wasHeaderQuery = potentialAnilistId.HasValue
-                             || potentialMalId.HasValue
-                             || potentialMangabakaId > 0
-                             || !string.IsNullOrEmpty(potentialHardcoverSlug)
-                             || !string.IsNullOrEmpty(potentialCbrSlug); // For now, we pass slug as query as there is a direct handling on Query currently
-
-        query = wasHeaderQuery ? null : dto.Query;
-
-        var format = series.Library.Type.ConvertToPlusMediaFormat(series.Format);
-        var otherNames = ExtractAlternativeNames(series);
-
-        var year = series.Metadata.ReleaseYear;
-        if (year == 0 && format == PlusMediaFormat.Comic && !string.IsNullOrWhiteSpace(series.Name))
-        {
-            var potentialYear = Parser.ParseYear(series.Name);
-            if (!string.IsNullOrEmpty(potentialYear))
-            {
-                year = int.Parse(potentialYear);
-            }
-        }
-
-        var slug = series.Library.MetadataProvider switch
-        {
-            MetadataProvider.Hardcover => potentialHardcoverSlug,
-            MetadataProvider.ComicBookRoundup => potentialCbrSlug,
-            _ => string.Empty,
-        };
-
-        // If the query is empty, then use external ids. Otherwise, use what is being queried
-        var isQueryEmpty = string.IsNullOrEmpty(query);
-
-        var fallbackAniListId = series.AniListId > 0 && isQueryEmpty
-            ? series.AniListId
-            : ExternalIdParser.GetAniListId(series.Metadata.WebLinks);
-        var fallbackMalId = series.MalId > 0 && isQueryEmpty
-            ? series.MalId
-            : ExternalIdParser.GetMalId(series.Metadata.WebLinks);
-        var fallbackMangaBakaId = series.MangaBakaId > 0 && isQueryEmpty
-            ? series.MangaBakaId
-            : ExternalIdParser.GetMangaBakaId(series.Metadata.WebLinks);
-
-        var matchV3Request = new MatchRequestV3Dto
-        {
-            AniListId = potentialAnilistId ?? fallbackAniListId,
-            MalId = potentialMalId ?? fallbackMalId,
-            HardcoverId = dto.IsStandAlone ? ExternalIdParser.GetHardcoverBookId(series.Metadata.WebLinks) : ExternalIdParser.GetHardcoverSeriesId(series.Metadata.WebLinks),
-            Slug = slug,
-            CbrId = null,
-            MangabakaId = potentialMangabakaId > 0 ? potentialMangabakaId : fallbackMangaBakaId,
-            IsStandAlone = dto.IsStandAlone,
-            Provider = series.Library.MetadataProvider,
-            SeriesName = series.Name,
-            AlternativeNames = otherNames,
-            Year = year,
-            Query = query,
-            Format = format,
-        };
+        var issueCount = await GetIssueCount(series.Id, ct);
+        var matchV3Request = BuildMatchRequest(series, dto, queried, provider, issueCount);
 
         _logger.LogDebug("Making match request for series {SeriesId}: {@Request}", series.Id, matchV3Request);
 
@@ -458,7 +438,7 @@ public class ExternalMetadataService : IExternalMetadataService
         if (!kPlusResult.IsSuccess)
         {
             _logger.LogError("Match request failed for {SeriesName}: {Error}", series.Name, kPlusResult.ErrorMessage);
-            return [];
+            return new MatchSeriesResultDto {Provider = provider};
         }
 
         var results = kPlusResult.Data;
@@ -469,7 +449,126 @@ public class ExternalMetadataService : IExternalMetadataService
             result.Series.Summary = StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(result.Series.Summary));
         }
 
-        return results;
+        return new MatchSeriesResultDto
+        {
+            Provider = provider,
+            Matches = results,
+        };
+    }
+
+    private sealed record QueriedExternalIds
+    {
+        public int? AniListId { get; init; }
+        public long? MalId { get; init; }
+        public long MangaBakaId { get; init; }
+        public string? HardcoverSlug { get; init; }
+        public string? CbrSlug { get; init; }
+        /// <summary>
+        /// Set when the queried url itself says if it points at a single book or at a series
+        /// </summary>
+        public bool? IsStandAlone { get; init; }
+
+        /// <summary>
+        /// If any id was found, the raw query string is meaningless to Kavita+ and shouldn't be sent along
+        /// </summary>
+        public bool HasAny => AniListId.HasValue || MalId.HasValue || MangaBakaId > 0
+                              || !string.IsNullOrEmpty(HardcoverSlug) || !string.IsNullOrEmpty(CbrSlug);
+
+        /// <summary>
+        /// The provider that owns these ids, if the user queried a provider-specific url/header
+        /// </summary>
+        public MetadataProvider? Provider
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(HardcoverSlug)) return MetadataProvider.Hardcover;
+                if (!string.IsNullOrEmpty(CbrSlug)) return MetadataProvider.ComicBookRoundup;
+                if (MangaBakaId > 0 || AniListId.HasValue || MalId.HasValue) return MetadataProvider.Mangabaka;
+
+                return null;
+            }
+        }
+    }
+
+    private static QueriedExternalIds ParseQueriedIds(string? rawQuery)
+    {
+        var query = rawQuery ?? string.Empty;
+        var hardcoverUrl = ExternalIdParser.GetHardcoverSlugFromUrl(query);
+
+        return new QueriedExternalIds
+        {
+            AniListId = ExternalIdParser.TryParseAniListHeader(query, out var aniListId)
+                ? aniListId : ExternalIdParser.GetAniListId(query),
+            MalId = ExternalIdParser.TryParseMalHeader(query, out var malId)
+                ? malId : ExternalIdParser.GetMalId(query),
+            MangaBakaId = ExternalIdParser.TryParseMangaBakaHeader(query, out var mangaBakaId)
+                ? mangaBakaId : ExternalIdParser.GetMangaBakaId(query),
+            HardcoverSlug = ExternalIdParser.TryParseHardcoverHeader(query, out var hardcoverSlug)
+                ? hardcoverSlug : hardcoverUrl?.Slug,
+            // For now, we pass the slug as query as there is a direct handling on query currently
+            CbrSlug = query.Contains("comicbookroundup.com/") ? query : null,
+            IsStandAlone = hardcoverUrl?.IsStandAlone,
+        };
+    }
+
+    private static MatchRequestV3Dto BuildMatchRequest(Series series, MatchSeriesDto dto, QueriedExternalIds queried,
+        MetadataProvider provider, int? issueCount)
+    {
+        // If any id was extracted, the raw query string is meaningless to the backend
+        var query = queried.HasAny ? null : dto.Query;
+        var isStandAlone = queried.IsStandAlone ?? dto.IsStandAlone;
+        var format = series.Library.Type.ConvertToPlusMediaFormat(series.Format);
+
+        // Only use series ids if no ids have been supplied via the query
+        var aniListId = queried.HasAny ? queried.AniListId : series.AniListId;
+        var malId = queried.HasAny ? queried.MalId : series.MalId;
+        var mangaBakaId = queried.HasAny ? queried.MangaBakaId : series.MangaBakaId;
+
+        return new MatchRequestV3Dto
+        {
+            AniListId = aniListId,
+            MalId = malId,
+            HardcoverId = queried.HasAny ? null : series.HardcoverId,
+            Slug = provider switch
+            {
+                MetadataProvider.Hardcover => queried.HardcoverSlug,
+                MetadataProvider.ComicBookRoundup => queried.CbrSlug,
+                _ => string.Empty,
+            },
+            CbrId = null,
+            MangabakaId = mangaBakaId,
+            IsStandAlone = isStandAlone,
+            Provider = provider,
+            SeriesName = series.Name,
+            AlternativeNames = ExtractAlternativeNames(series),
+            Year = GetReleaseYear(series, format),
+            IssueCount = issueCount,
+            Query = query,
+            Format = format,
+        };
+    }
+
+    private async Task<int?> GetIssueCount(int seriesId, CancellationToken ct)
+    {
+        var count = await _unitOfWork.SeriesRepository.GetNonSpecialChapterCountAsync(seriesId, ct);
+        return count > 0 ? count : null;
+    }
+
+    /// <summary>
+    /// Comics rarely carry a release year on their metadata, but often have one in their name
+    /// </summary>
+    private static int GetReleaseYear(Series series, PlusMediaFormat format)
+    {
+        // Unlocked Release year can be stale, recalc
+        var year = series.Metadata.ReleaseYearLocked
+            ? series.Metadata.ReleaseYear
+            : series.Volumes.SelectMany(v => v.Chapters).ToList().MinimumReleaseYear();
+
+        if (year != 0 || format != PlusMediaFormat.Comic || string.IsNullOrWhiteSpace(series.Name)) return year;
+
+        var potentialYear = Parser.ParseYear(series.Name);
+
+        return string.IsNullOrEmpty(potentialYear) ? year : int.Parse(potentialYear);
     }
 
     private static List<string> ExtractAlternativeNames(Series series)
@@ -482,21 +581,102 @@ public class ExternalMetadataService : IExternalMetadataService
     /// <summary>
     /// Fetches metadata about an external Series
     /// </summary>
-    /// <param name="aniListId"></param>
-    /// <param name="malId"></param>
     /// <param name="seriesId"></param>
+    /// <param name="request"></param>
+    /// /// <param name="recommendedSeriesId"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
     /// <exception cref="KavitaException"></exception>
-    public async Task<ExternalSeriesDetailDto?> GetExternalSeriesDetail(int? aniListId, long? malId, int? mangaBakaId, int? seriesId, CancellationToken ct = default)
+    public async Task<ExternalSeriesDetailDto?> GetExternalSeriesDetail(int seriesId, MetadataRequest request, int? recommendedSeriesId, CancellationToken ct = default)
     {
-        if (!aniListId.HasValue && !malId.HasValue && !mangaBakaId.HasValue && !seriesId.HasValue)
+        // This is for the Series drawer. We can get this extra information during the initial SeriesDetail call so it's all coming from the DB
+        var metadataProvider = await _unitOfWork.SeriesRepository.GetEffectiveMetadataProviderAsync(seriesId, ct);
+        if (metadataProvider is null) return null;
+        if (metadataProvider is MetadataProvider.ComicVine or MetadataProvider.Gcd)
         {
-            throw new KavitaException("Unable to find valid information from url for External Load");
+            var target = recommendedSeriesId.GetValueOrDefault() > 0 ? recommendedSeriesId!.Value : seriesId;
+            var local = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(target, SeriesIncludes.Library, ct);
+            return local == null || local.DontMatch || local.GetEffectiveMetadataProvider() != metadataProvider
+                ? null : await ReadComicVineDetail(local, ct);
         }
 
-        // This is for the Series drawer. We can get this extra information during the initial SeriesDetail call so it's all coming from the DB
-        return await GetSeriesDetail(aniListId, malId, mangaBakaId, seriesId, ct);
+        if (!request.HasAnyIdsSet() && !recommendedSeriesId.HasValue)
+            throw new KavitaException("Unable to find valid information from url for External Load");
+
+        var payload = new SeriesDetailRequestV3Dto
+        {
+            Provider = metadataProvider.Value,
+            AniListId = request.AniListId,
+            MalId = request.MalId,
+            MangabakaId = request.MangabakaId,
+            HardcoverId = request.HardcoverId,
+            IsStandAlone = request.IsStandAlone,
+            SeriesName = string.Empty,
+            AlternativeNames = [],
+            IncludeRecommendations = false,
+            IncludeReviews = false,
+            IncludeRelationships = false
+        };
+
+        if (recommendedSeriesId is > 0)
+        {
+            var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(recommendedSeriesId.Value,
+                SeriesIncludes.Metadata | SeriesIncludes.Library | SeriesIncludes.ExternalReviews, ct);
+            if (series != null)
+            {
+                if (payload.AniListId <= 0)
+                {
+                    payload.AniListId = series.AniListId;
+                }
+                if (payload.MalId <= 0)
+                {
+                    payload.MalId = series.MalId;
+                }
+
+                if (payload.MangabakaId <= 0)
+                {
+                    payload.MangabakaId = series.MangaBakaId;
+                }
+
+                if (payload.HardcoverId <= 0)
+                {
+                    payload.HardcoverId = series.HardcoverId;
+                }
+                payload.SeriesName = series.Name;
+                payload.AlternativeNames = [series.LocalizedName];
+                payload.Format = series.Library.Type.ConvertToPlusMediaFormat(series.Format);
+            }
+        }
+
+        var result =  await _kavitaPlusApiService.GetSeriesDetailV3Async(payload, ct);
+        if (!result.IsSuccess)
+        {
+            _logger.LogError("Failed to retrieve series detail from Kavita Plus API: {ErrorMessage}", result.ErrorMessage);
+            return null;
+        }
+
+        var extSeries = result.Data.Series;
+        if (extSeries == null) return null;
+
+        var settings = await _unitOfWork.SettingsRepository.GetMetadataSettingDto(ct);
+
+        var genres = new List<string>();
+        var tags = new List<string>();
+        GenerateGenreAndTagLists(extSeries, settings, ref tags, ref genres);
+
+        var tagsToRemove = GetTagsToRemove(extSeries, settings);
+        var finalTags = tags.Except(tagsToRemove).ToHashSet();
+
+        extSeries.Genres = genres;
+        extSeries.Tags = extSeries.Tags.Where(t => finalTags.Contains(t.Name)).ToList();
+
+        var ageRating = DetermineAgeRating(extSeries.Tags.Select(t => t.Name).Concat(extSeries.Genres), settings.AgeRatingMappings);
+
+        extSeries.AgeRating = ageRating;
+        extSeries.Summary = metadataProvider == MetadataProvider.Mangabaka
+            ? ConvertMarkdownToHtml(extSeries.Summary) : StringHelper.SquashBreaklines(extSeries.Summary);
+
+        return extSeries;
     }
 
     private async Task<SeriesDetailPlusDto?> GetSeriesDetailPlus(int seriesId, LibraryType libraryType,
@@ -504,19 +684,23 @@ public class ExternalMetadataService : IExternalMetadataService
     {
         if (!IsPlusEligible(libraryType) || !await _licenseService.HasActiveLicense(ct: ct)) return _defaultReturn;
 
-        // Check blacklist (bad matches) or if there is a don't match
+        // Check blacklist (bad matches)
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library,  ct: ct);
-        if (series == null || !series.WillScrobble() || !series.Library.AllowMetadataMatching) return _defaultReturn;
+        if (series == null) return _defaultReturn;
+        if (series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd) return _defaultReturn;
 
         // After a fresh match the external Ids just changed, so any cached data is stale by definition and must be refetched
         var needsRefresh = forceRefresh ||
             await _unitOfWork.ExternalSeriesMetadataRepository.NeedsDataRefresh(seriesId, ct);
 
-        if (!needsRefresh)
+        // Do return known metadata when requesting from the UI while having automatic matching off
+        if (!needsRefresh || (!series.Library.AllowMetadataMatching && trigger == MetadataFetchTrigger.OnDemand))
         {
             // Convert into DTOs and return
             return await _unitOfWork.ExternalSeriesMetadataRepository.GetSeriesDetailPlusDto(seriesId, ct);
         }
+
+        if (!series.WillScrobble() || !series.Library.AllowMetadataMatching) return _defaultReturn;
 
         var data = await _unitOfWork.SeriesRepository.GetKavitaPlusSeriesDetailRequestV3Dto(seriesId, ct);
         if (data == null) return _defaultReturn;
@@ -534,10 +718,19 @@ public class ExternalMetadataService : IExternalMetadataService
         }
     }
 
-    public async Task FixSeriesMatch(int seriesId, ExternalMetadataIdsDto ids, CancellationToken ct = default)
+    public async Task FixSeriesMatch(int seriesId, ExternalMetadataIdsDto ids, MetadataProvider? provider = null, CancellationToken ct = default)
     {
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Library, ct);
         if (series == null) return;
+
+        if ((provider ?? series.GetEffectiveMetadataProvider()) is MetadataProvider.ComicVine or MetadataProvider.Gcd)
+            throw new KavitaException("Use direct catalog matching for this provider.");
+
+        // The user matched against a provider that isnt the series own, so that choice becomes the series provider
+        if (provider.HasValue && provider.Value != series.GetEffectiveMetadataProvider())
+        {
+            await UpdateSeriesMetadataProviderOverride(seriesId, provider.Value, ct);
+        }
 
         // Remove from Blacklist
         series.IsBlacklisted = false;
@@ -551,7 +744,7 @@ public class ExternalMetadataService : IExternalMetadataService
             var metadata = await FetchExternalMetadataForSeries(seriesId, series.Library.Type,
                 new  SeriesDetailRequestV3Dto()
                 {
-                    Provider = series.Library.MetadataProvider,
+                    Provider = series.GetEffectiveMetadataProvider(),
                     AniListId = ids.AniListId,
                     MalId = ids.MalId,
                     CbrId = ids.CbrId,
@@ -633,6 +826,60 @@ public class ExternalMetadataService : IExternalMetadataService
             new AuditLogMatchDontMatchParamsDto { SeriesName = series.Name, DontMatch = dontMatch }, ct: ct);
     }
 
+    public async Task UpdateSeriesMetadataProviderOverride(int seriesId, MetadataProvider? metadataProviderOverride, CancellationToken ct = default)
+    {
+        var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId,
+            SeriesIncludes.Library | SeriesIncludes.ExternalMetadata, ct);
+        if (series == null) return;
+
+        if (series.Library.MetadataProvider == metadataProviderOverride)
+        {
+            metadataProviderOverride = null;
+        }
+
+        if (series.MetadataProviderOverride == metadataProviderOverride) return;
+
+        var previousProvider = series.GetEffectiveMetadataProvider();
+        if (metadataProviderOverride is MetadataProvider.ComicVine or MetadataProvider.Gcd
+            && series.Library.Type is not (LibraryType.Comic or LibraryType.ComicVine))
+            throw new KavitaException("Direct comic metadata is only supported for comic libraries.");
+        series.MetadataProviderOverride = metadataProviderOverride;
+        var newProvider = series.GetEffectiveMetadataProvider();
+
+        // Pinning the Library's current default (or dropping back to it) doesn't change who we match against,
+        // so the data we already hold is still from the right provider
+        if (previousProvider != newProvider)
+        {
+            _logger.LogInformation("Series {SeriesName} is switching Metadata Provider from {PreviousProvider} to {NewProvider}",
+                series.Name, previousProvider, newProvider);
+
+            // Everything cached came from the previous provider and must be refetched rather than served from cache
+            var externalSeriesMetadata = await GetOrCreateExternalSeriesMetadataForSeries(seriesId, series);
+            _unitOfWork.ExternalSeriesMetadataRepository.Remove(externalSeriesMetadata.ExternalReviews);
+            _unitOfWork.ExternalSeriesMetadataRepository.Remove(externalSeriesMetadata.ExternalRatings);
+            _unitOfWork.ExternalSeriesMetadataRepository.Remove(externalSeriesMetadata.ExternalRecommendations);
+            externalSeriesMetadata.ValidUntilUtc = DateTime.MinValue;
+            _fileCacheService.InvalidatePrefix(GetCoversCacheKey(seriesId), FileCacheService.KavitaPlusCacheDirectory);
+
+            // Failing to match against the previous provider says nothing about the new one
+            series.IsBlacklisted = false;
+        }
+
+        _unitOfWork.SeriesRepository.Update(series);
+        await _unitOfWork.CommitAsync(ct);
+
+        await _eventHub.SendMessageAsync(MessageFactory.SeriesUpdated, MessageFactory.SeriesUpdatedEvent(series.Id), ct: ct);
+
+        await _auditService.LogMatchAsync(KavitaPlusEventType.SeriesMetadataProviderOverrideSet, seriesId,
+            new AuditLogMatchProviderOverrideParamsDto
+            {
+                SeriesName = series.Name,
+                PreviousProvider = previousProvider,
+                NewProvider = newProvider,
+                IsOverride = metadataProviderOverride.HasValue,
+            }, ct: ct);
+    }
+
     /// <summary>
     /// Requests the full SeriesDetail (rec, review, metadata) data for a Series. Will save to ExternalMetadata tables.
     /// </summary>
@@ -652,6 +899,7 @@ public class ExternalMetadataService : IExternalMetadataService
         {
             return _defaultReturn;
         }
+        if (series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd) return _defaultReturn;
 
         _logger.LogDebug("Fetching Kavita+ Series Detail data for {SeriesName}", string.IsNullOrEmpty(data.SeriesName) ? data.AniListId : data.SeriesName);
 
@@ -737,9 +985,9 @@ public class ExternalMetadataService : IExternalMetadataService
         var metadataSettings = await _unitOfWork.SettingsRepository.GetMetadataSettingDto(ct);
         var seenRecommendations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var recs = await ProcessRecommendations(libraryType, result.ReadersAlsoLike, externalSeriesMetadata,
-            RecommendationSource.UserBased, series.Library!.MetadataProvider, metadataSettings, seenRecommendations);
+            RecommendationSource.UserBased, series.GetEffectiveMetadataProvider(), metadataSettings, seenRecommendations);
         var similarRecs = await ProcessRecommendations(libraryType, result.SimilarSeries, externalSeriesMetadata,
-            RecommendationSource.Similar, series.Library.MetadataProvider, metadataSettings, seenRecommendations);
+            RecommendationSource.Similar, series.GetEffectiveMetadataProvider(), metadataSettings, seenRecommendations);
         recs.ExternalSeries = recs.ExternalSeries.Concat(similarRecs.ExternalSeries).ToList();
         recs.OwnedSeries = recs.OwnedSeries.Concat(similarRecs.OwnedSeries).ToList();
 
@@ -755,12 +1003,6 @@ public class ExternalMetadataService : IExternalMetadataService
         var beforeIds = new AuditLogMatchExternalIdsParamsDto { AniListId = series.AniListId, MalId = series.MalId,
             MangaBakaId = series.MangaBakaId, MangaBakaEditionId = series.MangaBakaEditionId, CbrId = series.CbrId, HardcoverId = series.HardcoverId };
 
-        externalSeriesMetadata.MalId = data.MalId ?? result.MalId ?? 0;
-        externalSeriesMetadata.AniListId = data.AniListId ?? result.AniListId ?? 0;
-        externalSeriesMetadata.CbrId = data.CbrId ?? result.CbrId ?? 0;
-        externalSeriesMetadata.MangabakaId = data.MangabakaId ?? result.MangabakaId ?? 0;
-        series.MangaBakaId = externalSeriesMetadata.MangabakaId;
-
         if (!string.IsNullOrEmpty(data.MangaBakaEditionId))
         {
             series.MangaBakaEditionId = data.MangaBakaEditionId;
@@ -770,14 +1012,20 @@ public class ExternalMetadataService : IExternalMetadataService
             series.MangaBakaEditionId = string.Empty;
         }
 
-        var hardcoverId = data.HardcoverId ?? result.Series?.HardcoverId ?? series.HardcoverId;
+        // Update ids from K+ in case of merges upstream
+        series.AniListId = result.AniListId ?? series.AniListId;
+        series.MalId = result.MalId ?? series.MalId;
+        series.MangaBakaId = result.MangabakaId ?? series.MangaBakaId;
+        series.CbrId = result.CbrId ?? series.CbrId;
+        series.HardcoverId = result.HardCoverId ?? series.HardcoverId;
+
         var afterIds = new AuditLogMatchExternalIdsParamsDto {
-            AniListId = externalSeriesMetadata.AniListId,
-            MalId = externalSeriesMetadata.MalId,
+            AniListId = series.AniListId,
+            MalId = series.MalId,
             MangaBakaId = series.MangaBakaId,
             MangaBakaEditionId = series.MangaBakaEditionId,
-            CbrId = externalSeriesMetadata.CbrId,
-            HardcoverId = hardcoverId };
+            CbrId = series.CbrId,
+            HardcoverId = series.HardcoverId };
 
         await _auditService.LogMatchAsync(KavitaPlusEventType.SeriesMatched, seriesId,
             new AuditLogMatchedParamsDto {
@@ -820,13 +1068,16 @@ public class ExternalMetadataService : IExternalMetadataService
         }
 
         // Volume and MangaBaka chapter covers are not returned inline in the Series detail response, so fetch and apply them separately
-        try
+        if (result.Series is not null)
         {
-            await ApplyExternalCovers(series, metadataSettings, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Covers] Failed to apply external covers for Series {SeriesId}", series.Id);
+            try
+            {
+                await ApplyExternalCovers(series, metadataSettings, result.Series, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Covers] Failed to apply external covers for Series {SeriesId}", series.Id);
+            }
         }
 
         return new SeriesDetailPlusDto
@@ -843,59 +1094,121 @@ public class ExternalMetadataService : IExternalMetadataService
         var settings = await _unitOfWork.SettingsRepository.GetMetadataSettingDto(ct);
         if (!settings.Enabled) return false;
 
-        var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId, SeriesIncludes.Metadata | SeriesIncludes.Related, ct);
-        if (series == null) return false;
-
-        var defaultAdmin = await _unitOfWork.UserRepository.GetDefaultAdminUser(ct: ct);
-
-        _logger.LogInformation("Writing External metadata to Series {SeriesName}", series.Name);
-
-        var madeModification = false;
-        var fieldChanges = new List<MetadataFieldChangeDto>();
-        var processedGenres = new List<string>();
-        var processedTags = new List<string>();
-
-        Accumulate(ref madeModification, fieldChanges, UpdateSummary(series, settings, externalMetadata));
-        Accumulate(ref madeModification, fieldChanges, UpdateReleaseYear(series, settings, externalMetadata));
-        Accumulate(ref madeModification, fieldChanges, UpdateLocalizedName(series, settings, externalMetadata));
-        Accumulate(ref madeModification, fieldChanges, await UpdateName(series, settings, externalMetadata, ct));
-        Accumulate(ref madeModification, fieldChanges, await UpdatePublicationStatus(series, settings, externalMetadata));
-        Accumulate(ref madeModification, fieldChanges, UpdateExternalIds(series, externalMetadata));
-
-        // Apply field mappings
-        GenerateGenreAndTagLists(externalMetadata, settings, ref processedTags, ref processedGenres);
-
-        Accumulate(ref madeModification, fieldChanges, await UpdateGenres(series, settings, externalMetadata, processedGenres));
-        Accumulate(ref madeModification, fieldChanges, await UpdateTags(series, settings, externalMetadata, processedTags));
-        Accumulate(ref madeModification, fieldChanges, UpdateAgeRating(series, settings, processedGenres.Concat(processedTags)));
-
-        var staff = await SetNameAndAddAliases(settings, externalMetadata.Staff);
-
-        // TODO: I need update Publisher as well (MB is complicated as there are multiple potential publishers, needs to be tied with Works PR)
-        Accumulate(ref madeModification, fieldChanges, await UpdateWriters(series, settings, staff));
-        Accumulate(ref madeModification, fieldChanges, await UpdateArtists(series, settings, staff));
-        Accumulate(ref madeModification, fieldChanges, await UpdateCharacters(series, settings, externalMetadata.Characters));
-
-        Accumulate(ref madeModification, fieldChanges, await UpdateRelationships(series, settings, externalMetadata.Relations, defaultAdmin));
+        var writeLock = GetSeriesWriteLock(seriesId);
+        await writeLock.WaitAsync(ct);
 
         try
         {
-            madeModification = await UpdateCoverImage(series, settings, externalMetadata) || madeModification;
+            var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId,
+                SeriesIncludes.Metadata | SeriesIncludes.Related | SeriesIncludes.CoverImageFile, ct);
+            if (series == null) return false;
+
+            var defaultAdmin = await _unitOfWork.UserRepository.GetDefaultAdminUser(ct: ct);
+
+            _logger.LogInformation("Writing External metadata to Series {SeriesName}", series.Name);
+
+            var madeModification = false;
+            var fieldChanges = new List<MetadataFieldChangeDto>();
+            var processedGenres = new List<string>();
+            var processedTags = new List<string>();
+
+
+            Accumulate(ref madeModification, fieldChanges, UpdateSummary(series, settings, externalMetadata));
+            Accumulate(ref madeModification, fieldChanges, UpdateReleaseYear(series, settings, externalMetadata));
+            Accumulate(ref madeModification, fieldChanges, await UpdatePublicationStatus(series, settings, externalMetadata));
+            Accumulate(ref madeModification, fieldChanges, UpdateExternalIds(series, externalMetadata));
+
+
+            // Apply field mappings
+            GenerateGenreAndTagLists(externalMetadata, settings, ref processedTags, ref processedGenres);
+
+            // Since tag mappings outputs a list of strings, we need to find all the tags that will be removed first, then map,
+            // then remove those that survived before writing (not age rating mapping)
+            var tagsToRemove = GetTagsToRemove(externalMetadata, settings);
+
+            // Filter out by tag-weight
+            processedTags = processedTags.Where(pt => !tagsToRemove.Contains(pt)).ToList();
+
+            Accumulate(ref madeModification, fieldChanges, await UpdateGenres(series, settings, externalMetadata, processedGenres));
+            Accumulate(ref madeModification, fieldChanges, await UpdateTags(series, settings, externalMetadata, processedTags));
+
+            // In order to ensure that a filtered weight tag doesn't get excluded, age rating is processed on ALL tags + our remapped ones
+            var allTags = externalMetadata.Tags.Select(t => t.Name)
+                .Concat(externalMetadata.Genres)
+                .Concat(processedGenres).Concat(processedTags)
+                .Distinct()
+                .ToList();
+
+            Accumulate(ref madeModification, fieldChanges, UpdateAgeRating(series, settings, externalMetadata, allTags));
+
+            var staff = await SetNameAndAddAliases(settings, externalMetadata.Staff);
+
+            // TODO: I can update Publisher as well but MB is not fully vetted out yet
+            Accumulate(ref madeModification, fieldChanges, await UpdateWriters(series, settings, staff));
+            Accumulate(ref madeModification, fieldChanges, await UpdateArtists(series, settings, staff));
+            Accumulate(ref madeModification, fieldChanges, await UpdateCharacters(series, settings, externalMetadata.Characters));
+
+            Accumulate(ref madeModification, fieldChanges, await UpdateRelationships(series, settings, externalMetadata.Relations, defaultAdmin));
+
+            if (settings.EnableName || settings.EnableLocalizedName)
+            {
+                var (namePriority, localizedNamePriority) = ResolveTitleLanguagePriorities(settings, series.LibraryId);
+
+                // The set unions NormalizedName/NormalizedLocalizedName/NormalizedOriginalName
+                // for every OTHER series in this library+format - a collision there makes the scanner's SingleOrDefault throw.
+                var takenNames = await _unitOfWork.SeriesRepository.GetTakenNormalizedNamesInLibraryAsync(
+                    series.LibraryId, series.Format, series.Id, ct);
+
+                // Name must be first, LocalizedName will drop the language code that Name eats
+                Accumulate(ref madeModification, fieldChanges,
+                    await UpdateName(series, settings, externalMetadata, namePriority, takenNames, ct));
+
+                var heldNameLanguageCode = settings.EnableName
+                    ? FindHeldLanguageCode(namePriority, externalMetadata, series.NormalizedName)
+                    : null;
+
+                Accumulate(ref madeModification, fieldChanges,
+                    await UpdateLocalizedName(series, settings, externalMetadata, localizedNamePriority, heldNameLanguageCode, takenNames, ct));
+            }
+
+            try
+            {
+                madeModification = await UpdateCoverImage(series, settings, externalMetadata) || madeModification;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch cover image");
+            }
+
+            madeModification = await UpdateChapters(series, settings, externalMetadata) || madeModification;
+
+            if (fieldChanges.Count > 0)
+            {
+                await _auditService.LogMetadataAsync(seriesId, fieldChanges, ct);
+            }
+
+            return madeModification;
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogWarning(ex, "Failed to fetch cover image");
+            writeLock.Release();
         }
-
-        madeModification = await UpdateChapters(series, settings, externalMetadata) || madeModification;
-
-        if (fieldChanges.Count > 0)
-        {
-            await _auditService.LogMetadataAsync(seriesId, fieldChanges, ct);
-        }
-
-        return madeModification;
     }
+
+    private static HashSet<string> GetTagsToRemove(ExternalSeriesDetailDto externalMetadata, MetadataSettingsDto settings)
+    {
+        var whitelist = settings.Whitelist is { Count: > 0 }
+            ? settings.Whitelist.Select(s => s.ToNormalized()).ToHashSet()
+            : null;
+
+        if (settings.FilterAboveWeight == null) return [];
+
+        return externalMetadata.Tags
+            .Where(t => t.TagWeight != null && t.TagWeight > settings.FilterAboveWeight && whitelist?.Contains(t.Name.ToNormalized()) != true)
+            .Select(t => t.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
 
     /// <summary>
     /// Fetches volume and chapter covers from the Kavita+ covers endpoint and applies the best matches. Series and chapter
@@ -903,16 +1216,21 @@ public class ExternalMetadataService : IExternalMetadataService
     /// are not.
     /// </summary>
     /// <remarks>Not run for ComicBookRoundup, whose covers come from chapter/issue metadata already.</remarks>
-    private async Task ApplyExternalCovers(Series series, MetadataSettingsDto settings, CancellationToken ct = default)
+    internal async Task ApplyExternalCovers(Series series, MetadataSettingsDto settings, ExternalSeriesDetailDto externalMetadata, CancellationToken ct = default)
     {
         if (!settings.EnableVolumeCoverImage && !settings.EnableChapterCoverImage) return;
-        if (series.Library?.MetadataProvider == MetadataProvider.ComicBookRoundup) return;
+        if (series.GetEffectiveMetadataProvider() == MetadataProvider.ComicBookRoundup) return;
 
         // Prefer the cover based on Series/Library locale
         var locale = series.Metadata.Language ?? series.Library?.DefaultLanguage;
+        var nativeLocale = externalMetadata.LocalizedTitles
+            .Where(kv => kv.Value.Any(t => t.Title.Equals(externalMetadata.Titles.NativeTitle, StringComparison.OrdinalIgnoreCase)))
+            .Select(kv => kv.Key)
+            .FirstOrDefault();
 
         // All volumes: manga chapters can live in the loose-leaf volume, so we filter loose-leaf/specials only for volume covers
-        var volumes = (await _unitOfWork.VolumeRepository.GetVolumes(series.Id, ct)).ToList();
+        var volumes = (await _unitOfWork.VolumeRepository.GetVolumesForSeriesAsync(series.Id,
+            VolumeIncludes.Chapters | VolumeIncludes.Files | VolumeIncludes.CoverImageFile, ct)).ToList();
         if (volumes.Count == 0) return;
 
         var covers = await GetExternalCovers(series.Id, ct: ct);
@@ -934,7 +1252,7 @@ public class ExternalMetadataService : IExternalMetadataService
             {
                 foreach (var chapter in nonSpecialChapters)
                 {
-                    var chapterMatch = chapterCovers.FirstOrDefault(c => c.Number!.Value.Is(chapter.MinNumber));
+                    var chapterMatch = PickCover(chapterCovers, volumeCovers, chapter.MinNumber, null, locale, nativeLocale);
                     if (chapterMatch == null) continue;
 
                     try
@@ -954,7 +1272,7 @@ public class ExternalMetadataService : IExternalMetadataService
             // Volume covers only apply to real volumes (skip loose-leaf/specials)
             if (!settings.EnableVolumeCoverImage) continue;
             if (volume.MinNumber.Is(Parser.LooseLeafVolumeNumber) || volume.MinNumber.Is(Parser.SpecialVolumeNumber)) continue;
-            if (volume.CoverImageLocked && !HasForceOverride(settings, volume, MetadataSettingField.VolumeCovers)) continue;
+            if (volume.CoverImageLocked && !HasForceCoverOverride(settings, volume, MetadataSettingField.VolumeCovers)) continue;
 
             try
             {
@@ -963,48 +1281,30 @@ public class ExternalMetadataService : IExternalMetadataService
                     // Single-chapter volume reuses its chapter's cover
                     var chapter = nonSpecialChapters[0];
 
-                    // Try and get the locale variant, else fallback to whatever we can
-
-
                     // Prefer a chapter-scoped cover, fall back to the volume-scoped one
-                    var match = chapterCovers
-                                    .Where(c => c.Language == locale)
-                                    .FirstOrDefault(c => c.Number!.Value.Is(chapter.MinNumber))
-                                ?? volumeCovers
-                                    .Where(c => c.Language == locale)
-                                    .FirstOrDefault(c => c.Number!.Value.Is(volume.MinNumber));
-
-                    if (match == null)
-                    {
-                        match = chapterCovers
-                                    .FirstOrDefault(c => c.Number!.Value.Is(chapter.MinNumber))
-                                ?? volumeCovers
-                                    .FirstOrDefault(c => c.Number!.Value.Is(volume.MinNumber));
-                    }
-
+                    var match = PickCover(chapterCovers, volumeCovers, chapter.MinNumber, volume.MinNumber, locale, nativeLocale);
                     if (match == null) continue;
 
                     // If the chapter loop didn't already write it, download onto the chapter now (bypassing the chapter-cover setting)
-                    if (!coveredChapterIds.Contains(chapter.Id))
+                    var chapterHeld = chapter.CoverImageLocked
+                                      && !HasForceCoverOverride(settings, chapter, MetadataSettingField.ChapterCovers);
+                    if (!coveredChapterIds.Contains(chapter.Id) && !chapterHeld)
                     {
-                        var chooseBetterImage = !chapter.HasSetKPlusMetadata(MetadataSettingField.ChapterCovers);
-                        chapter.AddKPlusOverride(MetadataSettingField.ChapterCovers);
-                        await _coverDbService.SetChapterCoverByUrl(chapter, match.Url, false, chooseBetterImage, ct);
+                        await _coverDbService.SetCoverByUrlAsync(chapter, match.Url,
+                            new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: !IsKavitaPlusCover(chapter)), ct);
                     }
 
-                    volume.AddKPlusOverride(MetadataSettingField.VolumeCovers);
-                    await _coverDbService.SetVolumeCoverFromChapter(volume, chapter, ct);
+                    await _imageFileService.ShareCoverAsync(volume, chapter, lockBoth: true, ct: ct);
                     await LogVolumeCoverAudit(series.Id, volume, match.Url, ct);
                 }
                 else
                 {
-                    var match = volumeCovers.FirstOrDefault(c => c.Number!.Value.Is(volume.MinNumber));
+                    var match = PickCover(chapterCovers, volumeCovers, null, volume.MinNumber, locale, nativeLocale);
                     if (match == null) continue;
 
                     // Only choose the better image the first time; once K+ owns the cover, overwrite freely
-                    var chooseBetterImage = !volume.HasSetKPlusMetadata(MetadataSettingField.VolumeCovers);
-                    volume.AddKPlusOverride(MetadataSettingField.VolumeCovers);
-                    await _coverDbService.SetVolumeCoverByUrl(volume, match.Url, false, chooseBetterImage, ct);
+                    await _coverDbService.SetCoverByUrlAsync(volume, match.Url,
+                        new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: !IsKavitaPlusCover(volume)), ct);
                     await LogVolumeCoverAudit(series.Id, volume, match.Url, ct);
                 }
             }
@@ -1021,6 +1321,43 @@ public class ExternalMetadataService : IExternalMetadataService
         }
     }
 
+    /// <summary>
+    /// Picks the best external cover for the given chapter and/or volume number.
+    /// Ordered by: series locale, then native locale, then scope (chapter-scoped before volume-scoped).
+    /// Pass null for a number to exclude that scope from consideration.
+    /// </summary>
+    internal static ExternalCoverResponseDto? PickCover(
+        IEnumerable<ExternalCoverResponseDto> chapterCovers,
+        IEnumerable<ExternalCoverResponseDto> volumeCovers,
+        float? chapterNumber,
+        float? volumeNumber,
+        string? locale,
+        string? nativeLocale)
+    {
+        var candidates = Enumerable.Empty<(ExternalCoverResponseDto Cover, int Scope)>();
+
+        if (chapterNumber.HasValue)
+        {
+            candidates = candidates.Concat(chapterCovers
+                .Where(c => c.Number.Is(chapterNumber.Value))
+                .Select(c => (Cover: c, Scope: 0)));
+        }
+
+        if (volumeNumber.HasValue)
+        {
+            candidates = candidates.Concat(volumeCovers
+                .Where(c => c.Number.Is(volumeNumber.Value))
+                .Select(c => (Cover: c, Scope: 1)));
+        }
+
+        return candidates
+            .OrderByDescending(x => locale != null && x.Cover.Language == locale)
+            .ThenByDescending(x => nativeLocale != null && x.Cover.Language == nativeLocale)
+            .ThenBy(x => x.Scope) // Chapter-scoped before volume-scoped
+            .Select(x => x.Cover)
+            .FirstOrDefault();
+    }
+
     private async Task LogVolumeCoverAudit(int seriesId, Volume volume, string coverUrl, CancellationToken ct)
     {
         await _auditService.LogAsync(KavitaPlusAuditCategory.Metadata, KavitaPlusEventType.VolumeCoverUpdated, AuditStatus.Success,
@@ -1033,6 +1370,8 @@ public class ExternalMetadataService : IExternalMetadataService
         var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId,
             SeriesIncludes.Metadata | SeriesIncludes.Chapters | SeriesIncludes.Library, ct: ct);
         if (series == null) throw new KavitaException("Series not found");
+        if (series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd)
+            return await GetComicVineCovers(series, volumeId, chapterId, ct);
 
         var libraryType = await _unitOfWork.LibraryRepository.GetLibraryTypeAsync(series.LibraryId, ct);
 
@@ -1049,7 +1388,7 @@ public class ExternalMetadataService : IExternalMetadataService
             MetronId = series.MetronId,
             CbrId = series.CbrId,
             IsStandAlone = series.IsStandAlone,
-            MetadataProvider = series.Library.MetadataProvider
+            MetadataProvider = series.GetEffectiveMetadataProvider()
         };
 
         if (volumeId.HasValue)
@@ -1087,6 +1426,75 @@ public class ExternalMetadataService : IExternalMetadataService
         }
 
         return result.Data ?? [];
+    }
+
+    private async Task<ExternalSeriesDetailDto?> ReadComicVineDetail(Series series, CancellationToken ct)
+    {
+        try
+        {
+            if (series.GetEffectiveMetadataProvider() == MetadataProvider.Gcd)
+                return _gcd != null && series.GcdId.HasValue ? await _gcd.GetVolumeAsync(series.GcdId.Value, ct) : null;
+            return int.TryParse(series.ComicVineId, out var id) && id > 0 ? await _comicVine.GetVolumeAsync(id, ct) : null;
+        }
+        catch (Exception ex) when (ex is KavitaException or System.Net.Http.HttpRequestException or System.Text.Json.JsonException
+            || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private async Task<IList<ExternalCoverResponseDto>> GetComicVineCovers(Series series, int? volumeId, int? chapterId, CancellationToken ct)
+    {
+        if (series.DontMatch) return [];
+        var useGcd = series.GetEffectiveMetadataProvider() == MetadataProvider.Gcd;
+        string? externalId = useGcd ? series.GcdId?.ToString() : series.ComicVineId;
+        var type = ExternalCoverImageType.Series;
+        float? number = null;
+        var issue = false;
+        if (chapterId.HasValue)
+        {
+            var chapter = series.Volumes.SelectMany(v => v.Chapters).FirstOrDefault(c => c.Id == chapterId);
+            if (chapter == null) return [];
+            externalId = useGcd ? chapter.GcdId?.ToString() : chapter.ComicVineId;
+            number = chapter.MinNumber;
+            type = ExternalCoverImageType.Issue;
+            issue = true;
+        }
+        else if (volumeId.HasValue)
+        {
+            var volume = series.Volumes.FirstOrDefault(v => v.Id == volumeId);
+            if (volume == null) return [];
+            // Kavita can group multiple local volumes under one Comic Vine run. Use the
+            // first identified issue for a local volume that has no external volume ID.
+            var firstIssue = volume.Chapters.Where(c => useGcd ? c.GcdId.HasValue : !string.IsNullOrEmpty(c.ComicVineId))
+                .OrderBy(c => c.MinNumber).ThenBy(c => c.Id).FirstOrDefault();
+            if (!useGcd && !string.IsNullOrEmpty(volume.ComicVineId)) externalId = volume.ComicVineId;
+            else if (firstIssue != null)
+            {
+                issue = true;
+                externalId = useGcd ? firstIssue.GcdId?.ToString() : firstIssue.ComicVineId;
+            }
+            number = volume.MinNumber;
+            type = ExternalCoverImageType.Volume;
+        }
+        else if (useGcd)
+        {
+            var first = series.Volumes.SelectMany(v => v.Chapters).Where(c => c.GcdId.HasValue && !c.IsSpecial)
+                .OrderBy(c => c.Volume.MinNumber).ThenBy(c => c.MinNumber).FirstOrDefault();
+            if (first != null) { externalId = first.GcdId?.ToString(); issue = true; }
+        }
+        if (!int.TryParse(externalId, out var id) || id <= 0) return [];
+        if (useGcd)
+        {
+            if (_gcd == null) return [];
+            var source = await _gcd.GetCoverIssueAsync(id, issue, ct);
+            if (source?.CoverUrl == null) return [];
+            return [new ExternalCoverResponseDto { Url = source.CoverUrl, Type = type, Number = number,
+                SourceUrl = $"https://www.comics.org/issue/{source.Id}/" }];
+        }
+        var covers = await _comicVine.GetCoversAsync(id, issue, ct);
+        return covers.Select(url => new ExternalCoverResponseDto { Url = url, Number = number, Type = type,
+            SourceUrl = $"https://comicvine.gamespot.com/{(issue ? 4000 : 4050)}-{id}/" }).ToList();
     }
 
     private static string GetCoversCacheKey(int seriesId, int? volumeId = null, int? chapterId = null)
@@ -1154,6 +1562,7 @@ public class ExternalMetadataService : IExternalMetadataService
     {
         externalMetadata.Tags ??= [];
         externalMetadata.Genres ??= [];
+
         GenerateGenreAndTagLists(externalMetadata.Genres, externalMetadata.Tags.Select(t => t.Name).ToList(),
             settings, ref processedTags, ref processedGenres);
     }
@@ -1217,7 +1626,8 @@ public class ExternalMetadataService : IExternalMetadataService
         GenerateGenreAndTagLists(genres, tags, settings, ref processedTags, ref processedGenres);
     }
 
-    private async Task<(bool, MetadataFieldChangeDto?)> UpdateRelationships(Series series, MetadataSettingsDto settings, IList<SeriesRelationship>? externalMetadataRelations, AppUser defaultAdmin)
+    private async Task<(bool, MetadataFieldChangeDto?)> UpdateRelationships(Series series, MetadataSettingsDto settings,
+        IList<SeriesRelationship>? externalMetadataRelations, AppUser defaultAdmin)
     {
         if (!settings.EnableRelationships) return (false, null);
 
@@ -1247,58 +1657,61 @@ public class ExternalMetadataService : IExternalMetadataService
 
             var formatTypes = relation.Format.GetMangaFormats();
 
-            var relatedSeries = await _unitOfWork.SeriesRepository.GetSeriesFromExternalMetadata(
+            var relatedSeriesList = await _unitOfWork.SeriesRepository.GetSeriesFromExternalMetadata(
                 names,
                 formatTypes,
                 defaultAdmin.Id,
                 externalIds,
                 SeriesIncludes.Related);
 
-            // Skip if no related series found or series is the parent
-            if (relatedSeries == null || relatedSeries.Id == series.Id || relation.Relation == RelationKind.Parent) continue;
-
-            // Check if the relationship already exists
-            var relationshipExists = series.Relations.Any(r =>
-                r.TargetSeriesId == relatedSeries.Id && r.RelationKind == relation.Relation);
-
-            if (relationshipExists) continue;
-
-            // Add new relationship
-            var newRelation = new SeriesRelation
+            foreach (var relatedSeries in relatedSeriesList)
             {
-                RelationKind = relation.Relation,
-                TargetSeriesId = relatedSeries.Id,
-                SeriesId = series.Id,
-            };
-            series.Relations.Add(newRelation);
-            addedRelations.Add(new
-            {
-                relatedSeriesName = relatedSeries.Name,
-                relatedSeriesId = relatedSeries.Id,
-                relatedSeriesLibraryId = relatedSeries.LibraryId,
-                kind = (int) relation.Relation
-            });
+                // Skip if no related series found or series is the parent
+                if (relatedSeries.Id == series.Id || relation.Relation == RelationKind.Parent) continue;
 
-            // Handle sequel/prequel: add reverse relationship
-            if (relation.Relation is RelationKind.Prequel or RelationKind.Sequel)
-            {
-                var reverseExists = relatedSeries.Relations.Any(r =>
-                    r.TargetSeriesId == series.Id && r.RelationKind == GetReverseRelation(relation.Relation));
+                // Check if the relationship already exists
+                var relationshipExists = series.Relations.Any(r =>
+                    r.TargetSeriesId == relatedSeries.Id && r.RelationKind == relation.Relation);
 
-                if (!reverseExists)
+                if (relationshipExists) continue;
+
+                // Add new relationship
+                var newRelation = new SeriesRelation
                 {
-                    var reverseRelation = new SeriesRelation
-                    {
-                        RelationKind = GetReverseRelation(relation.Relation),
-                        TargetSeriesId = series.Id,
-                        SeriesId = relatedSeries.Id,
-                    };
-                    relatedSeries.Relations.Add(reverseRelation);
-                    _unitOfWork.SeriesRepository.Attach(reverseRelation);
-                }
-            }
+                    RelationKind = relation.Relation,
+                    TargetSeriesId = relatedSeries.Id,
+                    SeriesId = series.Id,
+                };
+                series.Relations.Add(newRelation);
+                addedRelations.Add(new
+                {
+                    relatedSeriesName = relatedSeries.Name,
+                    relatedSeriesId = relatedSeries.Id,
+                    relatedSeriesLibraryId = relatedSeries.LibraryId,
+                    kind = (int) relation.Relation
+                });
 
-            _unitOfWork.SeriesRepository.Update(series);
+                // Handle sequel/prequel: add reverse relationship
+                if (relation.Relation is RelationKind.Prequel or RelationKind.Sequel)
+                {
+                    var reverseExists = relatedSeries.Relations.Any(r =>
+                        r.TargetSeriesId == series.Id && r.RelationKind == GetReverseRelation(relation.Relation));
+
+                    if (!reverseExists)
+                    {
+                        var reverseRelation = new SeriesRelation
+                        {
+                            RelationKind = GetReverseRelation(relation.Relation),
+                            TargetSeriesId = series.Id,
+                            SeriesId = relatedSeries.Id,
+                        };
+                        relatedSeries.Relations.Add(reverseRelation);
+                        _unitOfWork.SeriesRepository.Attach(reverseRelation);
+                    }
+                }
+
+                _unitOfWork.SeriesRepository.Update(series);
+            }
         }
 
         if (!_unitOfWork.HasChanges()) return (false, null);
@@ -1373,14 +1786,17 @@ public class ExternalMetadataService : IExternalMetadataService
         {
             var aniListId = ExternalIdParser.GetAniListCharacterId(character.Url);
             if (aniListId <= 0) continue;
-            var person = await _unitOfWork.PersonRepository.GetPersonByAniListId(aniListId);
-            if (person != null && !string.IsNullOrEmpty(character.ImageUrl) && string.IsNullOrEmpty(person.CoverImage))
+            var person = await _unitOfWork.PersonRepository.GetPersonByAniListId(aniListId,
+                PersonIncludes.Aliases | PersonIncludes.CoverImageFile);
+            if (person != null && !string.IsNullOrEmpty(character.ImageUrl) && !_imageFileService.HasCoverFile(person))
             {
-                await _coverDbService.SetPersonCoverByUrl(person, character.ImageUrl, false);
+                await _coverDbService.SetCoverByUrlAsync(person, character.ImageUrl,
+                    new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: true));
             }
         }
 
         series.Metadata.AddKPlusOverride(MetadataSettingField.People);
+        series.Metadata.CharacterLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Characters, null, externalCharacters.Select(c => c.Name).ToList()));
     }
@@ -1439,6 +1855,7 @@ public class ExternalMetadataService : IExternalMetadataService
 
         await DownloadAndSetPersonCovers(upstreamArtists);
         series.Metadata.AddKPlusOverride(MetadataSettingField.People);
+        series.Metadata.CoverArtistLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Artists, null, upstreamArtists.Select(a => a.Name).ToList()));
     }
@@ -1497,6 +1914,7 @@ public class ExternalMetadataService : IExternalMetadataService
 
         await DownloadAndSetPersonCovers(upstreamWriters);
         series.Metadata.AddKPlusOverride(MetadataSettingField.People);
+        series.Metadata.WriterLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Writers, null, upstreamWriters.Select(w => w.Name).ToList()));
     }
@@ -1619,8 +2037,10 @@ public class ExternalMetadataService : IExternalMetadataService
         return (false, null);
     }
 
-    private (bool, MetadataFieldChangeDto?) UpdateAgeRating(Series series, MetadataSettingsDto settings, IEnumerable<string> allExternalTags)
+    private (bool, MetadataFieldChangeDto?) UpdateAgeRating(Series series, MetadataSettingsDto settings, ExternalSeriesDetailDto externalMetadata, IEnumerable<string> allExternalTags)
     {
+        if (!settings.EnableAgeRating) return (false, null);
+
         if (series.Metadata.AgeRatingLocked && !HasForceOverride(settings, series.Metadata, MetadataSettingField.AgeRating))
         {
             return (false, null);
@@ -1633,14 +2053,29 @@ public class ExternalMetadataService : IExternalMetadataService
                 .Concat(series.Metadata.Tags.Select(g => g.Title));
 
             var from = series.Metadata.AgeRating;
-            var ageRating = DetermineAgeRating(totalTags, settings.AgeRatingMappings);
-            if (series.Metadata.AgeRating <= ageRating)
-            {
-                series.Metadata.AgeRating = ageRating;
-                series.Metadata.AddKPlusOverride(MetadataSettingField.AgeRating);
 
-                return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.AgeRating, from.ToString(), ageRating.ToString()));
+            // Find the highest age rating from the different mapping mechanisms
+            var externalAgeRating = externalMetadata.AgeRating;
+            var baseDerivedAgeRating = !string.IsNullOrEmpty(externalMetadata.AgeRatingRaw) ?
+                DetermineAgeRating([externalMetadata.AgeRatingRaw], settings.ExternalAgeRatingMappings)
+                : AgeRating.Unknown;
+            var tagDerivedAgeRating = DetermineAgeRating(totalTags, settings.AgeRatingMappings);
+
+            var kPlusRating = baseDerivedAgeRating;
+            if (string.IsNullOrEmpty(externalMetadata.AgeRatingRaw))
+            {
+                kPlusRating = externalAgeRating;
             }
+
+            // If the admin set up a raw mapping, then we use that, otherwise fallback to Kavita+'s mapping
+            var toSetAgeRating = new[]{from, kPlusRating, tagDerivedAgeRating}.Max();
+
+            if (toSetAgeRating == AgeRating.Unknown || toSetAgeRating == from) return (false, null);
+
+            series.Metadata.AgeRating = toSetAgeRating;
+            series.Metadata.AddKPlusOverride(MetadataSettingField.AgeRating);
+            series.Metadata.AgeRatingLocked = true;
+            return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.AgeRating, from.ToString(), series.Metadata.AgeRating.ToString()));
         }
         catch (Exception ex)
         {
@@ -1700,7 +2135,7 @@ public class ExternalMetadataService : IExternalMetadataService
 
         // Get all volumes and chapters
         var madeModification = false;
-        var allChapters =  await _unitOfWork.ChapterRepository.GetAllChaptersForSeries(series.Id);
+        var allChapters =  await _unitOfWork.ChapterRepository.GetAllChaptersForSeriesAsync(series.Id, ChapterIncludes.CoverImageFile);
 
         List<(Chapter, ExternalChapterDto)> matchedChapters = [];
 
@@ -1746,7 +2181,11 @@ public class ExternalMetadataService : IExternalMetadataService
             Accumulate(ref madeModification, chapterFieldChanges, UpdateChapterAgeRating(chapter, settings, series.Metadata.AgeRating));
 
             var hasUpdatedPublisher = await UpdateChapterPublisher(chapter, settings, potentialMatch.Publisher);
-            if (hasUpdatedPublisher) chapter.AddKPlusOverride(MetadataSettingField.ChapterPublisher);
+            if (hasUpdatedPublisher)
+            {
+                chapter.AddKPlusOverride(MetadataSettingField.ChapterPublisher);
+                chapter.PublisherLocked = true;
+            }
             madeModification = hasUpdatedPublisher || madeModification;
 
             madeModification = await UpdateChapterPeople(chapter, settings, PersonRole.CoverArtist, potentialMatch.Artists) || madeModification;
@@ -1766,8 +2205,11 @@ public class ExternalMetadataService : IExternalMetadataService
                 await _auditService.LogChapterMetadataAsync(chapter.Id, series.Id, chapterFieldChanges);
             }
 
-            _unitOfWork.ChapterRepository.Update(chapter);
-            await _unitOfWork.CommitAsync();
+            if (madeModification)
+            {
+                _unitOfWork.ChapterRepository.Update(chapter);
+                await _unitOfWork.CommitAsync();
+            }
         }
 
         return madeModification;
@@ -1881,7 +2323,7 @@ public class ExternalMetadataService : IExternalMetadataService
             return (false, null);
         }
 
-        if (!string.IsNullOrWhiteSpace(summary) && !HasForceOverride(settings, chapter, MetadataSettingField.ChapterSummary))
+        if (!string.IsNullOrWhiteSpace(chapter.Summary) && !HasForceOverride(settings, chapter, MetadataSettingField.ChapterSummary))
         {
             return (false, null);
         }
@@ -1889,6 +2331,7 @@ public class ExternalMetadataService : IExternalMetadataService
         var from = chapter.Summary;
         chapter.Summary = StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(summary));
         chapter.AddKPlusOverride(MetadataSettingField.ChapterSummary);
+        chapter.SummaryLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Summary, from, chapter.Summary));
     }
@@ -1912,6 +2355,7 @@ public class ExternalMetadataService : IExternalMetadataService
         var from = chapter.TitleName;
         chapter.TitleName = title;
         chapter.AddKPlusOverride(MetadataSettingField.ChapterTitle);
+        chapter.TitleNameLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Title, from, title));
     }
@@ -1926,6 +2370,7 @@ public class ExternalMetadataService : IExternalMetadataService
         var from = chapter.AgeRating;
         chapter.AgeRating = ageRating;
         chapter.AddKPlusOverride(MetadataSettingField.ChapterAgeRating);
+        chapter.AgeRatingLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.AgeRating, from, ageRating));
     }
@@ -1949,6 +2394,7 @@ public class ExternalMetadataService : IExternalMetadataService
         var from = chapter.ReleaseDate;
         chapter.ReleaseDate = releaseDate.Value;
         chapter.AddKPlusOverride(MetadataSettingField.ChapterReleaseDate);
+        chapter.ReleaseDateLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.ReleaseDate, from, releaseDate.Value));
     }
@@ -1986,14 +2432,13 @@ public class ExternalMetadataService : IExternalMetadataService
 
         if (string.IsNullOrEmpty(coverUrl)) return false;
 
-        if (chapter.CoverImageLocked && !HasForceOverride(settings, chapter, MetadataSettingField.ChapterCovers))
+        if (chapter.CoverImageLocked && !HasForceCoverOverride(settings, chapter, MetadataSettingField.ChapterCovers))
         {
             _logger.LogDebug("Kavita+ Update Chapter was skipped as cover was locked, Chapter: {ChapterId}", chapter.Id);
             return false;
         }
 
         await DownloadChapterCovers(chapter, coverUrl);
-        chapter.AddKPlusOverride(MetadataSettingField.ChapterCovers);
         await _auditService.LogAsync(KavitaPlusAuditCategory.Metadata, KavitaPlusEventType.ChapterCoverUpdated, AuditStatus.Success,
             AuditSubjectType.Chapter, seriesId: seriesId, subjectId: chapter.Id,
             payload: new AuditLogChapterCoverParamsDto { IssueNumber = chapter.Range, CoverUrl = coverUrl });
@@ -2047,6 +2492,9 @@ public class ExternalMetadataService : IExternalMetadataService
         _unitOfWork.ChapterRepository.Update(chapter);
         await _unitOfWork.CommitAsync();
 
+        chapter.AddKPlusOverride(MetadataSettingField.People);
+        chapter.LockPersonRole(role);
+
         return true;
     }
 
@@ -2056,18 +2504,12 @@ public class ExternalMetadataService : IExternalMetadataService
 
         if (string.IsNullOrEmpty(externalMetadata.CoverUrl)) return false;
 
-        if (series.CoverImageLocked && !HasForceOverride(settings, series.Metadata, MetadataSettingField.Covers))
-        {
-            return false;
-        }
-
-        if (string.IsNullOrEmpty(externalMetadata.CoverUrl))
+        if (series.CoverImageLocked && !HasForceCoverOverride(settings, series, MetadataSettingField.Covers))
         {
             return false;
         }
 
         await DownloadSeriesCovers(series, externalMetadata.CoverUrl);
-        series.Metadata.AddKPlusOverride(MetadataSettingField.Covers);
         await _auditService.LogAsync(KavitaPlusAuditCategory.Metadata, KavitaPlusEventType.CoverUpdated, AuditStatus.Success,
             AuditSubjectType.Series, seriesId: series.Id,
             payload: new AuditLogSeriesCoverParamsDto { SeriesName = series.Name, CoverUrl = externalMetadata.CoverUrl });
@@ -2086,19 +2528,198 @@ public class ExternalMetadataService : IExternalMetadataService
             return (false, null);
         }
 
-        if (series.Metadata.ReleaseYear != 0 && !HasForceOverride(settings, series.Metadata, MetadataSettingField.StartDate))
-        {
-            return (false, null);
-        }
-
         var from = series.Metadata.ReleaseYear;
         series.Metadata.ReleaseYear = externalMetadata.StartDate.Value.Year;
         series.Metadata.AddKPlusOverride(MetadataSettingField.StartDate);
+        series.Metadata.ReleaseYearLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.ReleaseYear, from, series.Metadata.ReleaseYear));
     }
 
-    private static (bool, MetadataFieldChangeDto?) UpdateLocalizedName(Series series, MetadataSettingsDto settings, ExternalSeriesDetailDto externalMetadata)
+    /// <summary>
+    /// Resolves which language priority lists apply to a Series. A library override replaces the global settings
+    /// outright, including any field left blank on it.
+    /// </summary>
+    /// <remarks>
+    /// A blank field means "no languages", which resolves no candidate and therefore writes nothing. That is
+    /// deliberate: overriding a library and clearing a field is how an admin opts that field out for the library.
+    /// </remarks>
+    private static (IReadOnlyList<string> Name, IReadOnlyList<string> LocalizedName) ResolveTitleLanguagePriorities(
+        MetadataSettingsDto settings, int libraryId)
+    {
+        if (settings.LibraryLanguageTitleOverrides.TryGetValue(libraryId, out var libraryOverride) && libraryOverride != null)
+        {
+            return (libraryOverride.NamePriority, libraryOverride.LocalizedNamePriority);
+        }
+
+        var global = settings.GlobalLanguageTitleSettings;
+        return (global.NamePriority, global.LocalizedNamePriority);
+    }
+
+    /// <summary>
+    /// Yields every candidate title in the admin's priority order, best-first, so a caller can walk to the next
+    /// candidate when one is rejected instead of giving up on the whole field.
+    /// </summary>
+    /// <remarks>
+    /// Walks every title within a language, not just the first. K+ orders each list best-first, so when
+    /// <c>en[0]</c> collides <c>en[1]</c> is still a better answer than dropping English entirely.
+    /// </remarks>
+    private static IEnumerable<(string Title, string LanguageCode)> EnumerateTitlesByPriority(
+        IReadOnlyList<string> priorities, ExternalSeriesDetailDto externalMetadata)
+    {
+        // Not gated on LocalizedTitles being non-empty: the {Native} token resolves from Titles instead, and a
+        // provider can send a native title with no per-language breakdown at all.
+        if (priorities.Count == 0) yield break;
+
+        // K+ sends canonical BCP-47 casing ("ja-Latn", "pt-BR") but admins type freely and System.Text.Json hands
+        // us an ordinal dictionary, so "ja-latn" would miss. Re-key case-insensitively, first entry wins.
+        var titlesByLanguage = new Dictionary<string, IList<LocalizedTitleDto>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in externalMetadata.LocalizedTitles)
+        {
+            titlesByLanguage.TryAdd(pair.Key, pair.Value);
+        }
+
+        foreach (var languageCode in priorities)
+        {
+            // // Since {Native}/{Romaji} is not a languageCode, we need to handle separately and first
+            if (LanguageCodeHelper.IsNativeToken(languageCode))
+            {
+                var native = externalMetadata.Titles?.NativeTitle;
+                if (!string.IsNullOrWhiteSpace(native))
+                {
+                    yield return (native.Trim(), LanguageCodeHelper.NativeToken);
+                }
+                continue;
+            }
+
+            if (LanguageCodeHelper.IsRomajiToken(languageCode))
+            {
+                var romaji = externalMetadata.Titles?.RomajiTitle;
+                if (!string.IsNullOrWhiteSpace(romaji))
+                {
+                    yield return (romaji.Trim(), LanguageCodeHelper.RomajiToken);
+                }
+                continue;
+            }
+
+            if (!titlesByLanguage.TryGetValue(languageCode, out var titles)) continue;
+
+            foreach (var title in titles.OrderByDescending(t => t.IsPrimary).ThenByDescending(t => t.IsOfficial))
+            {
+                if (string.IsNullOrWhiteSpace(title.Title)) continue;
+                yield return (title.Title.Trim(), languageCode);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds which priority language code produced the name the Series currently holds, or null when none did.
+    /// </summary>
+    /// <remarks>
+    /// Matching on the value rather than on our last write is what makes this correct across re-runs and for
+    /// user-locked names: if the admin locked Name to something no provider language produces, nothing is
+    /// excluded from the LocalizedName list and the value-level self checks still prevent a duplicate.
+    /// </remarks>
+    private static string? FindHeldLanguageCode(IReadOnlyList<string> priorities,
+        ExternalSeriesDetailDto externalMetadata, string? normalizedName)
+    {
+        if (string.IsNullOrEmpty(normalizedName)) return null;
+
+        foreach (var (title, languageCode) in EnumerateTitlesByPriority(priorities, externalMetadata))
+        {
+            if (title.ToNormalized() == normalizedName) return languageCode;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Writes the Series' visible Name from external metadata when enabled and not locked by the user.
+    /// OriginalName remains the on-disk anchor, so this rename stays scan-safe. Walks down the admin's language
+    /// priority list, skipping any candidate that would collide (normalized) with another series in the library+format.
+    /// </summary>
+    private async Task<(bool, MetadataFieldChangeDto?)> UpdateName(Series series, MetadataSettingsDto settings,
+        ExternalSeriesDetailDto externalMetadata, IReadOnlyList<string> namePriority,
+        IReadOnlySet<string> takenNames, CancellationToken ct)
+    {
+        if (!settings.EnableName) return (false, null);
+
+        if (series.NameLocked && !HasForceOverride(settings, series.Metadata, MetadataSettingField.Name))
+        {
+            return (false, null);
+        }
+
+        string? chosen = null;
+        string? chosenLanguageCode = null;
+
+        foreach (var (title, languageCode) in EnumerateTitlesByPriority(namePriority, externalMetadata))
+        {
+            var normalized = title.ToNormalized();
+            if (string.IsNullOrEmpty(normalized)) continue;
+
+            // The best candidate is already our Name. Stop rather than continue - sliding to a lower-priority
+            // language here would rename the series away from a title it correctly holds.
+            if (normalized == series.NormalizedName)
+            {
+                if (string.Equals(title, series.Name, StringComparison.Ordinal)) return (false, null);
+
+                // If the case differs, we need to allow the change
+                chosen = title;
+                chosenLanguageCode = languageCode;
+                break;
+            }
+
+            // Never create a normalized collision - it would make the scanner's SingleOrDefault lookup throw
+            if (takenNames.Contains(normalized)) continue;
+
+            chosen = title;
+            chosenLanguageCode = languageCode;
+            break;
+        }
+
+        if (chosen == null)
+        {
+            _logger.LogDebug(
+                "[K+] Skipping name write for Series {SeriesId}: no unique candidate matched the configured languages",
+                series.Id);
+            return (false, null);
+        }
+
+        if (await WouldOrphanMergedFiles(series, series.Name, chosen, series.NormalizedLocalizedName, series.NormalizedOriginalName, ct))
+        {
+            _logger.LogDebug("[K+] Skipping name write for Series {SeriesId}: current name anchors merged files on disk", series.Id);
+            return (false, null);
+        }
+
+        var locale = chosenLanguageCode ?? series.Metadata.Language ?? series.Library?.DefaultLanguage ?? string.Empty;
+
+        var from = series.Name;
+        var fromSortName = series.SortName;
+        series.Name = chosen;
+        series.NormalizedName = chosen.ToNormalized();
+        series.SortName = series.Library is {RemovePrefixForSortName: true}
+            ? BookSortTitlePrefixHelper.GetSortTitle(series.Name, locale)
+            : series.Name;
+
+        series.NameLocked = true;
+        series.SortNameLocked = fromSortName != series.SortName;
+        series.Metadata.AddKPlusOverride(MetadataSettingField.Name);
+        series.Metadata.AddKPlusOverride(MetadataSettingField.SortName);
+
+        return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Name, from, series.Name, chosenLanguageCode));
+    }
+
+    /// <summary>
+    /// Writes the Series' LocalizedName from external metadata, walking down the admin's language priority list
+    /// and skipping any candidate that would collide with another series or with this Series' own name fields.
+    /// </summary>
+    /// <param name="heldNameLanguageCode">
+    /// The language code Series.Name currently holds. Dropped from the priority list so the two fields never
+    /// resolve from the same language.
+    /// </param>
+    private async Task<(bool, MetadataFieldChangeDto?)> UpdateLocalizedName(Series series, MetadataSettingsDto settings,
+        ExternalSeriesDetailDto externalMetadata, IReadOnlyList<string> localizedNamePriority,
+        string? heldNameLanguageCode, IReadOnlySet<string> takenNames, CancellationToken ct)
     {
         if (!settings.EnableLocalizedName) return (false, null);
 
@@ -2107,77 +2728,97 @@ public class ExternalMetadataService : IExternalMetadataService
             return (false, null);
         }
 
-        if (!string.IsNullOrWhiteSpace(series.LocalizedName) && !HasForceOverride(settings, series.Metadata, MetadataSettingField.LocalizedName))
+        // If Name took a language, LocalizedName can't have it
+        if (!string.IsNullOrEmpty(heldNameLanguageCode))
         {
-            return (false, null);
-        }
-
-        var from = series.LocalizedName;
-
-        // We need to make the best appropriate guess
-        if (externalMetadata.Name == series.Name)
-        {
-            // Choose closest (usually last) synonym
-            var validSynonyms = externalMetadata.Synonyms
-                .Where(IsRomanCharacters)
-                .Where(s => s.ToNormalized() != series.Name.ToNormalized())
+            localizedNamePriority = localizedNamePriority
+                .Where(c => !string.Equals(c, heldNameLanguageCode, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-
-            if (validSynonyms.Count == 0) return (false, null);
-
-            series.LocalizedName = validSynonyms[^1];
-            series.LocalizedNameLocked = true;
-        }
-        else if (IsRomanCharacters(externalMetadata.Name))
-        {
-            series.LocalizedName = externalMetadata.Name;
-            series.LocalizedNameLocked = true;
         }
 
+        string? chosen = null;
+        string? chosenLanguageCode = null;
 
-        series.Metadata.AddKPlusOverride(MetadataSettingField.LocalizedName);
-
-        return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.LocalizedName, from, series.LocalizedName));
-    }
-
-    /// <summary>
-    /// Writes the Series' visible Name from external metadata when enabled and not locked by the user.
-    /// OriginalName remains the on-disk anchor, so this rename stays scan-safe. Skipped if the new name
-    /// would collide (normalized) with another series in the library+format.
-    /// </summary>
-    private async Task<(bool, MetadataFieldChangeDto?)> UpdateName(Series series, MetadataSettingsDto settings,
-        ExternalSeriesDetailDto externalMetadata, CancellationToken ct)
-    {
-        if (!settings.EnableName) return (false, null);
-        if (string.IsNullOrWhiteSpace(externalMetadata.Name)) return (false, null);
-
-        if (series.NameLocked && !HasForceOverride(settings, series.Metadata, MetadataSettingField.Name))
+        foreach (var (title, languageCode) in EnumerateTitlesByPriority(localizedNamePriority, externalMetadata))
         {
-            return (false, null);
+            var normalized = title.ToNormalized();
+            if (string.IsNullOrEmpty(normalized)) continue;
+
+            // A localized name that normalizes to another series' Name/LocalizedName/OriginalName in the same
+            // library+format breaks the scanner
+            if (takenNames.Contains(normalized)) continue;
+
+            // takenNames excludes this Series, so our own columns need checking separately. Dropping the language
+            // code above is not enough - two languages can carry the same title text (en and ja-Latn "Bleach").
+            // series.NormalizedName is already the post-UpdateName value here.
+            if (normalized == series.NormalizedName) continue;
+
+            chosen = title;
+            chosenLanguageCode = languageCode;
+            break;
         }
 
-        var newName = externalMetadata.Name.Trim();
-        if (newName == series.Name) return (false, null);
-
-        var normalizedNewName = newName.ToNormalized();
-
-        // Never create a normalized collision - it would make the scanner's SingleOrDefault lookup throw
-        if (!await _unitOfWork.SeriesRepository.IsSeriesNameUniqueInLibraryAsync(
-                series.LibraryId, series.Format, normalizedNewName, series.Id, ct))
+        if (chosen == null)
         {
-            _logger.LogInformation(
-                "[K+] Skipping name write for Series {SeriesId}: it would collide with another series in the library",
+            _logger.LogDebug(
+                "[K+] Skipping localized name write for Series {SeriesId}: no unique candidate matched the configured languages",
                 series.Id);
             return (false, null);
         }
 
-        var from = series.Name;
-        series.Name = newName;
-        series.NormalizedName = normalizedNewName;
-        series.NameLocked = true;
-        series.Metadata.AddKPlusOverride(MetadataSettingField.Name);
+        if (await WouldOrphanMergedFiles(series, series.LocalizedName, chosen, series.NormalizedName, series.NormalizedOriginalName, ct))
+        {
+            _logger.LogDebug("[K+] Skipping localized name write for Series {SeriesId}: current value anchors merged files on disk", series.Id);
+            return (false, null);
+        }
 
-        return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Name, from, series.Name));
+        var from = series.LocalizedName;
+        series.LocalizedName = chosen;
+        series.NormalizedLocalizedName = chosen.ToNormalized();
+        series.LocalizedNameLocked = true;
+        series.Metadata.AddKPlusOverride(MetadataSettingField.LocalizedName);
+
+        return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.LocalizedName, from, series.LocalizedName, chosenLanguageCode));
+    }
+
+    /// <inheritdoc />
+    public Task<bool> WouldNameChangeOrphanMergedFiles(Series series, string? proposedName, CancellationToken ct = default)
+    {
+        return WouldOrphanMergedFiles(series, series.Name, proposedName ?? string.Empty,
+            series.NormalizedLocalizedName, series.NormalizedOriginalName, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> WouldLocalizedNameChangeOrphanMergedFiles(Series series, string? proposedLocalizedName, CancellationToken ct = default)
+    {
+        return WouldOrphanMergedFiles(series, series.LocalizedName, proposedLocalizedName ?? string.Empty,
+            series.NormalizedName, series.NormalizedOriginalName, ct);
+    }
+
+    /// <summary>
+    /// Guards a K+ rename from orphaning merged files.
+    /// <example>
+    /// A folder literally named "Chained Soldier" is merged under Name "Mato Seihei no Slave" via
+    /// LocalizedName "Chained Soldier". OriginalName only anchors "Mato Seihei no Slave", so if K+ overwrites
+    /// LocalizedName the scanner stops matching the "Chained Soldier" folder and splits it into a new series.
+    /// </example>
+    /// Returns true when <paramref name="droppedName"/> still matches a folder on disk and is not covered by
+    /// the other two name fields - so the write must be skipped even under a force override.
+    /// </summary>
+    private async Task<bool> WouldOrphanMergedFiles(Series series, string droppedName, string proposedName,
+        string survivorA, string survivorB, CancellationToken ct)
+    {
+        var dropped = droppedName.ToNormalized();
+        if (string.IsNullOrEmpty(dropped)) return false;
+        if (dropped == proposedName.ToNormalized()) return false;       // not actually changing
+        if (dropped == survivorA || dropped == survivorB) return false; // still held by Name/OriginalName
+
+        var files = await _unitOfWork.SeriesRepository.GetFilesForSeriesAsync(series.Id, ct);
+        return files
+            .Select(f => Path.GetDirectoryName(f.FilePath))
+            .Where(d => !string.IsNullOrEmpty(d))
+            .SelectMany(d => d!.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .Any(segment => segment.ToNormalized() == dropped || Parser.CleanTitle(segment).ToNormalized() == dropped);
     }
 
     private static (bool, MetadataFieldChangeDto?) UpdateSummary(Series series, MetadataSettingsDto settings, ExternalSeriesDetailDto externalMetadata)
@@ -2197,8 +2838,11 @@ public class ExternalMetadataService : IExternalMetadataService
         }
 
         var from = series.Metadata.Summary;
-        series.Metadata.Summary = StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(externalMetadata.Summary));
+
+        // Mangabaka uses Markdown for Summaries, convert to Html to align with opf/comicinfo
+        series.Metadata.Summary = ConvertMarkdownToHtml(externalMetadata.Summary);
         series.Metadata.AddKPlusOverride(MetadataSettingField.Summary);
+        series.Metadata.SummaryLocked = true;
 
         return (true, new MetadataFieldChangeDto(MetadataFieldChangeKind.Summary, from, series.Metadata.Summary));
     }
@@ -2224,8 +2868,8 @@ public class ExternalMetadataService : IExternalMetadataService
     {
         try
         {
-            // Only choose the better image if we're overriding a user provided cover
-            await _coverDbService.SetSeriesCoverByUrl(series, coverUrl, false, !series.Metadata.HasSetKPlusMetadata(MetadataSettingField.Covers));
+            await _coverDbService.SetCoverByUrlAsync(series, coverUrl,
+                new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: !IsKavitaPlusCover(series)));
         }
         catch (Exception ex)
         {
@@ -2237,7 +2881,8 @@ public class ExternalMetadataService : IExternalMetadataService
     {
         try
         {
-            await _coverDbService.SetChapterCoverByUrl(chapter, coverUrl, false, true);
+            await _coverDbService.SetCoverByUrlAsync(chapter, coverUrl,
+                new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: true));
         }
         catch (Exception ex)
         {
@@ -2259,21 +2904,23 @@ public class ExternalMetadataService : IExternalMetadataService
 
             Person? person = null;
 
+            const PersonIncludes includes = PersonIncludes.Aliases | PersonIncludes.CoverImageFile;
             if (aniListId > 0)
             {
-                person = await _unitOfWork.PersonRepository.GetPersonByAniListId(aniListId);
+                person = await _unitOfWork.PersonRepository.GetPersonByAniListId(aniListId, includes);
             }
 
             if (person == null && !string.IsNullOrEmpty(hardcoverId))
             {
-                person = await _unitOfWork.PersonRepository.GetPersonByHardcoverId(hardcoverId);
+                person = await _unitOfWork.PersonRepository.GetPersonByHardcoverId(hardcoverId, includes);
             }
 
-            if (person == null|| !string.IsNullOrEmpty(person.CoverImage)) continue;
+            if (person == null || _imageFileService.HasCoverFile(person)) continue;
 
             try
             {
-                await _coverDbService.SetPersonCoverByUrl(person, staff.ImageUrl, false, true);
+                await _coverDbService.SetCoverByUrlAsync(person, staff.ImageUrl,
+                    new CoverWrite(ImageOrigin.KavitaPlus, Lock: true, ChooseBetter: true, RejectPlaceholder: true));
                 await _auditService.LogPersonAsync(KavitaPlusEventType.PersonCoverUpdated, person.Id,
                     new AuditLogPersonCoverParamsDto { PersonName = person.Name, AniListId = aniListId, HardcoverId = hardcoverId, ImageUrl = staff.ImageUrl });
             }
@@ -2284,26 +2931,45 @@ public class ExternalMetadataService : IExternalMetadataService
         }
     }
 
+    public static (int, int, bool) CountVolumesAndChapters(Series series, List<Chapter> chapters)
+    {
+        var realVolumes = series.Volumes
+            .Where(v => v.MaxNumber.IsNot(Parser.SpecialVolumeNumber) && v.MaxNumber.IsNot(Parser.LooseLeafVolumeNumber))
+            .ToList();
+
+        var isVolumeBased = realVolumes.Count != 0;
+        // One book series (epub/pdf) have it as a special, which won't be caught in the above
+        if (series.Format is MangaFormat.Epub or MangaFormat.Pdf && chapters.Count == 1)
+        {
+            isVolumeBased = true;
+            realVolumes = series.Volumes;
+        }
+
+        var maxVolume = (int)(realVolumes.Count != 0 ? realVolumes.Max(v => v.MaxNumber) : Parser.DefaultChapterNumber);
+        var maxChapter = (int)chapters.Max(c => c.MaxNumber);
+
+        return (maxChapter, maxVolume, isVolumeBased);
+    }
+
 
     private PublicationStatus DeterminePublicationStatus(Series series, List<Chapter> chapters, ExternalSeriesDetailDto externalMetadata)
     {
         try
         {
-            // Determine the expected total count based on local metadata
+            var (maxChapter, maxVolume, isVolumeBased) = CountVolumesAndChapters(series, chapters);
+
+            // TODO: When the underlying source is a Manhua, there can be 0 chapters counted in the count. We need to handle this edge case
+            var externalExpectedCount = isVolumeBased ? externalMetadata.Volumes : externalMetadata.Chapters;
+
+            // TODO: If the series is not a comic AND has a Chapter 0 (not a special) AND !isVolumeBased, then we can take the total ChapterCount - 1 as the count, since we don't count 0-based chapters
+            // This is because some series like https://mangabaka.org/86687 count 0 in the total count
+
             series.Metadata.TotalCount = Math.Max(
                 chapters.Max(chapter => chapter.TotalCount),
-                externalMetadata.Volumes > 0 ? externalMetadata.Volumes : externalMetadata.Chapters
+                externalExpectedCount
             );
 
-            // The actual number of count's defined across all chapter's metadata
-            series.Metadata.MaxCount = chapters.Max(chapter => chapter.Count);
-
-            var nonSpecialVolumes = series.Volumes
-                .Where(v => v.MaxNumber.IsNot(Parser.SpecialVolumeNumber))
-                .ToList();
-
-            var maxVolume = (int)(nonSpecialVolumes.Count != 0 ? nonSpecialVolumes.Max(v => v.MaxNumber) : 0);
-            var maxChapter = (int)chapters.Max(c => c.MaxNumber);
+            series.Metadata.MaxCount = isVolumeBased ? maxVolume : maxChapter;
 
             if (series.Format is MangaFormat.Epub or MangaFormat.Pdf && chapters.Count == 1)
             {
@@ -2313,23 +2979,9 @@ public class ExternalMetadataService : IExternalMetadataService
             {
                 series.Metadata.MaxCount = series.Metadata.TotalCount;
             }
-            else if ((maxChapter == Parser.DefaultChapterNumber || maxChapter > series.Metadata.TotalCount) &&
-                     maxVolume <= series.Metadata.TotalCount && maxVolume != Parser.DefaultChapterNumber)
-            {
-                series.Metadata.MaxCount = maxVolume;
-            }
-            else if (maxVolume == series.Metadata.TotalCount)
-            {
-                series.Metadata.MaxCount = maxVolume;
-            }
-            else
-            {
-                series.Metadata.MaxCount = maxChapter;
-            }
 
             var status = PublicationStatus.OnGoing;
-
-            var hasExternalCounts = externalMetadata.Volumes > 0 || externalMetadata.Chapters > 0;
+            var hasExternalCounts = isVolumeBased ? externalMetadata.Volumes > 0 : externalMetadata.Chapters > 0;
 
             if (hasExternalCounts)
             {
@@ -2553,6 +3205,7 @@ public class ExternalMetadataService : IExternalMetadataService
                 AniListId = rec.AniListId,
                 MalId = rec.MalId,
                 MangaBakaId = (int?) rec.MangabakaId,
+                HardcoverId = rec.HardcoverId,
                 MetadataProvider = provider,
                 RecommendationSource = source,
                 AgeRating = ageRating
@@ -2567,6 +3220,7 @@ public class ExternalMetadataService : IExternalMetadataService
                 CoverUrl = rec.CoverUrl,
                 Summary = rec.Summary,
                 MangaBakaId = (int?) rec.MangabakaId,
+                HardCoverId = rec.HardcoverId,
                 MetadataProvider = provider,
                 RecommendationSource = source,
                 AgeRating = ageRating
@@ -2593,75 +3247,31 @@ public class ExternalMetadataService : IExternalMetadataService
         return $"name:{(name ?? string.Empty).ToNormalized()}";
     }
 
-
-    /// <summary>
-    /// This is to get series information for the recommendation drawer on Kavita
-    /// </summary>
-    /// <remarks>This uses a different API that series detail</remarks>
-    /// <param name="aniListId"></param>
-    /// <param name="malId"></param>
-    /// <param name="mangaBakaId"></param>
-    /// <param name="seriesId"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    private async Task<ExternalSeriesDetailDto?> GetSeriesDetail(int? aniListId, long? malId, int? mangaBakaId, int? seriesId, CancellationToken ct = default)
+    private static string ConvertMarkdownToHtml(string? summary)
     {
-        // TODO: This is the primary point where we need to integrate ExternalIds since weblink parsing is already handled
-        // TODO: Ensure when we set/update weblinks via API, we reparse and update external ids (if they are empty only)
-        var payload = new SeriesDetailRequestV3Dto()
-        {
-            // We can hardcode this for now. But will need to load from Library setting once Hardcover providers
-            // recommendations too
-            Provider = MetadataProvider.Mangabaka,
-            AniListId = aniListId,
-            MalId = malId,
-            MangabakaId = mangaBakaId,
-            SeriesName = string.Empty,
-            AlternativeNames = [],
-            IncludeRecommendations = false,
-            IncludeReviews = false,
-            IncludeRelationships = false
-        };
+        if (string.IsNullOrWhiteSpace(summary)) return string.Empty;
 
-        if (seriesId is > 0)
-        {
-            var series = await _unitOfWork.SeriesRepository.GetSeriesByIdAsync(seriesId.Value,
-                SeriesIncludes.Metadata | SeriesIncludes.Library | SeriesIncludes.ExternalReviews, ct);
-            if (series != null)
-            {
-                if (payload.AniListId <= 0)
-                {
-                    payload.AniListId = ExternalIdParser.GetAniListId(series.Metadata.WebLinks);
-                }
-                if (payload.MalId <= 0)
-                {
-                    payload.MalId = ExternalIdParser.GetMalId(series.Metadata.WebLinks);
-                }
-                payload.SeriesName = series.Name;
-                payload.AlternativeNames = [series.LocalizedName];
-                payload.Format = series.Library.Type.ConvertToPlusMediaFormat(series.Format);
-            }
-        }
+        var ret = Markdown.ToHtml(StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(summary)) ?? string.Empty, MarkdownPipeline).Trim();
 
+        // Check if ret is a single paragraph tag, if so, remove it.
 
-        var result =  await _kavitaPlusApiService.GetSeriesDetailV3Async(payload, ct);
-        if (!result.IsSuccess)
-        {
-            _logger.LogError("Failed to retrieve series detail from Kavita Plus API: {ErrorMessage}", result.ErrorMessage);
-            return null;
-        }
-
-        var extSeries = result.Data.Series;
-        if (extSeries == null) return null;
-
-        extSeries.Summary = StringHelper.RemoveSourceInDescription(StringHelper.SquashBreaklines(extSeries.Summary));
-
-        return extSeries;
+        return ret;
     }
 
     private static bool HasForceOverride(MetadataSettingsDto settings, IHasKPlusMetadata kPlusMetadata,
         MetadataSettingField field)
     {
         return settings.HasOverride(field) || kPlusMetadata.HasSetKPlusMetadata(field);
+    }
+
+    private static bool HasForceCoverOverride(MetadataSettingsDto settings, IHasCoverImageFile entity,
+        MetadataSettingField field)
+    {
+        return settings.HasOverride(field) || IsKavitaPlusCover(entity);
+    }
+
+    private static bool IsKavitaPlusCover(IHasCoverImageFile entity)
+    {
+        return entity.CoverImageFile?.Origin == ImageOrigin.KavitaPlus;
     }
 }

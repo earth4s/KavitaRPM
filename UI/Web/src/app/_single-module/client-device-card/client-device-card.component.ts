@@ -1,7 +1,16 @@
-import {ChangeDetectionStrategy, Component, computed, HostListener, inject, input, model, output} from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  HostListener,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+} from '@angular/core';
 import {ClientDevice} from "../../_models/client-device";
 import {translate, TranslocoDirective} from "@jsverse/transloco";
-import {TimeAgoPipe} from "../../_pipes/time-ago.pipe";
 import {ClientDeviceType, ClientInfoService} from "../../_services/client-info.service";
 import {ClientDeviceAuthTypePipe} from "../../_pipes/client-device-authtype.pipe";
 import {DefaultValuePipe} from "../../_pipes/default-value.pipe";
@@ -14,7 +23,6 @@ import {UtcToLocalTimePipe} from "../../_pipes/utc-to-local-time.pipe";
 import {CardActionablesComponent} from "../card-actionables/card-actionables.component";
 import {SentenceCasePipe} from "../../_pipes/sentence-case.pipe";
 import {DeviceService} from "../../_services/device.service";
-import {FormControl, FormGroup, ReactiveFormsModule, Validators} from "@angular/forms";
 import {DOCUMENT} from "@angular/common";
 import {AccountService} from "../../_services/account.service";
 import {User} from "../../_models/user/user";
@@ -22,12 +30,17 @@ import {Breakpoint, BreakpointService} from "../../_services/breakpoint.service"
 import {ActionFactoryService} from "../../_services/action-factory.service";
 import {ActionItem} from "../../_models/actionables/action-item";
 import {ActionResult} from "../../_models/actionables/action-result";
+import {TimeDifferencePipe} from "../../_pipes/time-difference.pipe";
+import {form, FormField, required} from "@angular/forms/signals";
+
+interface DeviceFormModel {
+  name: string;
+}
 
 @Component({
   selector: 'app-client-device-card',
   imports: [
     TranslocoDirective,
-    TimeAgoPipe,
     ClientDeviceAuthTypePipe,
     DefaultValuePipe,
     ClientDevicePlatformPipe,
@@ -37,8 +50,7 @@ import {ActionResult} from "../../_models/actionables/action-result";
     UtcToLocalTimePipe,
     CardActionablesComponent,
     SentenceCasePipe,
-    ReactiveFormsModule
-  ],
+    TimeDifferencePipe, FormField],
   templateUrl: './client-device-card.component.html',
   styleUrl: './client-device-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -66,8 +78,11 @@ export class ClientDeviceCardComponent {
    */
   refresh = output<number>();
 
-  deviceForm = new FormGroup({
-    name: new FormControl('', [Validators.required]),
+  private readonly deviceFormModel = signal<DeviceFormModel>({
+    name: ''
+  });
+  deviceForm = form(this.deviceFormModel, (schemaPath) => {
+    required(schemaPath.name)
   });
 
   currentUserId = computed(() => {
@@ -142,9 +157,8 @@ export class ClientDeviceCardComponent {
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     if (!this.isEditMode()) return;
+    if (this.deviceForm.name().invalid()) return;
 
-    const control = this.deviceForm.get('name');
-    if (control?.invalid) return;
 
     const inputElem = this.document.querySelector(`#client-device-${this.clientDevice().id}`);
     const clickedInside = inputElem?.contains(event.target as Node);
@@ -190,7 +204,7 @@ export class ClientDeviceCardComponent {
   }
 
   saveName() {
-    const newName = this.deviceForm.get('name')?.value ?? ''
+    const newName = this.deviceForm.name().value() ?? '';
     if (newName.length === 0) return;
     this.deviceService.updateClientDeviceName(this.clientDevice().id, newName).subscribe(() => {
       this.refresh.emit(this.clientDevice().id);
@@ -198,7 +212,7 @@ export class ClientDeviceCardComponent {
   }
 
   toggleEdit() {
-    this.deviceForm.get('name')!.setValue(this.clientDevice().friendlyName);
+    this.deviceForm.name().value.set(this.clientDevice().friendlyName);
     this.isEditMode.update(x => !x);
   }
 }

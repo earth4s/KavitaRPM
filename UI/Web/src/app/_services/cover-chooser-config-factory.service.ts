@@ -12,14 +12,22 @@ import {ReadingList} from "../_models/reading-list/reading-list";
 import {Person} from "../_models/metadata/person";
 import {LicenseService} from "./license.service";
 import {ReadingListService} from "./reading-list.service";
+import {PersonService} from "./person.service";
 
 export interface CoverImageOption {
   /** Image URL used to render the preview (remote URL, cover-upload URL, or data URL). */
   url: string;
   title: string;
   subtitle?: string;
+  sourceUrl?: string;
   /** Filename of the image once staged in the temp directory. Populated lazily on selection. */
   fileName?: string;
+  /**
+   * Set when the cover represents an internal image. Used to load from disk instead
+   */
+  chapterId?: number;
+  volumeId?: number;
+  seriesId?: number;
 }
 
 export interface CoverImageChooserConfig {
@@ -42,6 +50,7 @@ export class CoverChooserConfigFactoryService {
   private readonly entityTitleService = inject(EntityTitleService);
   private readonly licenseService = inject(LicenseService);
   private readonly readinglistService = inject(ReadingListService);
+  private readonly personService = inject(PersonService);
 
 
   public forSeries(series: Series, volumes: Volume[], libraryType: LibraryType) {
@@ -51,7 +60,7 @@ export class CoverChooserConfigFactoryService {
     if (looseLeafChapterVolume.length > 0) {
       const opts = looseLeafChapterVolume.flatMap(v =>
         v.chapters.map((c: Chapter) => ({
-          url: this.imageService.getChapterCoverImage(c.id),
+          url: this.imageService.getChapterCoverImage(c.id), chapterId: c.id,
           title: this.entityTitleService.computeTitle(c, libraryType, { prioritizeTitleName: false, includeVolume: false })
         } as CoverImageOption))
       );
@@ -65,7 +74,7 @@ export class CoverChooserConfigFactoryService {
       resetFunc: () => this.uploadService.updateSeriesCoverImage(series.id, '', false),
       selected: { url: this.imageService.getSeriesCoverImage(series.id), title: series.name },
       volumeFunc: nonLooseLeafChapterVolumes.length > 0
-        ? of(nonLooseLeafChapterVolumes.map(v => ({ url: this.imageService.getVolumeCoverImage(v.id),
+        ? of(nonLooseLeafChapterVolumes.map(v => ({ url: this.imageService.getVolumeCoverImage(v.id), volumeId: v.id,
           title: this.entityTitleService.computeTitle(v, libraryType, { prioritizeTitleName: false, includeVolume: true }) } as CoverImageOption)))
         : undefined,
       chapterFunc: looseLeafChapters,
@@ -104,22 +113,23 @@ export class CoverChooserConfigFactoryService {
       resetFunc: () => this.uploadService.updateCollectionCoverImage(tag.id, '', false),
       selected: { url: this.imageService.getCollectionCoverImage(tag.id), title: tag.title },
       otherFunc: of(series.map(s => {
-        return {url: this.imageService.getSeriesCoverImage(s.id), title: s.name}
+        return {url: this.imageService.getSeriesCoverImage(s.id), seriesId: s.id, title: s.name}
       }) as CoverImageOption[])
     };
   }
 
   public forReadingList(list: ReadingList): CoverImageChooserConfig {
     return {
-      isLocked: list.coverImageLocked || list.coverImage != null,
+      isLocked: list.coverImageLocked || list.hasCoverImage,
       resetFunc: () => this.uploadService.updateReadingListCoverImage(list.id, '', false),
       selected: { url: this.imageService.getReadingListCoverImage(list.id), title: list.title },
       chapterFunc: this.readinglistService.getListItems(list.id).pipe(map(items => {
         return items.map(i => {
           return {
             url: this.imageService.getChapterCoverImage(i.chapterId),
-            title: i.title
-          }
+            title: i.title,
+            chapterId: i.chapterId,
+          } as CoverImageOption
         })
       }))
     };
@@ -130,14 +140,17 @@ export class CoverChooserConfigFactoryService {
       isLocked: person.coverImageLocked,
       resetFunc: () => this.uploadService.updatePersonCoverImage(person.id, '', false),
       selected: { url: this.imageService.getPersonImage(person.id), title: person.name },
+      otherFunc: this.personService.getCoversDbImageUrl(person.id).pipe(
+        map(url => url ? [{ url, title: 'CoversDB' } as CoverImageOption] : [])
+      ),
     };
   }
 
   public forLibrary(library: Library | undefined): CoverImageChooserConfig {
     return {
-      isLocked: library?.coverImage != null,
+      isLocked: library?.hasCoverImage,
       resetFunc: library ? () => this.uploadService.updateLibraryCoverImage(library.id, '', false) : undefined,
-      selected: (library?.coverImage != null && library?.coverImage !== '')
+      selected: library?.hasCoverImage
         ? { url: this.imageService.getLibraryCoverImage(library!.id), title: library!.name }
         : undefined,
     };

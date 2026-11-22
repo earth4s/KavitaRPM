@@ -1,15 +1,16 @@
 <ng-container *transloco="let t;">
   <div>
     <div class="row g-0 mb-2">
-      <div class="col-auto">
+      <div class="col-auto" #switchWrapper>
+        <ng-content></ng-content>
         @if (switchRef()) {
           <ng-container [ngTemplateOutlet]="switchRef()" />
         }
       </div>
       <div class="col-auto">
-        <h6 class="section-title" [id]="id() || title()">
-          @if (labelId()) {
-            <label class="reset-label" [for]="labelId()">{{title()}}</label>
+        <h6 class="section-title">
+          @if (hasControl()) {
+            <label class="reset-label" [for]="elementId()">{{title()}}</label>
           } @else {
             {{title()}}
           }
@@ -17,6 +18,9 @@
       </div>
     </div>
 
+    @if (control(); as boundControl) {
+      <app-validation-errors [control]="boundControl" [inputId]="elementId()" [messages]="validations()" />
+    }
 
     @if (subtitle()) {
       <div class="text-muted mt-2" [innerHTML]="subtitle()! | safeHtml"></div>

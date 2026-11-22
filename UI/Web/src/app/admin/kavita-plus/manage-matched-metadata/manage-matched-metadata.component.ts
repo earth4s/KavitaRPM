@@ -1,41 +1,52 @@
-import {ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal} from '@angular/core';
 import {translate, TranslocoDirective} from "@jsverse/transloco";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
+import {takeUntilDestroyed, toObservable} from "@angular/core/rxjs-interop";
 import {LibraryTypePipe} from "../../../_pipes/library-type.pipe";
 import {ImageComponent} from "../../../shared/image/image.component";
-import {VirtualScrollerModule} from "@iharbeck/ngx-virtual-scroller";
-import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {MatchStateOptionPipe} from "../../../_pipes/match-state.pipe";
 import {UtcToLocalTimePipe} from "../../../_pipes/utc-to-local-time.pipe";
 import {DefaultValuePipe} from "../../../_pipes/default-value.pipe";
 import {NgxDatatableModule} from "@siemens/ngx-datatable";
 import {LibraryNamePipe} from "../../../_pipes/library-name.pipe";
-import {APP_BASE_HREF, AsyncPipe} from "@angular/common";
+import {APP_BASE_HREF, AsyncPipe, DecimalPipe, PercentPipe} from "@angular/common";
 import {ResponsiveTableComponent} from "../../../shared/_components/responsive-table/responsive-table.component";
 import {LibraryType} from "../../../_models/library/library";
 import {ActionService} from "../../../_services/action.service";
 import {ManageService} from "../../../_services/manage.service";
 import {EVENTS, MessageHubService} from "../../../_services/message-hub.service";
-import {ManageMatchSeries} from "../../../_models/kavitaplus/manage-match-series";
+import {ManageMatchSeries, MatchedExternalSeriesCount} from "../../../_models/kavitaplus/manage-match-series";
 import {Series} from "../../../_models/series";
 import {ManageMatchFilter} from "../../../_models/kavitaplus/manage-match-filter";
-import {debounceTime, distinctUntilChanged, tap} from "rxjs";
+import {catchError, debounceTime, distinctUntilChanged, of, skip, tap} from "rxjs";
+import {LicenseService} from "../../../_services/license.service";
+import {MetadataProvider} from "../../../_models/kavitaplus/metadata-provider.enum";
 import {switchMap} from "rxjs/operators";
 import {ExternalMatchRateLimitErrorEvent} from "../../../_models/events/external-match-rate-limit-error-event";
-import {ToastrService} from "ngx-toastr";
+import {ToastrService} from '@openng/ngx-toastr';
 import {ImageService} from "../../../_services/image.service";
 import {Pagination} from "../../../_models/pagination";
 import {ScanSeriesEvent} from "../../../_models/events/scan-series-event";
 import {allMatchStates, MatchStateOption} from "../../../_models/kavitaplus/match-state-option";
 import {LibraryService} from "../../../_services/library.service";
+import {LoadingComponent} from "../../../shared/loading/loading.component";
+import {form, FormField} from "@angular/forms/signals";
+import {
+  EnumOption,
+  SettingSelectComponent
+} from "../../../settings/_components/setting-enum-select/setting-select.component";
+
+
+interface FormModel {
+  source: 'comicvine' | 'gcd' | 'kavitaplus';
+  matchState: MatchStateOption;
+  libraryType: LibraryType;
+}
 
 @Component({
   selector: 'app-manage-matched-metadata',
   imports: [
     TranslocoDirective,
     ImageComponent,
-    VirtualScrollerModule,
-    ReactiveFormsModule,
     MatchStateOptionPipe,
     UtcToLocalTimePipe,
     DefaultValuePipe,
@@ -44,6 +55,11 @@ import {LibraryService} from "../../../_services/library.service";
     AsyncPipe,
     LibraryTypePipe,
     ResponsiveTableComponent,
+    LoadingComponent,
+    PercentPipe,
+    DecimalPipe,
+    FormField,
+    SettingSelectComponent,
   ],
   templateUrl: './manage-matched-metadata.component.html',
   styleUrl: './manage-matched-metadata.component.scss',
@@ -51,7 +67,15 @@ import {LibraryService} from "../../../_services/library.service";
 })
 export class ManageMatchedMetadataComponent implements OnInit {
 
-  protected readonly allMatchStates = allMatchStates.filter(m => m !== MatchStateOption.Matched); // Matched will have too many
+  protected readonly allMatchStates = computed(() => this.isDirect()
+    ? allMatchStates.filter(m => m !== MatchStateOption.Error)
+    : allMatchStates.filter(m => m !== MatchStateOption.Matched));
+  protected readonly licenseService = inject(LicenseService);
+  protected readonly sources = computed(() => this.licenseService.hasActiveLicense()
+    ? ["comicvine", "gcd", "kavitaplus"] : []);
+  protected readonly isDirect = computed(() => this.formGroup.source().value() !== "kavitaplus");
+  private requestNumber = 0;
+  private countRequest = 0;
 
   private readonly actionService = inject(ActionService);
   private readonly manageService = inject(ManageService);
@@ -62,7 +86,11 @@ export class ManageMatchedMetadataComponent implements OnInit {
   protected readonly destroyRef = inject(DestroyRef);
   private readonly libraryService = inject(LibraryService);
 
-  metadataEnabledLibraryTypes = signal<LibraryType[]>([]);
+  private paidLibraryTypes = signal<LibraryType[]>([]);
+  metadataEnabledLibraryTypes = computed<EnumOption<LibraryType>[]>(() => [
+    ...(this.isDirect() ? [LibraryType.Comic, LibraryType.ComicVine] : this.paidLibraryTypes()).map(value => ({value})),
+    {value: -1 as LibraryType}
+  ]);
   isLoading = signal(true);
   data = signal<ManageMatchSeries[]>([]);
   pagination = signal<Pagination>({
@@ -72,24 +100,60 @@ export class ManageMatchedMetadataComponent implements OnInit {
     itemsPerPage: 15,
   });
 
-  filterGroup = new FormGroup({
-    'matchState': new FormControl(MatchStateOption.Error, []),
-    'libraryType': new FormControl(-1, []), // Denotes all
+  private readonly formModel = signal<FormModel>({
+    source: "comicvine",
+    matchState: MatchStateOption.NotMatched,
+    libraryType: -1 as LibraryType // Denotes all
   });
+  formGroup = form(this.formModel);
   trackBy = (idx: number, item: ManageMatchSeries) => `${item.isMatched}_${item.series.name}_${idx}`;
 
-  ngOnInit() {
+  matchedCounts = signal<MatchedExternalSeriesCount | null>(null);
+  totalCount = signal<number>(0);
+  percentageMatched = computed(() => {
+    const matchedCount = this.matchedCounts();
+    if (!matchedCount) { return null }
 
-    this.libraryService.getLibraryTypesWithMetadataSupport().pipe(
+    const totalItems = matchedCount.totalCount;
+
+    if (totalItems == 0) return 0;
+
+    return  (totalItems - (matchedCount.dontMatchCount + matchedCount.erroredCount + matchedCount.notMatchedCount)) / totalItems;
+  });
+  isMatchedState = computed(() => {
+    return this.formGroup.matchState().value() === MatchStateOption.Matched;
+  });
+
+  constructor() {
+    toObservable(this.formGroup.source().value).pipe(skip(1), takeUntilDestroyed()).subscribe(() => {
+      this.formModel.update(value => ({...value, libraryType: -1 as LibraryType, matchState: MatchStateOption.NotMatched}));
+      this.data.set([]);
+      this.matchedCounts.set(null);
+    });
+    toObservable(this.formModel).pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      skip(1),
+      switchMap(() => {
+        this.refreshCounts();
+        return this.loadData();
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe();
+  }
+
+  ngOnInit() {
+    if (this.licenseService.hasActiveLicense()) this.libraryService.getLibraryTypesWithMetadataSupport().pipe(
       takeUntilDestroyed(this.destroyRef),
-      tap(types => this.metadataEnabledLibraryTypes.set(types))
+      tap(types => this.paidLibraryTypes.set(types))
     ).subscribe();
 
     this.messageHub.messages$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(message => {
       if (message.event == EVENTS.ScanSeries) {
         const evt = message.payload as ScanSeriesEvent;
         if (this.data().filter(d => d.series.id === evt.seriesId).length > 0) {
-          this.loadData();
+          this.loadData().subscribe();
+          this.refreshCounts();
         }
       }
 
@@ -99,18 +163,7 @@ export class ManageMatchedMetadataComponent implements OnInit {
       }
     });
 
-    this.filterGroup.valueChanges.pipe(
-      debounceTime(300),
-      distinctUntilChanged(),
-      tap(_ => {
-        this.isLoading.set(true);
-      }),
-      switchMap(_ => this.loadData()),
-      tap(_ => {
-        this.isLoading.set(false);
-      }),
-      takeUntilDestroyed(this.destroyRef)
-    ).subscribe();
+    this.refreshCounts();
 
     this.loadData().subscribe();
   }
@@ -120,15 +173,18 @@ export class ManageMatchedMetadataComponent implements OnInit {
   }
 
   loadData(pageNumber: number = 1) {
+    const request = ++this.requestNumber;
+    const source = this.formGroup.source().value();
     const filter: ManageMatchFilter = {
-      matchStateOption: parseInt(this.filterGroup.get('matchState')!.value + '', 10),
-      libraryType: parseInt(this.filterGroup.get('libraryType')!.value + '', 10),
+      matchStateOption: this.formGroup.matchState().value(),
+      libraryType: this.formGroup.libraryType().value(),
       searchTerm: ''
     };
 
     this.isLoading.set(true);
 
-    return this.manageService.getAllKavitaPlusSeries(filter, pageNumber, this.pagination().itemsPerPage).pipe(tap(data => {
+    return this.manageService.getAllKavitaPlusSeries(filter, pageNumber, this.pagination().itemsPerPage, source).pipe(tap(data => {
+      if (request !== this.requestNumber || source !== this.formGroup.source().value()) return;
       this.data.set(data.result);
       this.pagination.set({
         itemsPerPage: data.pagination.itemsPerPage,
@@ -137,15 +193,28 @@ export class ManageMatchedMetadataComponent implements OnInit {
         currentPage: data.pagination.currentPage - 1, // ngx-datatable is 0 based, Kavita is 1 based
       });
       this.isLoading.set(false);
+
+    }), catchError(() => {
+      if (request === this.requestNumber) this.isLoading.set(false);
+      return of(null);
     }));
+  }
+
+  private refreshCounts() {
+    const request = ++this.countRequest;
+    const source = this.formGroup.source().value();
+    this.manageService.getMatchedExternalSeriesCount(source).subscribe(res => {
+      if (request === this.countRequest && source === this.formGroup.source().value()) this.matchedCounts.set(res);
+    });
   }
 
   fixMatch(series: Series) {
     this.actionService.matchSeries(series, result => {
       if (!result) return;
 
-      this.data.update(x => x.filter(s => s.series.id !== series.id));
-    });
+      this.loadData().subscribe();
+      this.refreshCounts();
+    }, this.formGroup.source().value() === 'gcd' ? MetadataProvider.Gcd : this.isDirect() ? MetadataProvider.ComicVine : undefined);
   }
 
   protected readonly MatchStateOption = MatchStateOption;

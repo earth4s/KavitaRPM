@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../GitHubActions/Kavita.ReleaseTools.schema.json
+
+CsprojPath: "Kavita.Common/Kavita.Common.csproj"
+
+VersionBump:
+  ComponentToBump: Revision
+  ReleaseTypes: [Nightly, Canary]
+
+GenerateOpenApi:
+  SwashbuckleVersionSource: "Kavita.Services/Kavita.Services.csproj"
+  CsprojPath: "Kavita.Server/Kavita.Server.csproj"
+  OutputPath: "openapi.json"
+
+FlushGitChanges:
+  Files:
+    - "Kavita.Common/Kavita.Common.csproj"
+    - "openapi.json"
+
+BuildFrontend:
+  BuildScript: "prod"
+  Path: "UI/Web"
+  OutputPath: "dist/browser/"
+  CopyTo: "Kavita.Server/wwwroot"
+  AllowLegacyPeerDeps: true
+  FullReplace: true
+
+BuildServer:
+  AppName: "Kavita"
+  CsprojPath: "Kavita.Server/Kavita.Server.csproj"
+  SlnPath: "Kavita.sln"
+  OutputPath: "_output/"
+  Rids:
+    # We do not create releases so there is no need for the GA to build all of them
+    #Stable: ["linux-x64", "linux-arm64", "linux-arm", "linux-musl-x64", "win-x64", "win-x86", "osx-arm64", "osx-x64"]
+    Stable: ["linux-x64", "linux-arm64", "linux-arm"]
+    Nightly: ["linux-x64", "linux-arm64", "linux-arm"]
+    Canary: ["linux-x64", "linux-arm64", "linux-arm"]
+  RenameFiles:
+    - { From: "Kavita.Server", To: "Kavita"}
+    - { From: "Kavita.Server.exe", To: "Kavita.exe" }
+  CopyFiles:
+    - { From: "INSTALL.txt", To: "README.txt" }
+    - { From: "LICENSE", To: "LICENSE.txt" }
+    - { From: "Kavita.Server/config/appsettings.json", To: "config/appsettings-init.json"}
+  DeletePaths: ["BuildHost-net472", "BuildHost-netcore", "bin", "config/cache-long"]
+  IncludeExternalFiles:
+    "linux-x64": [ { From: "https://github.com/pgaskin/kepubify/releases/download/v4.0.4/kepubify-linux-64bit", To: "kepubify", "Sha256": "37d7628d26c5c906f607f24b36f781f306075e7073a6fe7820a751bb60431fc5" } ]
+    "linux-arm64": [ { From: "https://github.com/pgaskin/kepubify/releases/download/v4.0.4/kepubify-linux-arm64", To: "kepubify", "Sha256": "5a15b8f6f6a96216c69330601bca29638cfee50f7bf48712795cff88ae2d03a3" } ]
+    "linux-arm": [ { From: "https://github.com/pgaskin/kepubify/releases/download/v4.0.4/kepubify-linux-arm", To: "kepubify", "Sha256": "07f23275c4e674093443f01a591aa0980b0b87dbb0a10986d5001e9d56b0e1e7" } ]
+
+Docker:
+  Push: true
+  Platforms: ["linux/amd64", "linux/arm64", "linux/arm/v7"]
+  Images:
+    - "ghcr.io/kareadita/kavita"
+    - "jvmilazz0/kavita"
+  Tags:
+    Stable: ["latest", "{Version}", "nightly", "nightly-{Version}"]
+    Nightly: ["nightly", "nightly-{Version}"]
+    Canary: ["canary", "canary-{Version}"]
+
+NotifyDiscord:
+  Message: "<@&939225459156217917> <@&939225350775406643>  A new nightly build has been released for docker."
+  ReleaseTypes: [Nightly]
+
+CreateGitHubRelease:
+  Disabled: true
+  ReleaseTypes: [Stable]
+  AssetPath: "_output/"
+
+GitHubComments:
+  ReleaseComponent: Build
+  ReleaseTypes: [Nightly]

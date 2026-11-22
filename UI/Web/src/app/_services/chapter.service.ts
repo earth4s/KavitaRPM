@@ -1,9 +1,22 @@
-import { Injectable, inject } from '@angular/core';
+import {inject, Injectable} from '@angular/core';
 import {environment} from "../../environments/environment";
 import {HttpClient} from "@angular/common/http";
 import {Chapter} from "../_models/chapter";
-import {TextResonse} from "../_types/text-response";
 import {ChapterDetailPlus} from "../_models/chapter-detail-plus";
+
+export interface GcdIssueDetail {
+  id: number;
+  seriesId: number;
+  number: string;
+  variant: string;
+  variantOf?: number;
+  isbn: string;
+  barcode: string;
+  publicationDate: string;
+  keyDate: string;
+  onSaleDate: string;
+  stories: {type: string, title: string, synopsis: string}[];
+}
 
 @Injectable({
   providedIn: 'root'
@@ -13,6 +26,10 @@ export class ChapterService {
 
 
   baseUrl = environment.apiUrl;
+
+  getGcdIssue(seriesId: number, chapterId: number) {
+    return this.httpClient.get<GcdIssueDetail>(this.baseUrl + `gcd/issue-detail?seriesId=${seriesId}&chapterId=${chapterId}`);
+  }
 
   getChapterMetadata(chapterId: number) {
     return this.httpClient.get<Chapter>(this.baseUrl + 'chapter?chapterId=' + chapterId);
@@ -27,7 +44,7 @@ export class ChapterService {
   }
 
   updateChapter(chapter: Chapter) {
-    return this.httpClient.post(this.baseUrl + 'chapter/update', chapter, TextResonse);
+    return this.httpClient.post<Chapter>(this.baseUrl + 'chapter/update', chapter);
   }
 
   chapterDetailPlus(seriesId: number, chapterId: number) {

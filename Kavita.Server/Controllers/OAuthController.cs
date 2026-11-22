@@ -9,6 +9,8 @@ using Kavita.Models.Constants;
 using Kavita.Models.DTOs.KavitaPlus.OAuth;
 using Kavita.Models.DTOs.Settings;
 using Kavita.Server.Attributes;
+using Kavita.Server.Extensions;
+using Kavita.Services.Extensions;
 using Kavita.Services.Plus;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -37,7 +39,8 @@ public class OAuthController(
     [HttpGet("start")]
     public async Task<IActionResult> StartFlow([FromQuery] OAuthUpstream upstream)
     {
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId, AppUserIncludes.AuthKeys);
+        var ct = HttpContext.RequestAborted;
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId, AppUserIncludes.AuthKeys, ct);
         if (user == null) return Unauthorized();
 
         if (upstream == OAuthUpstream.Discord && !UserContext.HasRole(PolicyConstants.AdminRole))
@@ -47,8 +50,8 @@ public class OAuthController(
 
         var apiKey = user.GetOpdsAuthKey();
 
-        var serverSettings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync();
-        var instanceUrl = GetInstanceUrl(HttpContext.Request, serverSettings);
+        var serverSettings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
+        var instanceUrl = HttpContext.Request.GetInstanceUrl(serverSettings);
 
         var jwt = await kavitaPlusApiService.StartOAuthFlow(upstream, instanceUrl, apiKey, HttpContext.RequestAborted);
         if (!jwt.IsSuccess)
@@ -70,12 +73,13 @@ public class OAuthController(
     /// <param name="token"></param>
     /// <param name="apiKey">Encrypted ApiKey</param>
     /// <param name="refreshToken"></param>
+    /// <param name="expiresIn"></param>
     /// <returns></returns>
     [KPlus(true)]
     [AllowAnonymous]
     [HttpGet("callback")]
     public async Task<IActionResult> Callback([FromQuery] OAuthUpstream upstream, [FromQuery] string token,
-        [FromQuery] string apiKey, [FromQuery] string? refreshToken = null)
+        [FromQuery] string apiKey, [FromQuery] string? refreshToken = null, [FromQuery] int? expiresIn = null)
     {
         try
         {
@@ -93,7 +97,7 @@ public class OAuthController(
             return Unauthorized();
         }
 
-        await oAuthService.HandleCallback(user, upstream, token, refreshToken);
+        await oAuthService.HandleCallback(user, upstream, token, refreshToken, expiresIn);
 
         if (upstream == OAuthUpstream.Discord)
         {
@@ -101,17 +105,6 @@ public class OAuthController(
         }
 
         return Redirect($"{Configuration.BaseUrl}settings?loading=true#scrobble-settings");
-    }
-
-    private static string GetInstanceUrl(HttpRequest request, ServerSettingDto serverSettings)
-    {
-        var origin = string.IsNullOrEmpty(serverSettings.HostName)
-            ?  request.Scheme + "://" + request.Host.Value
-            : serverSettings.HostName.TrimEnd('/');
-
-        origin += string.IsNullOrEmpty(serverSettings.BaseUrl) ? string.Empty : serverSettings.BaseUrl.TrimEnd('/');
-
-        return origin + "/";
     }
 
 }

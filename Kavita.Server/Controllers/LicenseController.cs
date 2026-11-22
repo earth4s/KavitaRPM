@@ -35,12 +35,15 @@ public class LicenseController(
     public async Task<ActionResult<bool>> HasValidLicense(bool forceCheck = false)
     {
         var ct = HttpContext.RequestAborted;
-        var result = await licenseService.HasActiveLicense(forceCheck, ct);
 
+        // Get current license info
         var licenseInfoProvider = cachingProviderFactory.GetCachingProvider(EasyCacheProfiles.License);
         var cacheValue = await licenseInfoProvider.GetAsync<bool>(LicenseService.CacheKey, ct);
 
-        if (result && !cacheValue.IsNull && !cacheValue.Value)
+        var result = await licenseService.HasActiveLicense(forceCheck, ct);
+
+        // If there is currently a valid license, and no or an invalid before. Schedule tasks
+        if (result && (cacheValue.IsNull || !cacheValue.Value))
         {
             await taskScheduler.ScheduleKavitaPlusTasks(ct);
         }
@@ -72,7 +75,13 @@ public class LicenseController(
         var ct = HttpContext.RequestAborted;
         try
         {
-            return Ok(await licenseService.GetLicenseInfo(forceCheck, ct));
+            var license = await licenseService.GetLicenseInfo(forceCheck, ct);
+            if (forceCheck && (license?.IsActive ?? false))
+            {
+                await taskScheduler.ScheduleKavitaPlusTasks(ct);
+            }
+
+            return Ok(license);
         }
         catch (Exception)
         {

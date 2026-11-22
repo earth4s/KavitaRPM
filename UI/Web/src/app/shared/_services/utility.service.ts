@@ -1,8 +1,8 @@
 import {HttpParams} from '@angular/common/http';
 import {Injectable} from '@angular/core';
-import {PaginatedResult} from 'src/app/_models/pagination';
 import {ActionItem} from "../../_models/actionables/action-item";
 import {AbstractControl, FormArray, FormGroup, ValidationErrors} from "@angular/forms";
+import {PaginatedResult} from "../../_models/pagination";
 
 export enum KEY_CODES {
   RIGHT_ARROW = 'ArrowRight',
@@ -10,6 +10,7 @@ export enum KEY_CODES {
   DOWN_ARROW = 'ArrowDown',
   UP_ARROW = 'ArrowUp',
   ESC_KEY = 'Escape',
+  TAB = 'Tab',
   SPACE = ' ',
   ENTER = 'Enter',
   G = 'g',

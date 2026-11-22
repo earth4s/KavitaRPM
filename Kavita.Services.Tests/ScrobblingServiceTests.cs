@@ -88,7 +88,7 @@ public class ScrobblingServiceTests(ITestOutputHelper outputHelper): AbstractDbT
         var readerService = new ReaderService(unitOfWork,
             Substitute.For<ILogger<ReaderService>>(),
             Substitute.For<IEventHub>(),
-            Substitute.For<IImageService>(),
+            Substitute.For<IImagePipeline>(),
             Substitute.For<IDirectoryService>(),
             Substitute.For<IScrobblingService>(), Substitute.For<IReadingSessionService>(),
             Substitute.For<IClientInfoAccessor>(), Substitute.For<IEntityNamingService>(),
@@ -97,7 +97,7 @@ public class ScrobblingServiceTests(ITestOutputHelper outputHelper): AbstractDbT
         var hookedUpReaderService = new ReaderService(unitOfWork,
             Substitute.For<ILogger<ReaderService>>(),
             Substitute.For<IEventHub>(),
-            Substitute.For<IImageService>(),
+            Substitute.For<IImagePipeline>(),
             Substitute.For<IDirectoryService>(),
             service, Substitute.For<IReadingSessionService>(),
             Substitute.For<IClientInfoAccessor>(), Substitute.For<IEntityNamingService>(),
@@ -180,17 +180,16 @@ public class ScrobblingServiceTests(ITestOutputHelper outputHelper): AbstractDbT
 
     private async Task<ScrobbleEvent> CreateScrobbleEvent(IUnitOfWork unitOfWork, int? seriesId = null)
     {
-        // var (unitOfWork, context, _) = await CreateDatabase();
-        // await Setup(unitOfWork, context);
-        //
+        var user = await unitOfWork.DataContext.Users.FirstAsync();
 
         var evt = new ScrobbleEvent
         {
             ScrobbleEventType = ScrobbleEventType.ChapterRead,
             Format = PlusMediaFormat.Manga,
-            SeriesId = seriesId ?? 0,
-            LibraryId = 0,
-            AppUserId = 0,
+            SeriesId = seriesId ?? 1,
+            LibraryId = 1,
+            AppUserId = user.Id,
+            AppUser = user,
         };
 
         if (seriesId != null)
@@ -358,6 +357,8 @@ public class ScrobblingServiceTests(ITestOutputHelper outputHelper): AbstractDbT
         await readerService.MarkChaptersAsRead(user, 1, volume.Chapters);
         await readerService.MarkChaptersAsRead(user, 1, [chapter]);
         await unitOfWork.CommitAsync();
+
+        await service.ScrobbleReadingUpdate(user.Id, 1, chapter.Id);
 
         await service.ProcessUpdatesSinceLastSync();
 

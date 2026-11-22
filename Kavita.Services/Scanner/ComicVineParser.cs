@@ -24,13 +24,17 @@ public class ComicVineParser(IDirectoryService directoryService) : DefaultParser
     /// <param name="enableMetadata"></param>
     /// <param name="comicInfo"></param>
     /// <returns></returns>
-    public override ParserInfo? Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null)
+    public override ParseInfoResult Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null)
     {
-        if (type != LibraryType.ComicVine) return null;
+        if (type != LibraryType.ComicVine) return ParseInfoResult.SkippedParse();
 
         var fileName = directoryService.FileSystem.Path.GetFileNameWithoutExtension(filePath);
         // Mylar often outputs cover.jpg, ignore it by default
-        if (string.IsNullOrEmpty(fileName) || Parser.IsCoverImage(directoryService.FileSystem.Path.GetFileName(filePath))) return null;
+        if (string.IsNullOrEmpty(fileName) ||
+            Parser.IsSkippedCoverImage(directoryService.FileSystem.Path.GetFileName(filePath), type))
+        {
+            return ParseInfoResult.SkippedParse();
+        }
 
         var directoryName = directoryService.FileSystem.DirectoryInfo.New(rootPath).Name;
 
@@ -86,7 +90,7 @@ public class ComicVineParser(IDirectoryService directoryService) : DefaultParser
         }
 
         // Check if this is a Special/Annual
-        info.IsSpecial = Parser.IsSpecial(info.Filename, type) || Parser.IsSpecial(info.ComicInfo?.Format, type);
+        info.IsSpecial = Parser.IsSpecial(info.Filename, type) || Parser.HasComicInfoSpecial(info.ComicInfo?.Format);
 
         // Patch in other information from ComicInfo
         if (enableMetadata)
@@ -99,8 +103,11 @@ public class ComicVineParser(IDirectoryService directoryService) : DefaultParser
             info.Series = Parser.CleanTitle(directoryName, true);
         }
 
+        ApplyComicSpecialsFolder(info, libraryRoot, type);
+
         FinalizeNumbers(info);
-        return string.IsNullOrEmpty(info.Series) ? null : info;
+
+        return ParseInfoResult.FromParserInfo(info);
     }
 
     /// <summary>

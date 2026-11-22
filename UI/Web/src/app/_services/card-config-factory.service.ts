@@ -115,8 +115,8 @@ export class CardConfigFactory {
       progressUpdateStrategy: {
         getMatchCriteria: (s) => ({ seriesId: s.id }),
         // Series cards don't contain chapter/volume details
-        // Signal that parent needs to refetch
-        applyUpdate: () => null
+        // Signal that parent needs to refetch. Return unmodified series so we don't get NPE's
+        applyUpdate: (s, _) => s
       }
     };
 
@@ -410,7 +410,7 @@ export class CardConfigFactory {
       coverFunc: (s) => this.imageService.getSeriesCoverImage(s.seriesId),
       titleFunc: (s) => s.seriesName,
       titleRouteFunc: (s) => `/library/${s.libraryId}/series/${s.seriesId}`,
-      metaTitleFunc: (s, wrapper) => '',
+      metaTitleFunc: (s, wrapper) => s.localizedSeriesName || s.seriesName,
       titleTemplate: params?.titleRef,
       metaTitleTemplate: params?.metaTitleRef,
       tooltipFunc: (s) => s.seriesName,

@@ -13,12 +13,13 @@
           <div class="row g-0 mt-3 pb-3 px-3 w-100 align-items-center">
             <div class="input-group col">
               <label class="input-group-text" for="load-url">{{t('url-label')}}</label>
-              <input type="text" [formControl]="urlControl" autofocus autocomplete="off"
+              <input type="text" [formField]="formGroup" autofocus autocomplete="off"
                      class="form-control" placeholder="https://" id="load-url"
+                     [appFormField]="formGroup" aria-describedby="load-url-validations"
                      (keyup.enter)="handleUrlUpload()">
               <button class="btn btn-outline-secondary" type="button"
                       (click)="handleUrlUpload()"
-                      [disabled]="urlControl.invalid">
+                      [disabled]="formGroup().invalid()">
                 {{t('load')}}
               </button>
             </div>
@@ -28,6 +29,9 @@
                 <span class="phone-hidden ms-1">{{t('back')}}</span>
               </button>
             </div>
+          </div>
+          <div class="px-3">
+            <app-validation-errors inputId="load-url" [control]="formGroup" />
           </div>
         }
         @default {

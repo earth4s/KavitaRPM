@@ -1,5 +1,7 @@
 import {FileTypeGroup} from "./file-type-group.enum";
 import {MetadataProvider} from "../kavitaplus/metadata-provider.enum";
+import {FolderWatchMode} from "./folder-watch-mode";
+import {IHasCover} from "../common/i-has-cover";
 
 export enum LibraryType {
     Manga = 0,
@@ -21,14 +23,13 @@ export interface LiteLibrary {
   type: LibraryType;
 }
 
-export interface Library extends LiteLibrary{
+export interface Library extends LiteLibrary, IHasCover {
     id: number;
     name: string;
     type: LibraryType;
     lastScanned: string;
     folders: string[];
-    coverImage?: string | null;
-    folderWatching: boolean;
+    folderWatchMode: FolderWatchMode;
     includeInDashboard: boolean;
     includeInRecommended: boolean;
     includeInSearch: boolean;

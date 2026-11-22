@@ -8,12 +8,12 @@ import {
   Injectable,
   Renderer2,
   RendererFactory2,
-  SecurityContext
+  SecurityContext, untracked
 } from '@angular/core';
 import {DomSanitizer} from '@angular/platform-browser';
-import {ToastrService} from 'ngx-toastr';
-import {EMPTY, map, of, ReplaySubject, take, tap} from 'rxjs';
-import {environment} from 'src/environments/environment';
+import {ToastrService} from '@openng/ngx-toastr';
+import {EMPTY, map, ReplaySubject, take, tap} from 'rxjs';
+import {environment} from '../../environments/environment';
 import {ConfirmService} from '../shared/confirm.service';
 import {NotificationProgressEvent} from '../_models/events/notification-progress-event';
 import {SiteTheme, ThemeProvider} from '../_models/preferences/site-theme';
@@ -25,7 +25,6 @@ import {DownloadableSiteTheme} from "../_models/theme/downloadable-site-theme";
 import {NgxFileDropEntry} from "ngx-file-drop";
 import {SiteThemeUpdatedEvent} from "../_models/events/site-theme-updated-event";
 import {ColorscapeService} from "./colorscape.service";
-import {ColorScape} from "../_models/theme/colorscape";
 import {AccountService} from "./account.service";
 
 @Injectable({
@@ -53,9 +52,10 @@ export class ThemeService {
 
   private themesSource = new ReplaySubject<SiteTheme[]>(1);
   public themes$ = this.themesSource.asObservable();
+  public themes = toSignal(this.themes$);
 
-  private darkModeSource = new ReplaySubject<boolean>(1);
-  public isDarkMode$ = this.darkModeSource.asObservable();
+  // Track in its own signal so effects only run when the name changes
+  private readonly currentThemeName = computed(() => this.accountService.currentUser()?.preferences.theme.name ?? this.defaultTheme);
 
   /**
    * Maintain a cache of themes. SignalR will inform us if we need to refresh cache
@@ -96,12 +96,8 @@ export class ThemeService {
     });
 
     effect(() => {
-      const user = this.accountService.currentUser();
-      if (user?.preferences && user?.preferences.theme) {
-        this.setTheme(user.preferences.theme.name);
-      } else {
-        this.setTheme(this.defaultTheme);
-      }
+      const themeName = this.currentThemeName();
+      this.setTheme(themeName);
     });
   }
 
@@ -117,7 +113,13 @@ export class ThemeService {
     const formData = new FormData()
     formData.append('formFile', themeFile, fileEntry.relativePath);
 
-    return this.httpClient.post<SiteTheme>(this.baseUrl + 'theme/upload-theme', formData);
+    return this.httpClient.post<SiteTheme>(this.baseUrl + 'theme/upload-theme', formData).pipe(
+      tap(theme => {
+        const currentThemes = this.themes() ?? [];
+        const allThemes = [...currentThemes, theme];
+        this.themesSource.next(allThemes);
+      })
+    );
   }
 
   getColorScheme() {
@@ -208,17 +210,6 @@ export class ThemeService {
   }
 
   /**
-   * Trigger a request to get the colors for a given entity and apply them
-   * @param entity
-   * @param id
-   */
-  refreshColorScape(entity: 'series' | 'volume' | 'chapter' | 'person', id: number) {
-    return this.httpClient.get<ColorScape>(`${this.baseUrl}colorscape/${entity}?id=${id}`).pipe(tap((cs) => {
-      this.setColorScape(cs.primary || '', cs.secondary);
-    }));
-  }
-
-  /**
    * Sets the theme as active. Will inject a style tag into document to load a custom theme and apply the selector to the body
    * @param themeName
    */
@@ -239,12 +230,10 @@ export class ThemeService {
           this.injectStyleNode(theme, content);
           this.updateMetaTags();
           this.currentThemeSource.next(theme);
-          this.darkModeSource.next(this.isDarkTheme());
         });
       } else {
         this.updateMetaTags();
         this.currentThemeSource.next(theme);
-        this.darkModeSource.next(this.isDarkTheme());
       }
     } else {
       // Only time themes isn't already loaded is on first load

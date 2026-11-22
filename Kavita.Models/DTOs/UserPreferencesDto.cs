@@ -44,6 +44,12 @@ public sealed record UserPreferencesDto
     /// <inheritdoc cref="AppUserPreferences.PromptForRereadsAfter"/>
     [Required]
     public int PromptForRereadsAfter { get; set; }
+    /// <inheritdoc cref="AppUserPreferences.OnDeckProgressDays"/>
+    [Required]
+    public int OnDeckProgressDays { get; set; }
+    /// <inheritdoc cref="AppUserPreferences.OnDeckUpdateDays"/>
+    [Required]
+    public int OnDeckUpdateDays { get; set; }
     /// <inheritdoc cref="AppUserPreferences.CustomKeyBinds"/>
     [Required]
     public Dictionary<KeyBindTarget, IList<KeyBind>> CustomKeyBinds { get; set; } = [];
@@ -67,4 +73,8 @@ public sealed record UserPreferencesDto
     /// <inheritdoc cref="AppUserPreferences.OpdsPreferences"/>
     [Required]
     public AppUserOpdsPreferences OpdsPreferences { get; set; } = new();
+
+    /// <inheritdoc cref="AppUserPreferences.KoboSyncPreferences"/>
+    [Required]
+    public AppUserKoboSyncPreferences KoboSyncPreferences { get; set; } = new();
 }

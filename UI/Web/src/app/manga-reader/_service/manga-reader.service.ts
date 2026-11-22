@@ -1,11 +1,11 @@
 import {ElementRef, inject, Injectable, Renderer2, RendererFactory2} from '@angular/core';
-import {PageSplitOption} from 'src/app/_models/preferences/page-split-option';
-import {ScalingOption} from 'src/app/_models/preferences/scaling-option';
-import {ReaderService} from 'src/app/_services/reader.service';
-import {ChapterInfo} from '../_models/chapter-info';
+import {ChapterInfo} from '../../_models/readers/chapter-info';
 import {DimensionMap} from '../_models/file-dimension';
 import {FITTING_OPTION} from '../_models/reader-enums';
-import {BookmarkInfo} from 'src/app/_models/manga-reader/bookmark-info';
+import {ReaderService} from "../../_services/reader.service";
+import {BookmarkInfo} from "../../_models/manga-reader/bookmark-info";
+import {PageSplitOption} from "../../_models/preferences/page-split-option";
+import {ScalingOption} from "../../_models/preferences/scaling-option";
 
 @Injectable({
   providedIn: 'root'
@@ -26,6 +26,7 @@ export class MangaReaderService {
   }
 
   load(chapterInfo: ChapterInfo | BookmarkInfo) {
+    this.pageDimensions = {};
     chapterInfo.pageDimensions!.forEach(d => {
       this.pageDimensions[d.pageNumber] = {
         height: d.height,
@@ -34,7 +35,6 @@ export class MangaReaderService {
       };
     });
     this.pairs = chapterInfo.doublePairs!;
-    this.hasPageOffset = false;
   }
 
   adjustForDoubleReader(page: number) {
@@ -163,6 +163,22 @@ export class MangaReaderService {
         return FITTING_OPTION.WIDTH;
       default:
         return FITTING_OPTION.ORIGINAL;
+    }
+  }
+
+  /**
+   * The inverse of translateScalingOption. Note that ScalingOption.Automatic has no representation as
+   * a FITTING_OPTION, so the caller is responsible for preserving it when the user hasn't changed the
+   * fitting away from whatever Automatic resolved to.
+   */
+  translateFittingOption(option: FITTING_OPTION): ScalingOption {
+    switch (option) {
+      case FITTING_OPTION.HEIGHT:
+        return ScalingOption.FitToHeight;
+      case FITTING_OPTION.WIDTH:
+        return ScalingOption.FitToWidth;
+      default:
+        return ScalingOption.Original;
     }
   }
 

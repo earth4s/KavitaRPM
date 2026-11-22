@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using EasyCaching.Core;
 using Hangfire;
@@ -9,14 +10,18 @@ using Hangfire.Storage;
 using Kavita.API.Database;
 using Kavita.API.Services;
 using Kavita.API.Services.Scanner;
+using Kavita.API.Services.SignalR;
 using Kavita.Common;
+using Kavita.Common.EnvironmentInfo;
 using Kavita.Common.Helpers;
 using Kavita.Models.Constants;
 using Kavita.Models.DTOs.Jobs;
 using Kavita.Models.DTOs.MediaErrors;
+using Kavita.Models.DTOs.SignalR;
 using Kavita.Models.DTOs.Stats;
 using Kavita.Models.DTOs.Update;
 using Kavita.Models.Entities.Enums;
+using Kavita.Server.Attributes;
 using Kavita.Services.Scanner;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -39,7 +44,9 @@ public class ServerController(
     IUnitOfWork unitOfWork,
     IEasyCachingProviderFactory cachingProviderFactory,
     IThemeService themeService,
-    ILocalizationService localizationService)
+    ILocalizationService localizationService,
+    IActivityTracker activityTracker,
+    IDebugExportService debugExportService)
     : BaseApiController
 {
     /// <summary>
@@ -49,8 +56,10 @@ public class ServerController(
     [HttpPost("clear-cache")]
     public ActionResult ClearCache()
     {
+        var ct = HttpContext.RequestAborted;
         logger.LogInformation("{UserName} is clearing cache of server from admin dashboard", Username!);
-        cleanupService.CleanupCacheAndTempDirectories();
+        cleanupService.CleanupCacheAndTempDirectories(ct);
+
 
         return Ok();
     }
@@ -98,11 +107,11 @@ public class ServerController(
     /// </summary>
     /// <returns></returns>
     [HttpPost("analyze-files")]
+    [Obsolete("This will be removed in v0.9.3 - Only needed to be ran once when upgrading to v0.7.0")]
     public async Task<ActionResult> AnalyzeFiles()
     {
         logger.LogInformation("{UserName} is performing file analysis from admin dashboard", Username!);
-        if (TaskScheduler.HasAlreadyEnqueuedTask(ScannerService.Name, "AnalyzeFiles",
-                [], TaskScheduler.DefaultQueue, true))
+        if (TaskScheduler.HasAlreadyEnqueuedTask<IScannerService>(s => s.AnalyzeFiles(), checkRunningJobs: true))
             return Ok(await localizationService.TranslateAsync(UserId, "job-already-running"));
 
         BackgroundJob.Enqueue(() => scannerService.AnalyzeFiles());
@@ -123,19 +132,16 @@ public class ServerController(
 
 
     /// <summary>
-    /// Triggers the scheduling of the convert media job. This will convert all media to the target encoding (except for PNG). Only one job will run at a time.
+    /// Triggers the scheduling of the convert media job. This will convert all media to the target encoding. Only one job will run at a time.
     /// </summary>
     /// <returns></returns>
     [HttpPost("convert-media")]
-    public async Task<ActionResult> ScheduleConvertCovers()
+    public async Task<ActionResult> ScheduleConvertMedia()
     {
-        var encoding = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync()).EncodeMediaAs;
-        if (encoding == EncodeFormat.PNG)
+        if (!TaskScheduler.QueueImageCleanup(reportSummary: true))
         {
-            return BadRequest(await localizationService.TranslateAsync(UserId, "encode-as-warning"));
+            return BadRequest(await localizationService.TranslateAsync(UserId, "job-already-running"));
         }
-
-        taskScheduler.ConvertAllCoversToEncoding();
 
         return Ok();
     }
@@ -161,23 +167,55 @@ public class ServerController(
     }
 
     /// <summary>
+    /// Starts building a scrubbed debug export. Admins get <c>DebugExportReady</c> with the export id when it is done
+    /// </summary>
+    [HttpPost("debug-export")]
+    public async Task<ActionResult> StartDebugExport()
+    {
+        if (TaskScheduler.HasAlreadyEnqueuedTask<IDebugExportService>(s => s.ExportAsync(CancellationToken.None), checkRunningJobs: true))
+        {
+            return BadRequest(await localizationService.TranslateAsync(UserId, "job-already-running"));
+        }
+
+        logger.LogInformation("{UserName} is starting a debug export from admin dashboard", Username!);
+        BackgroundJob.Enqueue<IDebugExportService>(s => s.ExportAsync(CancellationToken.None));
+        return Ok();
+    }
+
+    /// <summary>
+    /// Downloads a finished debug export
+    /// </summary>
+    /// <param name="exportId">From the <c>DebugExportReady</c> event</param>
+    [HttpGet("debug-export/{exportId}")]
+    public ActionResult DownloadDebugExport(string exportId)
+    {
+        var zipPath = debugExportService.GetZipPath(exportId);
+        if (zipPath == null) return NotFound();
+
+        return PhysicalFile(zipPath, "application/zip", $"kavita-debug-export-{exportId}.zip", true);
+    }
+
+    /// <summary>
     /// Checks for updates and pushes an event to the UI
     /// </summary>
     /// <remarks>Some users have websocket issues so this is not always reliable to alert the user</remarks>
     [HttpGet("check-for-updates")]
     public async Task<ActionResult> CheckForAnnouncements()
     {
-        await taskScheduler.CheckForUpdate();
+        var ct = HttpContext.RequestAborted;
+        await taskScheduler.CheckForUpdate(ct);
         return Ok();
     }
 
     /// <summary>
     /// Checks for updates, if no updates that are > current version installed, returns null
     /// </summary>
+    /// <param name="forceRefresh">Ask GitHub even when the cached release list is fresh</param>
     [HttpGet("check-update")]
-    public async Task<ActionResult<UpdateNotificationDto?>> CheckForUpdates()
+    public async Task<ActionResult<UpdateNotificationDto?>> CheckForUpdates(bool forceRefresh = false)
     {
-        return Ok(await versionUpdaterService.CheckForUpdate());
+        var ct = HttpContext.RequestAborted;
+        return Ok(await versionUpdaterService.CheckForUpdate(forceRefresh, ct));
     }
 
     /// <summary>
@@ -187,7 +225,8 @@ public class ServerController(
     [HttpGet("check-out-of-date")]
     public async Task<ActionResult<int>> CheckHowOutOfDate(bool stableOnly = true)
     {
-        return Ok(await versionUpdaterService.GetNumberOfReleasesBehind(stableOnly));
+        var ct = HttpContext.RequestAborted;
+        return Ok(await versionUpdaterService.GetNumberOfReleasesBehind(stableOnly, ct));
     }
 
 
@@ -199,7 +238,8 @@ public class ServerController(
     [HttpGet("changelog")]
     public async Task<ActionResult<IEnumerable<UpdateNotificationDto>>> GetChangelog(int count = 0)
     {
-        return Ok(await versionUpdaterService.GetAllReleases(count));
+        var ct = HttpContext.RequestAborted;
+        return Ok(await versionUpdaterService.GetAllReleases(count, ct));
     }
 
     /// <summary>
@@ -209,6 +249,7 @@ public class ServerController(
     [HttpGet("jobs")]
     public async Task<ActionResult<IEnumerable<JobDto>>> GetJobs()
     {
+        var ct = HttpContext.RequestAborted;
         var jobDtoTasks = JobStorage.Current.GetConnection().GetRecurringJobs().Select(async dto =>
             new JobDto()
             {
@@ -222,6 +263,32 @@ public class ServerController(
     }
 
     /// <summary>
+    /// What is running, delayed and coming up, so a client can rebuild its activity list after a refresh or a server restart
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet("activity")]
+    public async Task<ActionResult<ActivitySnapshotDto>> GetActivity()
+    {
+        var ct = HttpContext.RequestAborted;
+        var (scheduled, scheduledTotal) = TaskScheduler.GetScheduledScans(20);
+        var libraries = await unitOfWork.LibraryRepository.GetLibraryDtosAsync(ct);
+        var processingJobIds = TaskScheduler.GetProcessingJobIds();
+
+        return Ok(new ActivitySnapshotDto
+        {
+            BootId = BuildInfo.BootId,
+            StartedUtc = BuildInfo.StartedUtc,
+            Running = activityTracker.GetRunning(processingJobIds),
+            Scheduled = scheduled,
+            ScheduledTotal = scheduledTotal,
+            ScheduledFolderScans = TaskScheduler.GetScheduledFolderScans(libraries),
+            Upcoming = TaskScheduler.GetUpcomingTasks(),
+            RecentJobs = activityTracker.GetRecentJobs(processingJobIds),
+            RecentEntries = activityTracker.GetRecentEntries(),
+        });
+    }
+
+    /// <summary>
     /// Returns a list of issues found during scanning or reading in which files may have corruption or bad metadata (structural metadata)
     /// </summary>
     /// <returns></returns>
@@ -229,7 +296,50 @@ public class ServerController(
     [HttpGet("media-errors")]
     public async Task<ActionResult<IList<MediaErrorDto>>> GetMediaErrors()
     {
-        return Ok(await unitOfWork.MediaErrorRepository.GetAllErrorDtosAsync());
+        var ct = HttpContext.RequestAborted;
+        return Ok(await unitOfWork.MediaErrorRepository.GetAllErrorDtosAsync(ct));
+    }
+
+    /// <summary>
+    /// Dismiss one or more media error
+    /// </summary>
+    /// <param name="ids"></param>
+    /// <returns></returns>
+    [Authorize(PolicyGroups.AdminPolicy)]
+    [HttpPost("media-errors/dismiss")]
+    public async Task<ActionResult> DismissMediaErrors(List<int> ids)
+    {
+        var ct = HttpContext.RequestAborted;
+        await unitOfWork.MediaErrorRepository.SetDismissStateAsync(ids, true, ct);
+        return Ok();
+    }
+
+    /// <summary>
+    /// Undismiss one or more media error
+    /// </summary>
+    /// <param name="ids"></param>
+    /// <returns></returns>
+    [Authorize(PolicyGroups.AdminPolicy)]
+    [HttpPost("media-errors/undismiss")]
+    public async Task<ActionResult> UndismissMediaErrors(List<int> ids)
+    {
+        var ct = HttpContext.RequestAborted;
+        await unitOfWork.MediaErrorRepository.SetDismissStateAsync(ids, false, ct);
+        return Ok();
+    }
+
+    /// <summary>
+    /// Get the media errors for a given series
+    /// </summary>
+    /// <param name="seriesId"></param>
+    /// <returns></returns>
+    [Authorize(PolicyGroups.AdminPolicy)]
+    [HttpGet("media-errors-for-series")]
+    [SeriesAccess]
+    public async Task<ActionResult<List<MediaErrorDto>>> GetMediaErrorsForSeries(int seriesId)
+    {
+        var ct = HttpContext.RequestAborted;
+        return Ok(await unitOfWork.MediaErrorRepository.GetErrorDtosForSeriesAsync(seriesId, ct));
     }
 
     /// <summary>
@@ -240,7 +350,8 @@ public class ServerController(
     [HttpPost("clear-media-alerts")]
     public async Task<ActionResult> ClearMediaErrors()
     {
-        await unitOfWork.MediaErrorRepository.DeleteAll();
+        var ct = HttpContext.RequestAborted;
+        await unitOfWork.MediaErrorRepository.DeleteAll(ct);
         return Ok();
     }
 
@@ -253,9 +364,10 @@ public class ServerController(
     [HttpPost("bust-kavitaplus-cache")]
     public async Task<ActionResult> BustReviewAndRecCache()
     {
+        var ct = HttpContext.RequestAborted;
         logger.LogInformation("Busting Kavita+ Cache");
         var provider = cachingProviderFactory.GetCachingProvider(EasyCacheProfiles.KavitaPlusExternalSeries);
-        await provider.FlushAsync();
+        await provider.FlushAsync(ct);
         return Ok();
     }
 
@@ -267,7 +379,8 @@ public class ServerController(
     [HttpPost("sync-themes")]
     public async Task<ActionResult> SyncThemes()
     {
-        await themeService.SyncThemes();
+        var ct = HttpContext.RequestAborted;
+        await themeService.SyncThemes(ct);
         return Ok();
     }
 
@@ -281,6 +394,7 @@ public class ServerController(
     [HttpGet("is-task-running")]
     public ActionResult<bool> HasRunningOrQueuedTask([FromQuery] string methodName, [FromQuery] string? queue = null)
     {
+        var ct = HttpContext.RequestAborted;
         if (string.IsNullOrEmpty(queue))
         {
             return Ok(TaskScheduler.IsMethodRunningOrEnqueued(methodName));

@@ -65,17 +65,29 @@ public class SeriesService(
             .OrderBy(v => v.MinNumber);
         var minVolumeNumber = sortedVolumes.MinBy(v => v.MinNumber);
 
-
         var allChapters = series.Volumes
             .SelectMany(v => v.Chapters.OrderBy(c => c.MinNumber, ChapterSortComparerDefaultLast.Default))
             .ToList();
-        var minChapter = allChapters
-            .FirstOrDefault();
+
+        var minChapter = allChapters.FirstOrDefault();
 
         if (minVolumeNumber != null && minChapter != null &&
             (minChapter.MinNumber >= minVolumeNumber.MinNumber || minChapter.MinNumber.Is(Parser.DefaultChapterNumber)))
         {
-            return minVolumeNumber.Chapters.MinBy(c => c.MinNumber, ChapterSortComparerDefaultLast.Default);
+            allChapters = minVolumeNumber.Chapters.OrderBy(c => c.MinNumber, ChapterSortComparerDefaultLast.Default).ToList();
+            minChapter = allChapters.FirstOrDefault();
+        }
+
+        var chapterOne = allChapters.OneOrDefault(c => c.MinNumber.Is(1));
+        if (chapterOne != null)
+        {
+            return chapterOne;
+        }
+
+        var nonPrequelChapter = allChapters.FirstOrDefault(c => c.MinNumber >= 1);
+        if (nonPrequelChapter != null)
+        {
+            return nonPrequelChapter;
         }
 
         return minChapter;
@@ -365,7 +377,7 @@ public class SeriesService(
     /// <param name="role"></param>
     public static async Task HandlePeopleUpdateAsync(SeriesMetadata metadata, ICollection<PersonDto> peopleDtos, PersonRole role, IUnitOfWork unitOfWork)
     {
-        // default: Cleanup this code so we aren't using UnitOfWork like this
+        // TODO: Cleanup this code so we aren't using UnitOfWork like this
 
         // Normalize all names from the DTOs
         var normalizedNames = peopleDtos
@@ -389,7 +401,7 @@ public class SeriesService(
             // Check if the person exists in the dictionary
             if (existingPeopleDictionary.TryGetValue(normalizedPersonName, out var p))
             {
-                // default: Should I add more controls here to map back?
+                // TODO: Should I add more controls here to map back?
                 if (personDto.AniListId > 0 && p.AniListId <= 0 && p.AniListId != personDto.AniListId)
                 {
                     p.AniListId = personDto.AniListId;
@@ -411,8 +423,7 @@ public class SeriesService(
                 MalId =  personDto.MalId,
                 HardcoverId = personDto.HardcoverId,
                 Description = personDto.Description,
-                Asin = personDto.Asin,
-                CoverImage = personDto.CoverImage,
+                Asin = personDto.Asin
             };
 
             peopleToAdd.Add(newPerson);
@@ -499,7 +510,7 @@ public class SeriesService(
             foreach (var s in series)
             {
                 await eventHub.SendMessageAsync(MessageFactory.SeriesRemoved,
-                    MessageFactory.SeriesRemovedEvent(s.Id, s.Name, s.LibraryId), false, ct);
+                    MessageFactory.SeriesRemovedEvent(s.Id, s.LibraryId), false, ct);
             }
 
             await unitOfWork.AppUserProgressRepository.CleanupAbandonedChapters(ct);
@@ -609,7 +620,8 @@ public class SeriesService(
             StorylineChapters = storylineChapters,
             TotalCount = chapters.Count,
             UnreadCount = chapters.Count(c => c.Pages > 0 && c.PagesRead < c.Pages),
-            // default: See if we can get the ContinueFrom here
+            LibraryType = libraryType,
+            // TODO: See if we can get the ContinueFrom here
         };
     }
 
@@ -941,7 +953,10 @@ public class SeriesService(
     public async Task<PagedList<SeriesDto>> GetCurrentlyReading(int userId, int requestingUserId, UserParams userParams,
         CancellationToken ct = default)
     {
-        var serverSettings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
+        var onDeckProgressDays = await unitOfWork.DataContext.AppUserPreferences
+            .Where(p => p.AppUserId == userId)
+            .Select( p => p.OnDeckProgressDays)
+            .FirstAsync(ct);
 
         var filter = new SeriesFilterV2Dto
         {
@@ -956,7 +971,7 @@ public class SeriesService(
                 {
                   Comparison = FilterComparison.GreaterThan,
                   Field = SeriesFilterField.ReadLast,
-                  Value = serverSettings.OnDeckProgressDays.ToString(),
+                  Value = onDeckProgressDays.ToString(),
                 },
                 new SeriesFilterStatementDto
                 {

@@ -7,6 +7,7 @@ using AutoMapper;
 using Hangfire;
 using Kavita.API.Database;
 using Kavita.API.Services;
+using Kavita.API.Services.Metadata;
 using Kavita.Common;
 using Kavita.Common.Extensions;
 using Kavita.Common.Helpers;
@@ -18,6 +19,7 @@ using Kavita.Models.DTOs.KavitaPlus.Metadata;
 using Kavita.Models.DTOs.Metadata;
 using Kavita.Models.DTOs.Settings;
 using Kavita.Models.Entities.Enums;
+using Kavita.Server.Attributes;
 using Kavita.Server.Extensions;
 using Kavita.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -36,9 +38,57 @@ public class SettingsController(
     ILocalizationService localizationService,
     ISettingsService settingsService,
     IAuthenticationSchemeProvider authenticationSchemeProvider,
-    IOidcService oidcService)
+    IOidcService oidcService,
+    IKepubifyConverterService kepubifyConverterService)
     : BaseApiController
 {
+    [KPlus]
+    [HttpGet("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> GetComicVineSettings(
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        return Ok(await comicVineSettings.GetStatusAsync(HttpContext.RequestAborted));
+    }
+
+    [KPlus]
+    [HttpPost("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> SaveComicVineSettings(UpdateComicVineSettingsDto dto,
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (string.IsNullOrWhiteSpace(dto.ApiKey) || dto.ApiKey.Trim().Length > 256
+            || dto.ApiKey.Trim().Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            return BadRequest();
+        await comicVineSettings.SaveAsync(dto.ApiKey, ct);
+        return Ok(await comicVineSettings.GetStatusAsync(ct));
+    }
+
+    [KPlus]
+    [HttpDelete("comicvine")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineSettingsDto>> RemoveComicVineSettings(
+        [FromServices] IComicVineSettingsService comicVineSettings)
+    {
+        var ct = HttpContext.RequestAborted;
+        await comicVineSettings.RemoveAsync(ct);
+        return Ok(await comicVineSettings.GetStatusAsync(ct));
+    }
+
+    [KPlus]
+    [HttpPost("comicvine/test")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ComicVineConnectionResultDto>> TestComicVineConnection(
+        [FromServices] IComicVineService comicVine)
+    {
+        return Ok(new ComicVineConnectionResultDto(await comicVine.TestConnectionAsync(HttpContext.RequestAborted)));
+    }
+
     /// <summary>
     /// Returns the base url for this instance (if set)
     /// </summary>
@@ -46,7 +96,8 @@ public class SettingsController(
     [HttpGet("base-url")]
     public async Task<ActionResult<string>> GetBaseUrl()
     {
-        var settingsDto = await unitOfWork.SettingsRepository.GetSettingsDtoAsync();
+        var ct = HttpContext.RequestAborted;
+        var settingsDto = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
         return Ok(settingsDto.BaseUrl);
     }
 
@@ -58,7 +109,8 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<ServerSettingDto>> GetSettings()
     {
-        var settingsDto = await unitOfWork.SettingsRepository.GetSettingsDtoAsync();
+        var ct = HttpContext.RequestAborted;
+        var settingsDto = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
 
         // Do not send OIDC secret to user
         settingsDto.OidcConfig.Secret = "*".Repeat(settingsDto.OidcConfig.Secret.Length);
@@ -69,6 +121,7 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<ServerSettingDto>> ResetSettings()
     {
+
         logger.LogInformation("{UserName} is resetting Server Settings", Username!);
 
         return await UpdateSettings(mapper.Map<ServerSettingDto>(Defaults.DefaultSettings));
@@ -82,17 +135,18 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<ServerSettingDto>> ResetIpAddressesSettings()
     {
+        var ct = HttpContext.RequestAborted;
         logger.LogInformation("{UserName} is resetting IP Addresses Setting", Username!);
-        var ipAddresses = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.IpAddresses);
+        var ipAddresses = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.IpAddresses, ct);
         ipAddresses.Value = Configuration.DefaultIpAddresses;
         unitOfWork.SettingsRepository.Update(ipAddresses);
 
-        if (!await unitOfWork.CommitAsync())
+        if (!await unitOfWork.CommitAsync(ct))
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
-        return Ok(await unitOfWork.SettingsRepository.GetSettingsDtoAsync());
+        return Ok(await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct));
     }
 
     /// <summary>
@@ -103,28 +157,36 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<ServerSettingDto>> ResetBaseUrlSettings()
     {
+        var ct = HttpContext.RequestAborted;
         logger.LogInformation("{UserName} is resetting Base Url Setting", Username!);
-        var baseUrl = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.BaseUrl);
+        var baseUrl = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.BaseUrl, ct);
         baseUrl.Value = Configuration.DefaultBaseUrl;
         unitOfWork.SettingsRepository.Update(baseUrl);
 
-        if (!await unitOfWork.CommitAsync())
+        if (!await unitOfWork.CommitAsync(ct))
         {
-            await unitOfWork.RollbackAsync();
+            await unitOfWork.RollbackAsync(ct);
         }
 
         Configuration.BaseUrl = baseUrl.Value;
-        return Ok(await unitOfWork.SettingsRepository.GetSettingsDtoAsync());
+        return Ok(await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct));
     }
 
     /// <summary>
     /// Is the minimum information setup for Email to work
     /// </summary>
+    /// <param name="forDevice">Device send-to doesn't need full email setup (hostname)</param>
     /// <returns></returns>
     [HttpGet("is-email-setup")]
-    public async Task<ActionResult<bool>> IsEmailSetup()
+    public async Task<ActionResult<bool>> IsEmailSetup(bool forDevice = false)
     {
-        var settings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync();
+        var ct = HttpContext.RequestAborted;
+        var settings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
+        if (forDevice)
+        {
+            return Ok(settings.IsEmailSetupForSendToDevice());
+        }
+
         return Ok(settings.IsEmailSetup());
     }
 
@@ -138,11 +200,12 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<ServerSettingDto>> UpdateSettings(ServerSettingDto updateSettingsDto)
     {
+        var ct = HttpContext.RequestAborted;
         logger.LogInformation("{UserName} is updating Server Settings", Username!);
 
         try
         {
-            var d = await settingsService.UpdateSettings(updateSettingsDto);
+            var d = await settingsService.UpdateSettings(updateSettingsDto, ct);
             return Ok(d);
         }
         catch (KavitaException ex)
@@ -184,8 +247,37 @@ public class SettingsController(
     [HttpGet("opds-enabled")]
     public async Task<ActionResult<bool>> GetOpdsEnabled()
     {
-        var settingsDto = await unitOfWork.SettingsRepository.GetSettingsDtoAsync();
-        return Ok(settingsDto.EnableOpds);
+        var ct = HttpContext.RequestAborted;
+        var setting = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.EnableOpds, ct);
+        return Ok(bool.Parse(setting.Value));
+    }
+
+    [HttpGet("kobo-enabled")]
+    public async Task<ActionResult<bool>> GetKoboEnabled()
+    {
+        var ct = HttpContext.RequestAborted;
+        var setting = await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.EnableKobo, ct);
+        return Ok(bool.Parse(setting.Value));
+    }
+
+    [Authorize(PolicyGroups.AdminPolicy)]
+    [HttpGet("kepubify-supported")]
+    public ActionResult<KepubifyStatusDto> GetKepubifySupported()
+    {
+        return Ok(kepubifyConverterService.Status);
+    }
+
+    /// <summary>
+    /// Saves EnableKepubify and queues the check. Returns Checking, the result comes as a kepubify-checked event
+    /// </summary>
+    [Authorize(PolicyGroups.AdminPolicy)]
+    [HttpPost("kepubify")]
+    public async Task<ActionResult<KepubifyStatusDto>> UpdateKepubify(UpdateKepubifyDto dto)
+    {
+        var ct = HttpContext.RequestAborted;
+        await unitOfWork.SettingsRepository.UpdateSettingAsync(ServerSettingKey.EnableKepubify, dto.Enabled.ToString(), ct);
+
+        return Ok(kepubifyConverterService.QueueCheck());
     }
 
     /// <summary>
@@ -208,7 +300,8 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<EmailTestResultDto>> TestEmailServiceUrl()
     {
-        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId);
+        var ct = HttpContext.RequestAborted;
+        var user = await unitOfWork.UserRepository.GetUserByIdAsync(UserId, ct: ct);
         if (string.IsNullOrEmpty(user?.Email)) return BadRequest("Your account has no email on record. Cannot email.");
         return Ok(await emailService.SendTestEmail(user!.Email));
     }
@@ -221,7 +314,8 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<MetadataSettingsDto>> GetMetadataSettings()
     {
-        return Ok(await unitOfWork.SettingsRepository.GetMetadataSettingDto());
+        var ct = HttpContext.RequestAborted;
+        return Ok(await unitOfWork.SettingsRepository.GetMetadataSettingDto(ct));
 
     }
 
@@ -234,9 +328,10 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<MetadataSettingsDto>> UpdateMetadataSettings(MetadataSettingsDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         try
         {
-            return Ok(await settingsService.UpdateMetadataSettings(dto));
+            return Ok(await settingsService.UpdateMetadataSettings(dto, ct));
         }
         catch (Exception ex)
         {
@@ -249,6 +344,7 @@ public class SettingsController(
     [HttpPost("run-metadata-mappings")]
     public async Task<ActionResult> RunMetadataMappings([FromBody] RunMetadataMappingsRequestDto requestDto)
     {
+        var ct = HttpContext.RequestAborted;
         if (!requestDto.AllLibraries && requestDto.IncludedLibraries.Count == 0)
         {
             return BadRequest(await localizationService.TranslateAsync("mappings-re-run-no-libraries-selected"));
@@ -277,9 +373,10 @@ public class SettingsController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<FieldMappingsImportResultDto>> ImportFieldMappings([FromBody] ImportFieldMappingsDto dto)
     {
+        var ct = HttpContext.RequestAborted;
         try
         {
-            return Ok(await settingsService.ImportFieldMappings(dto.Data, dto.Settings));
+            return Ok(await settingsService.ImportFieldMappings(dto.Data, dto.Settings, ct));
         }
         catch (Exception ex)
         {
@@ -297,9 +394,10 @@ public class SettingsController(
     [HttpGet("oidc")]
     public async Task<ActionResult<OidcPublicConfigDto>> GetOidcConfig()
     {
+        var ct = HttpContext.RequestAborted;
         var oidcScheme = await authenticationSchemeProvider.GetSchemeAsync(IdentityServiceExtensions.OpenIdConnect);
 
-        var settings = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync()).OidcConfig;
+        var settings = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct)).OidcConfig;
         var publicConfig = mapper.Map<OidcPublicConfigDto>(settings);
         publicConfig.Enabled = oidcScheme != null &&
                                !string.IsNullOrEmpty(settings.Authority) &&
@@ -313,7 +411,8 @@ public class SettingsController(
     [HttpPost("reset-external-ids")]
     public async Task<IActionResult> ResetExternalIds()
     {
-        await oidcService.ClearOidcIds();
+        var ct = HttpContext.RequestAborted;
+        await oidcService.ClearOidcIds(ct);
 
         return Ok();
     }
@@ -327,7 +426,8 @@ public class SettingsController(
     [HttpPost("is-valid-authority")]
     public async Task<ActionResult<AuthorityValidationResult>> IsValidAuthority([FromBody] AuthorityValidationDto authority)
     {
-        return Ok(await settingsService.IsValidAuthority(authority.Authority));
+        var ct = HttpContext.RequestAborted;
+        return Ok(await settingsService.IsValidAuthority(authority.Authority, ct));
     }
 
 

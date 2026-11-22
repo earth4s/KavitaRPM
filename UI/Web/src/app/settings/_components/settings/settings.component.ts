@@ -23,7 +23,7 @@ import {ManageUsersComponent} from "../../../admin/manage-users/manage-users.com
 import {ServerStatsComponent} from "../../../statistics/_components/server-stats/server-stats.component";
 import {SettingFragmentPipe} from "../../../_pipes/setting-fragment.pipe";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {tap} from "rxjs";
+import {distinctUntilChanged, tap} from "rxjs";
 import {ManageMediaIssuesComponent} from "../../../admin/manage-media-issues/manage-media-issues.component";
 import {
   ManageCustomizationComponent
@@ -45,12 +45,14 @@ import {
   ManagePublicMetadataSettingsComponent
 } from "../../../admin/manage-public-metadata-settings/manage-public-metadata-settings.component";
 import {ImportMappingsComponent} from "../../../admin/import-mappings/import-mappings.component";
+import {ManageMetaApiConnectionsComponent} from '../../../admin/manage-meta-api-connections/manage-meta-api-connections.component';
+import {LoadingComponent} from '../../../shared/loading/loading.component';
+import {DOCUMENT, NgTemplateOutlet} from '@angular/common';
 import {ManageOpenIDConnectComponent} from "../../../admin/manage-open-idconnect/manage-open-idconnect.component";
 import {FontManagerComponent} from "../../../user-settings/font-manager/font-manager/font-manager.component";
 import {ServerActivityComponent} from "../../../admin/server-activity/server-activity.component";
 import {ServerDevicesComponent} from "../../../admin/server-devices/server-devices.component";
 import {ManageCustomKeyBindsComponent} from "../../../user-settings/custom-key-binds/manage-custom-key-binds.component";
-import {AccountSettingsComponent} from "src/app/user-settings/account-settings/account-settings.component";
 import {CblManagerComponent} from "../../../user-settings/cbl-manager/cbl-manager.component";
 import {ManageRemapRulesComponent} from "../../../user-settings/manage-remap-rules/manage-remap-rules.component";
 import {KavitaplusActivityComponent} from "../../../user-settings/kavitaplus-activity/kavitaplus-activity.component";
@@ -65,6 +67,11 @@ import {LicenseComponent} from "../../../admin/kavita-plus/license/license.compo
 import {
   ManageScrobbleProvidersComponent
 } from "../../../user-settings/manage-scrobble-providers/manage-scrobble-providers.component";
+import {AccountSettingsComponent} from "../../../user-settings/account-settings/account-settings.component";
+import {ManageKoboComponent} from "../../../user-settings/manage-kobo/manage-kobo.component";
+import {
+  ManageKoboSyncPointsComponent
+} from "../../../user-settings/manage-kobo/_components/manage-kobo-sync-points/manage-kobo-sync-points.component";
 
 @Component({
   selector: 'app-settings',
@@ -97,6 +104,9 @@ import {
     ManageOpenIDConnectComponent,
     ManagePublicMetadataSettingsComponent,
     ImportMappingsComponent,
+    ManageMetaApiConnectionsComponent,
+    LoadingComponent,
+    NgTemplateOutlet,
     FontManagerComponent,
     ServerActivityComponent,
     ServerDevicesComponent,
@@ -107,7 +117,9 @@ import {
     ManageRemapRulesComponent,
     KavitaplusActivityComponent,
     ManageKavitaplusActivityComponent,
-    ManageScrobbleProvidersComponent
+    ManageScrobbleProvidersComponent,
+    ManageKoboComponent,
+    ManageKoboSyncPointsComponent
   ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
@@ -116,6 +128,7 @@ import {
 export class SettingsComponent {
 
   private readonly route = inject(ActivatedRoute);
+  private readonly document = inject(DOCUMENT);
   private readonly cdRef = inject(ChangeDetectorRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
@@ -126,7 +139,11 @@ export class SettingsComponent {
   hasActiveLicense = computed(() => this.licenseService.hasActiveLicense());
 
   constructor() {
-    this.route.fragment.pipe(tap(frag => {
+    this.route.fragment.pipe(distinctUntilChanged(), tap(frag => {
+      if (frag === SettingsTabId.ComicVine) {
+        void this.router.navigate([], {relativeTo: this.route, fragment: SettingsTabId.MetaApiConnections, replaceUrl: true});
+        return;
+      }
       if (frag === null) {
         frag = SettingsTabId.Account;
       }
@@ -138,6 +155,10 @@ export class SettingsComponent {
 
       this.cdRef.markForCheck();
     }), takeUntilDestroyed(this.destroyRef)).subscribe();
+  }
+
+  protected reloadSettings() {
+    this.document.location.reload();
   }
 
   protected readonly SettingsTabId = SettingsTabId;

@@ -45,8 +45,8 @@ Conflicts:      kavita-musl
 
 %description
 Kavita is a self-hosted reading server for manga, comics, PDFs, EPUB books,
-and other reading material. This package repackages one of Kavita's official,
-self-contained Linux release archives and installs a systemd service.
+and other reading material. This package installs a self-contained Kavita Linux
+build and a systemd service.
 
 %prep
 %setup -q -n Kavita
@@ -128,3 +128,4 @@ exit 0
 
 * Tue Aug 04 2026 John Martinez <earth4s@users.noreply.github.com> - 0.0.0-1
 - Add automated RPM repackaging for official Kavita Linux releases
+

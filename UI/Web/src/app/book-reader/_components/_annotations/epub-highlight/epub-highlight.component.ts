@@ -1,4 +1,13 @@
-import {Component, computed, effect, ElementRef, inject, model, viewChild} from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  model,
+  viewChild
+} from '@angular/core';
 import {Annotation} from "../../../_models/annotations/annotation";
 import {EpubReaderMenuService} from "../../../../_services/epub-reader-menu.service";
 import {AnnotationService} from "../../../../_services/annotation.service";
@@ -11,6 +20,7 @@ import {NgStyle} from "@angular/common";
     NgStyle
   ],
   templateUrl: './epub-highlight.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './epub-highlight.component.scss'
 })
 export class EpubHighlightComponent {
@@ -53,11 +63,17 @@ export class EpubHighlightComponent {
   });
 
 
-  viewAnnotation() {
+  viewAnnotation(event: Event) {
     // Don't view annotation if a drawer is already open
     if (this.epubMenuService.isDrawerOpen()) return;
 
+    if (this.hasOwnAction(event.target)) return;
+
     this.epubMenuService.openViewAnnotationDrawer(this.annotation()!, false, (_) => {});
+  }
+
+  private hasOwnAction(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest('a[href]') !== null;
   }
 
 }

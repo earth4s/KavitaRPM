@@ -1,13 +1,9 @@
 import {ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject, OnInit, signal} from '@angular/core';
-import {ToastrService} from 'ngx-toastr';
+import {ToastrService} from '@openng/ngx-toastr';
 import {SettingsService} from '../settings.service';
 import {ServerSettings} from '../_models/server-settings';
 import {shareReplay} from 'rxjs/operators';
 import {catchError, combineLatest, debounceTime, defer, Observable, of, skip, switchMap, tap} from 'rxjs';
-import {ServerService} from 'src/app/_services/server.service';
-import {Job} from 'src/app/_models/job/job';
-import {DownloadService} from 'src/app/shared/_services/download.service';
-import {DownloadEntityType} from 'src/app/shared/_models/download-queue-item';
 import {DefaultValuePipe} from '../../_pipes/default-value.pipe';
 import {AsyncPipe, TitleCasePipe} from '@angular/common';
 import {translate, TranslocoModule} from "@jsverse/transloco";
@@ -16,11 +12,16 @@ import {UtcToLocalTimePipe} from "../../_pipes/utc-to-local-time.pipe";
 
 import {takeUntilDestroyed, toObservable} from "@angular/core/rxjs-interop";
 import {SettingButtonComponent} from "../../settings/_components/setting-button/setting-button.component";
-import {ColumnMode, NgxDatatableModule} from "@siemens/ngx-datatable";
+import {NgxDatatableModule} from "@siemens/ngx-datatable";
 import {ResponsiveTableComponent} from "../../shared/_components/responsive-table/responsive-table.component";
 import {VersionService} from "../../_services/version.service";
 import {CronFrequency} from "../../shared/_models/cron-frequency";
 import {SettingCronItemComponent} from "../../settings/_components/setting-cron-item/setting-cron-item.component";
+import {ServerService} from "../../_services/server.service";
+import {DownloadService} from "../../shared/_services/download.service";
+import {Job} from "../../_models/job/job";
+import {DownloadEntityType} from "../../shared/_models/download-queue-item";
+import {ConfirmService} from "../../shared/confirm.service";
 
 interface AdhocTask {
   name: string;
@@ -28,6 +29,7 @@ interface AdhocTask {
   api: Observable<any>;
   successMessage: string;
   successFunction?: (data: any) => void;
+  confirm?: string;
 }
 
 @Component({
@@ -47,6 +49,7 @@ export class ManageTasksSettingsComponent implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly serverService = inject(ServerService);
   private readonly versionService = inject(VersionService);
+  private readonly confirmService = inject(ConfirmService);
   private readonly downloadService = inject(DownloadService);
 
   serverSettings!: ServerSettings;
@@ -55,6 +58,7 @@ export class ManageTasksSettingsComponent implements OnInit {
   taskBackup = signal('');
   taskCleanup = signal('');
   taskCblSync = signal('');
+  taskCompositeCovers = signal('');
 
   cleanupFrequencies: CronFrequency[] = [CronFrequency.Daily, CronFrequency.Weekly, CronFrequency.Custom];
 
@@ -66,17 +70,6 @@ export class ManageTasksSettingsComponent implements OnInit {
       description: 'convert-media-task-desc',
       api: this.serverService.convertMedia(),
       successMessage: 'convert-media-task-success'
-    },
-    {
-      name: 'bust-locale-task',
-      description: 'bust-locale-task-desc',
-      api: defer(() => {
-        localStorage.removeItem('@transloco/translations/timestamp');
-        localStorage.removeItem('@transloco/translations');
-        location.reload();
-        return of();
-      }),
-      successMessage: 'bust-locale-task-success',
     },
     {
       name: 'clear-reading-cache-task',
@@ -109,6 +102,13 @@ export class ManageTasksSettingsComponent implements OnInit {
       successMessage: ''
     },
     {
+      name: 'debug-export-task',
+      description: 'debug-export-task-desc',
+      api: this.serverService.startDebugExport(),
+      successMessage: 'debug-export-task-success',
+      confirm: 'debug-export-task-confirm'
+    },
+    {
       name: 'sync-themes-task',
       description: 'sync-themes-task-desc',
       api: this.serverService.syncThemes(),
@@ -117,7 +117,7 @@ export class ManageTasksSettingsComponent implements OnInit {
     {
       name: 'check-for-updates-task',
       description: 'check-for-updates-task-desc',
-      api: this.serverService.checkForUpdate(),
+      api: this.serverService.checkForUpdate(true),
       successMessage: '',
       successFunction: (update) => {
         if (update === null) {
@@ -135,8 +135,7 @@ export class ManageTasksSettingsComponent implements OnInit {
   private readonly taskBackup$ = toObservable(this.taskBackup);
   private readonly taskCleanup$ = toObservable(this.taskCleanup);
   private readonly taskCblSync$ = toObservable(this.taskCblSync);
-
-  constructor() {}
+  private readonly taskCompositeCovers$ = toObservable(this.taskCompositeCovers);
 
   ngOnInit(): void {
     this.settingsService.getServerSettings().subscribe(settings => {
@@ -146,17 +145,19 @@ export class ManageTasksSettingsComponent implements OnInit {
       this.taskBackup.set(settings.taskBackup);
       this.taskCleanup.set(settings.taskCleanup);
       this.taskCblSync.set(settings.taskCblSync);
+      this.taskCompositeCovers.set(settings.taskCompositeCovers);
 
       combineLatest([
         this.taskScan$,
         this.taskBackup$,
         this.taskCleanup$,
-        this.taskCblSync$
+        this.taskCblSync$,
+        this.taskCompositeCovers$
       ]).pipe(
         skip(1), // Skips the initial values being saved so we avoid a save with no changes
         debounceTime(500),
-        switchMap(([scan, backup, cleanup, cblSync]) => {
-          const data = this.packData(scan, backup, cleanup, cblSync);
+        switchMap(([scan, backup, cleanup, cblSync, compositeCovers]) => {
+          const data = this.packData(scan, backup, cleanup, cblSync, compositeCovers);
           return this.settingsService.updateServerSettings(data).pipe(catchError(err => {
             console.error(err);
             return of(null);
@@ -178,16 +179,19 @@ export class ManageTasksSettingsComponent implements OnInit {
     this.cdRef.markForCheck();
   }
 
-  packData(scan: string, backup: string, cleanup: string, cblSync: string) {
+  packData(scan: string, backup: string, cleanup: string, cblSync: string, compositeCovers: string) {
     const modelSettings = Object.assign({}, this.serverSettings);
     modelSettings.taskScan = scan;
     modelSettings.taskBackup = backup;
     modelSettings.taskCleanup = cleanup;
     modelSettings.taskCblSync = cblSync;
+    modelSettings.taskCompositeCovers = compositeCovers;
     return modelSettings;
   }
 
-  runAdhoc(task: AdhocTask) {
+  async runAdhoc(task: AdhocTask) {
+    if (task.confirm && !await this.confirmService.confirm(translate('manage-tasks-settings.' + task.confirm))) return;
+
     task.api.subscribe((data: any) => {
       if (task.successMessage.length > 0) {
         this.toastr.success(translate('manage-tasks-settings.' + task.successMessage));
@@ -198,6 +202,4 @@ export class ManageTasksSettingsComponent implements OnInit {
       }
     });
   }
-
-  protected readonly ColumnMode = ColumnMode;
 }

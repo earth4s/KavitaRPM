@@ -4,6 +4,7 @@ using System.Linq;
 using AutoMapper;
 using Kavita.Common.Helpers;
 using Kavita.Models.AutoMapper.Converters;
+using Kavita.Models.Constants;
 using Kavita.Models.DTOs;
 using Kavita.Models.DTOs.Account;
 using Kavita.Models.DTOs.Annotations;
@@ -16,6 +17,7 @@ using Kavita.Models.DTOs.KavitaPlus.Account;
 using Kavita.Models.DTOs.KavitaPlus.Manage;
 using Kavita.Models.DTOs.KavitaPlus.Metadata;
 using Kavita.Models.DTOs.KavitaPlus.Scrobble;
+using Kavita.Models.DTOs.Kobo;
 using Kavita.Models.DTOs.MediaErrors;
 using Kavita.Models.DTOs.Metadata;
 using Kavita.Models.DTOs.Person;
@@ -33,6 +35,8 @@ using Kavita.Models.DTOs.Stats;
 using Kavita.Models.DTOs.Theme;
 using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Entities.Interfaces;
+using Kavita.Models.Entities.Kobo;
 using Kavita.Models.Entities.Metadata;
 using Kavita.Models.Entities.MetadataMatching;
 using Kavita.Models.Entities.Person;
@@ -40,6 +44,8 @@ using Kavita.Models.Entities.Progress;
 using Kavita.Models.Entities.ReadingLists;
 using Kavita.Models.Entities.Scrobble;
 using Kavita.Models.Entities.User;
+using Kavita.Models.Extensions;
+using Kavita.Models.Parser;
 
 namespace Kavita.Models.AutoMapper;
 
@@ -56,17 +62,35 @@ public class AutoMapperProfiles : Profile
             .ForMember(dest => dest.Series, opt => opt.MapFrom(src => src.Series));
         CreateMap<LibraryDto, Library>();
         CreateMap<MangaFile, MangaFileDto>();
-        CreateMap<Series, SeriesDto>();
+        CreateMap<IHasCoverImageFile, IHasCoverImageDto>()
+            .ForMember(dest => dest.HasCoverImage, opt => opt.MapFrom(src => src.CoverImageFileId != null));
+        CreateMap<Series, SeriesDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>();
         CreateMap<AppUserCollection, AppUserCollectionDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>()
             .ForMember(dest => dest.Owner, opt => opt.MapFrom(src => src.AppUser.UserName))
             .ForMember(dest => dest.ItemCount, opt => opt.MapFrom(src => src.Items.Count));
         CreateMap<Person, PersonDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>()
             .ForMember(dest => dest.Aliases, opt => opt.MapFrom(src => src.Aliases.Select(s => s.Alias)));
         CreateMap<Genre, GenreTagDto>();
         CreateMap<Tag, TagDto>();
         CreateMap<AgeRating, AgeRatingDto>();
         CreateMap<PublicationStatus, PublicationStatusDto>();
         CreateMap<MediaError, MediaErrorDto>();
+        CreateMap<MediaError, FailedFile>()
+            .ForCtorParam(nameof(FailedFile.Path), opt => opt.MapFrom(src => src.FilePath))
+            .ForCtorParam(nameof(FailedFile.Bytes), opt => opt.MapFrom(src => src.Bytes!.Value))
+            .ForCtorParam(nameof(FailedFile.LastWriteTimeUtc), opt => opt.MapFrom(src => src.FileLastWriteTimeUtc!.Value));
+        CreateMap<MediaError, ScanIssueSummaryItemDto>()
+            .ForCtorParam(nameof(ScanIssueSummaryItemDto.SeriesName), opt => opt.MapFrom(src => src.Series != null ? src.Series.Name : null));
+        CreateMap<ScanIssue, MediaError>()
+            .ForMember(dest => dest.FilePath, opt => opt.MapFrom(src => src.Path))
+            .ForMember(dest => dest.FileLastWriteTimeUtc, opt => opt.MapFrom(src => src.LastWriteTimeUtc))
+            .ForMember(dest => dest.Extension,
+                opt => opt.MapFrom(src => System.IO.Path.GetExtension(src.Path).Replace(".", string.Empty).ToUpperInvariant()))
+            .ForMember(dest => dest.Producer, opt => opt.MapFrom(_ => MediaErrorProducer.Scanner))
+            .ForMember(dest => dest.LastSeenUtc, opt => opt.MapFrom(_ => DateTime.UtcNow));
         CreateMap<AppUserExternalSource, ExternalSourceDto>();
         CreateMap<ScrobbleHold, ScrobbleHoldDto>()
             .ForMember(dest => dest.LibraryId,
@@ -186,6 +210,7 @@ public class AutoMapperProfiles : Profile
                         src => src.Tags.OrderBy(p => p.NormalizedTitle)));
 
         CreateMap<AppUser, UserDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>()
             .ForMember(dest => dest.Roles,
                 opt =>
                     opt.MapFrom(src => src.UserRoles.Select(r => r.Role.Name)))
@@ -218,6 +243,7 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<ReadingListTag, ReadingListTagDto>();
         CreateMap<ReadingList, ReadingListDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>()
             .ForMember(dest => dest.ItemCount, opt => opt.MapFrom(src => src.Items.Count))
             .ForMember(dest => dest.OwnerUserName, opt => opt.MapFrom(src => src.AppUser.UserName))
             .ForMember(dest => dest.Tags, opt => opt.MapFrom(src => src.Tags));
@@ -233,12 +259,13 @@ public class AutoMapperProfiles : Profile
             .ForMember(dest => dest.ReleaseYear,
                 opt => opt.MapFrom(src => src.Metadata.ReleaseYear))
             .ForMember(dest => dest.VolumeCount,
-                opt => opt.MapFrom(src => src.Volumes.Count))
+                opt => opt.MapFrom(src => src.Volumes.Count(v => v.MinNumber != ParserConstants.LooseLeafVolumeNumber)))
             .ForMember(dest => dest.ChapterCount,
-                opt => opt.MapFrom(src => src.Volumes.SelectMany(v => v.Chapters).Count()));
+                opt => opt.MapFrom(src => src.Volumes.SelectMany(v => v.Chapters).Count(c => c.MinNumber != ParserConstants.DefaultChapterNumber)));
 
         CreateMap<Library, LiteLibraryDto>();
         CreateMap<Library, LibraryDto>()
+            .IncludeBase<IHasCoverImageFile, IHasCoverImageDto>()
             .ForMember(dest => dest.Folders,
                 opt =>
                     opt.MapFrom(src => src.Folders.Select(x => x.Path).ToList()))
@@ -298,8 +325,7 @@ public class AutoMapperProfiles : Profile
                     opt.MapFrom(src => src))
             .ForMember(dest => dest.IsMatched,
                 opt =>
-                    opt.MapFrom(src => src.ExternalSeriesMetadata != null && src.ExternalSeriesMetadata.AniListId != 0
-                                                                          && src.ExternalSeriesMetadata.ValidUntilUtc > DateTime.MinValue))
+                    opt.MapFrom(src => src.ExternalSeriesMetadata != null && src.ExternalSeriesMetadata.ValidUntilUtc > DateTime.MinValue))
             .ForMember(dest => dest.ValidUntilUtc,
                 opt => opt.MapFrom(src =>
                     src.ExternalSeriesMetadata != null
@@ -317,7 +343,16 @@ public class AutoMapperProfiles : Profile
             .ForMember(dest => dest.Blacklist, opt => opt.MapFrom(src => src.Blacklist ?? new List<string>()))
             .ForMember(dest => dest.Whitelist, opt => opt.MapFrom(src => src.Whitelist ?? new List<string>()))
             .ForMember(dest => dest.Overrides, opt => opt.MapFrom(src => src.Overrides ?? new List<MetadataSettingField>()))
-            .ForMember(dest => dest.AgeRatingMappings, opt => opt.MapFrom(src => src.AgeRatingMappings ?? new Dictionary<string, AgeRating>()));
+            .ForMember(dest => dest.AgeRatingMappings, opt => opt.MapFrom(src => src.AgeRatingMappings ?? new Dictionary<string, AgeRating>()))
+            .ForMember(dest => dest.GlobalLanguageTitleSettings, opt => opt.MapFrom(src => new SeriesNameLanguageDto
+            {
+                Name = src.GlobalNameLanguages ?? string.Empty,
+                LocalizedName = src.GlobalLocalizedNameLanguages ?? string.Empty,
+            }))
+            .ForMember(dest => dest.LibraryLanguageTitleOverrides,
+                opt => opt.MapFrom(src => src.LibraryLanguageTitleOverrides ?? new Dictionary<int, SeriesNameLanguage>()));
+
+        CreateMap<SeriesNameLanguage, SeriesNameLanguageDto>();
 
         CreateMap<AppUserAnnotation, AnnotationDto>()
             .ForMember(dest => dest.OwnerUsername, opt => opt.MapFrom(src => src.AppUser.UserName))
@@ -414,6 +449,12 @@ public class AutoMapperProfiles : Profile
 
         CreateMap<AppUserAuthKey, AuthKeyDto>();
         CreateMap<AppUserScrobbleProvider, ScrobbleProviderDto>();
+        CreateMap<AppUserRating, UserRatingAndReviewDto>();
+
+        CreateMap<KoboSyncPoint, KoboSyncPointDto>()
+            .ForMemberSimple(dest => dest.DeviceId, src => src.KoboDeviceId)
+            .ForMemberSimple(dest => dest.RemovedChapterCount, src => src.RemovedChapterIds.Count)
+            .ForMemberSimple(dest => dest.LastSync, src => new[] { src.ProgressSyncTime, src.ChapterSyncTime }.Max());
 
 
     }

@@ -7,11 +7,30 @@ using Kavita.Models.Parser;
 
 namespace Kavita.Services.Scanner;
 
+public sealed record ParseInfoResult
+{
+    public ParserInfo? Info { get; }
+    /// <summary>
+    /// False only if the parse failed; Skipped parses are success with a null <see cref="Info"/>
+    /// </summary>
+    public bool Success { get; }
+
+    private ParseInfoResult(ParserInfo? info, bool success)
+    {
+        Info = info;
+        Success = success;
+    }
+
+    private static ParseInfoResult SuccessFullParse(ParserInfo? info) => new(info, true);
+    public static ParseInfoResult SkippedParse() => new(null, true);
+    public static ParseInfoResult FailedParse(ParserInfo? info = null) => new(info, false);
+    public static ParseInfoResult FromParserInfo(ParserInfo? info) => string.IsNullOrEmpty(info?.Series) ? FailedParse(info) : SuccessFullParse(info);
+
+}
+
 public interface IDefaultParser
 {
-    ParserInfo? Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null);
-    void ParseFromFallbackFolders(string filePath, string rootPath, LibraryType type, ref ParserInfo ret);
-    bool IsApplicable(string filePath, LibraryType type);
+    ParseInfoResult Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null);
 }
 
 /// <summary>
@@ -29,8 +48,8 @@ public abstract class DefaultParser(IDirectoryService directoryService) : IDefau
     /// <param name="type">Allows different Regex to be used for parsing.</param>
     /// <param name="enableMetadata">Allows overriding data from metadata (ComicInfo/pdf/epub)</param>
     /// <param name="comicInfo"></param>
-    /// <returns><see cref="ParserInfo"/> or null if Series was empty</returns>
-    public abstract ParserInfo? Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null);
+    /// <returns><see cref="ParseInfoResult"/> or null if Series was empty</returns>
+    public abstract ParseInfoResult Parse(string filePath, string rootPath, string libraryRoot, LibraryType type, bool enableMetadata = true, ComicInfo? comicInfo = null);
 
     /// <summary>
     /// Fills out <see cref="ParserInfo"/> by trying to parse volume, chapters, and series from folders
@@ -138,6 +157,21 @@ public abstract class DefaultParser(IDirectoryService directoryService) : IDefau
             info.SeriesSort = info.ComicInfo.SeriesSort.Trim();
         }
 
+    }
+
+    /// <summary>Folder placement explicitly groups comic extras with their parent series.</summary>
+    internal static void ApplyComicSpecialsFolder(ParserInfo info, string libraryRoot, LibraryType type)
+    {
+        if (type is not (LibraryType.Comic or LibraryType.ComicVine)) return;
+        var owner = Parser.GetSpecialsOwnerFolder(info.FullFilePath, libraryRoot);
+        if (owner == null) return;
+        var name = System.IO.Path.GetFileName(owner);
+        info.Series = type == LibraryType.ComicVine && Parser.IsSeriesAndYear(name)
+            ? name : Parser.CleanTitle(name, type == LibraryType.Comic);
+        info.IsSpecial = true;
+        info.Volumes = Parser.SpecialVolume;
+        if (Parser.HasSpecialMarker(info.Filename)) info.SpecialIndex = Parser.ParseSpecialIndex(info.Filename);
+        FinalizeNumbers(info);
     }
 
     public abstract bool IsApplicable(string filePath, LibraryType type);

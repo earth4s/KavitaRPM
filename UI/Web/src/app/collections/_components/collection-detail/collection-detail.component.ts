@@ -1,4 +1,3 @@
-import {DatePipe} from '@angular/common';
 import {
   AfterContentChecked,
   ChangeDetectionStrategy,
@@ -16,20 +15,6 @@ import {
 import {ActivatedRoute, Router} from '@angular/router';
 import {NgbTooltip} from '@ng-bootstrap/ng-bootstrap';
 import {debounceTime} from 'rxjs/operators';
-import {BulkSelectionService} from 'src/app/cards/bulk-selection.service';
-import {FilterUtilitiesService} from 'src/app/shared/_services/filter-utilities.service';
-import {UtilityService} from 'src/app/shared/_services/utility.service';
-import {UserCollection} from 'src/app/_models/collection-tag';
-import {SeriesAddedToCollectionEvent} from 'src/app/_models/events/series-added-to-collection-event';
-import {Pagination} from 'src/app/_models/pagination';
-import {Series} from 'src/app/_models/series';
-import {FilterEvent, SeriesSortField} from 'src/app/_models/metadata/series-filter';
-import {CollectionTagService} from 'src/app/_services/collection-tag.service';
-import {ImageService} from 'src/app/_services/image.service';
-import {JumpbarService} from 'src/app/_services/jumpbar.service';
-import {EVENTS, MessageHubService} from 'src/app/_services/message-hub.service';
-import {ScrollService} from 'src/app/_services/scroll.service';
-import {SeriesService} from 'src/app/_services/series.service';
 import {SeriesCardComponent} from '../../../cards/series-card/series-card.component';
 import {CardDetailLayoutComponent} from '../../../cards/card-detail-layout/card-detail-layout.component';
 import {BulkOperationsComponent} from '../../../cards/bulk-operations/bulk-operations.component';
@@ -65,7 +50,23 @@ import {ActionResult} from "../../../_models/actionables/action-result";
 import {getWritableResolvedData} from "../../../../libs/route-util";
 import {User} from "../../../_models/user/user";
 import {DrawerService} from "../../../_services/drawer.service";
-import {UtcToLocalDatePipe} from "../../../_pipes/utc-to-locale-date.pipe";
+import {UtcToLocalTimePipe} from "../../../_pipes/utc-to-local-time.pipe";
+import {ImageService} from "../../../_services/image.service";
+import {BulkSelectionService} from "../../../cards/bulk-selection.service";
+import {CollectionTagService} from "../../../_services/collection-tag.service";
+import {SeriesService} from "../../../_services/series.service";
+import {EVENTS, MessageHubService} from "../../../_services/message-hub.service";
+import {FilterUtilitiesService} from "../../../shared/_services/filter-utilities.service";
+import {UtilityService} from "../../../shared/_services/utility.service";
+import {ScrollService} from "../../../_services/scroll.service";
+import {FilterEvent, SeriesSortField} from "../../../_models/metadata/series-filter";
+import {SeriesAddedToCollectionEvent} from "../../../_models/events/series-added-to-collection-event";
+import {UserCollection} from "../../../_models/collection-tag";
+import {Series} from "../../../_models/series";
+import {Pagination} from "../../../_models/pagination";
+import {JumpbarService} from "../../../_services/jumpbar.service";
+import {ColorscapeService} from "../../../_services/colorscape.service";
+import {ColorScapeKind} from "../../../_models/theme/colorscape";
 
 @Component({
   selector: 'app-collection-detail',
@@ -74,7 +75,7 @@ import {UtcToLocalDatePipe} from "../../../_pipes/utc-to-locale-date.pipe";
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [SideNavCompanionBarComponent, CardActionablesComponent, ImageComponent, ReadMoreComponent,
     BulkOperationsComponent, CardDetailLayoutComponent, SeriesCardComponent, TranslocoDirective, NgbTooltip,
-    DatePipe, DefaultDatePipe, ProviderImagePipe, ScrobbleProviderNamePipe, PromotedIconComponent, UtcToLocalDatePipe]
+    DefaultDatePipe, ProviderImagePipe, ScrobbleProviderNamePipe, PromotedIconComponent, UtcToLocalTimePipe]
 })
 export class CollectionDetailComponent implements AfterContentChecked {
   public readonly imageService = inject(ImageService);
@@ -94,6 +95,7 @@ export class CollectionDetailComponent implements AfterContentChecked {
   protected readonly breakpointService = inject(BreakpointService);
   private readonly scrollService = inject(ScrollService);
   private readonly metadataService = inject(MetadataService);
+  private readonly colorscapeService = inject(ColorscapeService);
 
   protected readonly ScrobbleProvider = ScrobbleProvider;
 
@@ -102,6 +104,20 @@ export class CollectionDetailComponent implements AfterContentChecked {
   collectionId = input(0, {transform: numberAttribute});
   collectionTag = getWritableResolvedData(this.route, 'collection');
   summary = computed(() => (this.collectionTag()?.summary ?? '').replace(/\n/g, '<br>'));
+  collectedSeries = computed(() => {
+    const collectionTag = this.collectionTag();
+    if (collectionTag.source === ScrobbleProvider.Kavita) return null;
+
+    if (!collectionTag.missingSeriesFromSource) return collectionTag.totalSourceCount;
+
+    // This is not the most pretty, but it saves us needing to add a new field. And is deterministic
+    const missingSeries = collectionTag.missingSeriesFromSource
+      .split('<br/>')
+      .filter(s => s.length > 0)
+      .length;
+
+    return collectionTag.totalSourceCount - missingSeries;
+  });
 
   readonly user = this.accountService.currentUser;
 
@@ -132,49 +148,58 @@ export class CollectionDetailComponent implements AfterContentChecked {
   trackByIdentity = (index: number, item: Series) => `${item.name}_${item.localizedName}_${item.pagesRead}`;
 
   constructor() {
-      this.router.routeReuseStrategy.shouldReuseRoute = () => false;
+    this.router.routeReuseStrategy.shouldReuseRoute = () => false;
 
-      this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
-        let filter = data['filter'] as FilterV2<SeriesFilterField, SeriesSortField>;
-        const tag = this.collectionTag();
-        const tagId = tag?.id ?? 0;
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
+      let filter = data['filter'] as FilterV2<SeriesFilterField, SeriesSortField>;
+      const tag = this.collectionTag();
+      const tagId = tag?.id ?? 0;
 
-        const defaultStmt =  {field: SeriesFilterField.CollectionTags, value: tagId + '', comparison: FilterComparison.Equal};
+      const defaultStmt =  {field: SeriesFilterField.CollectionTags, value: tagId + '', comparison: FilterComparison.Equal};
 
-        if (filter == null) {
-          filter = this.metadataService.createDefaultFilterDto('series');
-          filter.statements.push(defaultStmt);
-        }
+      if (filter == null) {
+        filter = this.metadataService.createDefaultFilterDto('series');
+        filter.statements.push(defaultStmt);
+      }
 
-        if (filter.statements.filter((stmt: FilterStatement<SeriesFilterField>) => stmt.field === SeriesFilterField.CollectionTags).length === 0) {
-          filter!.statements.push(defaultStmt);
-        }
+      if (filter.statements.filter((stmt: FilterStatement<SeriesFilterField>) => stmt.field === SeriesFilterField.CollectionTags).length === 0) {
+        filter!.statements.push(defaultStmt);
+      }
 
-        this.filter.set(filter);
+      if (!filter.statements.find(stmt => stmt.field === SeriesFilterField.CollapseSeriesRelationships)) {
+        filter.statements.push({
+          field: SeriesFilterField.CollapseSeriesRelationships,
+          value: 'false',
+          comparison: FilterComparison.Equal,
+        })
+      }
 
-        const settings = new SeriesFilterSettings();
-        settings.presetsV2 = filter;
-        this.filterSettings.set(settings);
+      this.filter.set(filter);
 
-        this.loadPage();
-      });
+      const settings = new SeriesFilterSettings();
+      settings.presetsV2 = filter;
+      this.filterSettings.set(settings);
 
-      this.bulkSelectionService.registerDataSource('series', () => this.series());
-      this.bulkSelectionService.registerPostAction((res: ActionResult<Series>) => {
-        if (res.effect === 'none') return;
-        this.loadPage();
-      });
+      this.loadPage();
+    });
 
-      this.messageHub.messages$.pipe(takeUntilDestroyed(this.destroyRef), debounceTime(2000)).subscribe(event => {
-        if (event.event == EVENTS.CollectionUpdated) {
-          const collectionEvent = event.payload as SeriesAddedToCollectionEvent;
-          if (collectionEvent.tagId === this.collectionTag()?.id) {
-            this.loadPage();
-          }
-        } else if (event.event === EVENTS.SeriesRemoved) {
+    this.bulkSelectionService.registerDataSource('series', () => this.series());
+    this.bulkSelectionService.registerPostAction((res: ActionResult<Series>) => {
+      if (res.effect === 'none') return;
+      this.loadPage();
+    });
+
+
+    this.messageHub.messages$.pipe(takeUntilDestroyed(this.destroyRef), debounceTime(2000)).subscribe(event => {
+      if (event.event == EVENTS.CollectionUpdated) {
+        const collectionEvent = event.payload as SeriesAddedToCollectionEvent;
+        if (collectionEvent.tagId === this.collectionTag()?.id) {
           this.loadPage();
         }
-      });
+      } else if (event.event === EVENTS.SeriesRemoved) {
+        this.loadPage();
+      }
+    });
   }
 
   shouldRenderCollection(action: ActionItem<UserCollection>, entity: UserCollection, user: User) {
@@ -195,6 +220,11 @@ export class CollectionDetailComponent implements AfterContentChecked {
   loadPage() {
     this.filterActive.set(!this.utilityService.deepEqual(this.filter(), this.filterActiveCheck()));
     this.isLoading.set(true);
+
+    const collectionId = this.collectionId();
+    if (collectionId > 0) {
+      this.colorscapeService.loadColorScape(ColorScapeKind.Collection, this.collectionId()).subscribe();
+    }
 
     this.seriesService.getAllSeriesV2(undefined, undefined, this.filter()).subscribe(series => {
       this.series.set(series.result);

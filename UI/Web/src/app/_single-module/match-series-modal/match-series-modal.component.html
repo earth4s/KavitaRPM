@@ -21,6 +21,11 @@
           <div class="d-flex flex-column gap-0">
             <div class="in-kavita-label text-uppercase">{{ t('in-kavita') }}</div>
             <div class="in-kavita-name fw-bold">{{ series().name }}</div>
+            @if (peopleHint(); as hint) {
+              <div class="in-kavita-meta text-muted small">
+                {{hint}}
+              </div>
+            }
             <div class="in-kavita-meta text-muted small">
               @if (kavitaVolumeCount() > 0) {
                 {{ t('volume-count', {num: kavitaVolumeCount()}) }}
@@ -30,6 +35,10 @@
               }
               @if (kavitaSpecialCount() > 0) {
                 {{ t('special-count', {num: kavitaSpecialCount()}) }}
+              }
+              <app-series-format [format]="series().format" [useTitle]="false" />
+              @if (match) {
+                {{match.libraryType | libraryType}}
               }
             </div>
           </div>
@@ -43,7 +52,13 @@
             @if (match.isLegacy) {
               <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.AniList" [id]="match.aniListId" />
             } @else {
-              @switch (match.matchedProvider) {
+              @switch (match.metadataProvider) {
+                @case (MetadataProvider.Gcd) {
+                  <a class="badge bg-secondary" target="_blank" rel="noreferrer noopener" [href]="'https://www.comics.org/series/' + match.gcdId + '/'">GCD</a>
+                }
+                @case (MetadataProvider.ComicVine) {
+                  <a class="badge bg-secondary" target="_blank" rel="noreferrer noopener" [href]="'https://comicvine.gamespot.com/volume/4050-' + match.comicVineId">Comic Vine</a>
+                }
                 @case (MetadataProvider.Mangabaka) {
                   <app-scrobble-provider-tag-badge [provider]="ScrobbleProvider.MangaBaka" [id]="match.mangaBakaId" />
                 }
@@ -70,42 +85,54 @@
         <div class="flex-grow-1 min-w-0">
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <span class="fw-semibold small text-truncate">
-              {{t('searching-against', {provider: match.primaryProvider! | metadataProviderTitle })}}
+              {{t('searching-against', {provider: activeProvider()! | metadataProviderTitle })}}
             </span>
           </div>
 
-          <div class="small text-muted">
-            {{t('change-provider-help')}}
+          <div class="small text-muted mb-1">
+            @if (isProviderSwitched()) {
+              {{t('provider-switch-help', {provider: activeProvider()! | metadataProviderTitle })}}
+            } @else {
+              {{t('change-provider-help')}}
+            }
           </div>
+
+          <app-setting-select inputId="metadata-provider" [formField]="formGroup.provider" [options]="allMetadataProviders()" extraClasses="form-select-sm w-auto">
+            <ng-template #template let-p>
+              {{ p | metadataProviderTitle }}
+            </ng-template>
+          </app-setting-select>
         </div>
 
-        @if (match.primaryProvider === MetadataProvider.Hardcover) {
-          <form [formGroup]="formGroup">
-            <div class="form-check form-switch mb-0">
-              <input type="checkbox" class="form-check-input" formControlName="isStandAlone"
-                     id="is-standalone" role="switch" />
-              <label class="form-check-label" for="is-standalone">
-                {{ t('is-standalone-label') }}
-                <i class="fa fa-info-circle" [ngbTooltip]="t('is-standalone-tooltip')"></i>
-              </label>
-            </div>
-          </form>
+        @if (activeProvider() === MetadataProvider.Hardcover) {
+          <div class="form-check form-switch mb-0">
+            <input type="checkbox" class="form-check-input" [formField]="formGroup.isStandAlone"
+                   id="is-standalone" role="switch" />
+            <label class="form-check-label" for="is-standalone">
+              {{ t('is-standalone-label') }}
+              <i class="fa fa-info-circle" [ngbTooltip]="t('is-standalone-tooltip')"></i>
+            </label>
+          </div>
         }
 
       </div>
     }
 
+    @if (formGroup.provider().value() === MetadataProvider.ComicVine) {
+      <p class="small mt-2">{{t('comicvine-key-hint')}}</p>
+    }
+
     <!-- Query bar -->
-    <div class="py-3" [formGroup]="formGroup">
+    <div class="py-3">
       <div class="d-flex align-items-stretch gap-2">
         <div class="d-flex align-items-center position-relative flex-fill">
           <i class="fa-solid fa-magnifying-glass query-icon" aria-hidden="true"></i>
           <label for="search-query" class="visually-hidden">{{t('search')}}</label>
           <input class="form-control query-input"
                  id="search-query"
-                 formControlName="query"
+                 [formField]="formGroup.query"
                  (keydown.enter)="search()" />
-          @if (formGroup.get('query')?.value) {
+          @if (queryString()) {
             <button type="button" class="query-clear btn-close btn-close-white btn-sm"
                     [attr.aria-label]="t('clear')"
                     (click)="clearQuery()"></button>
@@ -113,7 +140,7 @@
         </div>
         <button type="button" class="btn btn-primary"
                 (click)="search()"
-                [disabled]="isLoading() || formGroup.get('dontMatch')?.value">
+                [disabled]="isLoading() || isDontMatch()">
           @if (isLoading()) {
             <span class="spinner-border spinner-border-sm" role="status">
               <span class="visually-hidden">{{ t('searching-alt') }}</span>
@@ -128,13 +155,20 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
         <div class="provider-hints d-flex align-items-center flex-wrap gap-1">
           <span class="text-muted">{{ t('try') }}</span>
+          @if (formGroup.provider().value() === MetadataProvider.Gcd) {
+            <code>gcd:series:6139</code> {{t('gcd-query-hint')}}
+          } @else if (formGroup.provider().value() === MetadataProvider.ComicVine) {
+            <code class="provider-hint">comicvine:796</code>
+            <span class="text-muted">{{t('comicvine-query-hint')}}</span>
+          } @else {
           <code class="provider-hint">anilist:159441</code>
           <code class="provider-hint">mal:20593</code>
           <code class="provider-hint">mangabaka:1331</code>
           <code class="provider-hint">hardcover:flatland</code>
+          }
         </div>
         <div class="form-check form-switch mb-0">
-          <input type="checkbox" class="form-check-input" formControlName="dontMatch"
+          <input type="checkbox" class="form-check-input" [formField]="formGroup.dontMatch"
                  id="dont-match" role="switch" />
           <label class="form-check-label" for="dont-match"
                  [ngbTooltip]="t('dont-match-tooltip')">
@@ -178,7 +212,7 @@
           <app-empty-state [isError]="true"
                            [titleKey]="'no-results-title'"
                            [descriptionKey]="'no-results-description'"
-                           [descriptionParams]="{ query: lastQuery() }"
+                           [descriptionParams]="{ query: lastQuery() ?? series().name }"
                            [i18nPrefix]="'match-series-modal'">
             <i icon class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
           </app-empty-state>
@@ -212,8 +246,12 @@
         AniList
         <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
       </a>
-      <a class="btn btn-link phone-hidden" rel="noreferrer noopener" target="_blank" href="https://hardcover.app/">
+      <a class="btn btn-link phone-hidden" rel="noreferrer noopener" target="_blank" [href]="hardcoverSearchUrl()">
         Hardcover
+        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+      </a>
+      <a class="btn btn-link phone-hidden" rel="noreferrer noopener" target="_blank" [href]="cbrSearchUrl()">
+        Comic Book Roundup
         <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
       </a>
 

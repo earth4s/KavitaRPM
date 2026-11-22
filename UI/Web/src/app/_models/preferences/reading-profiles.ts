@@ -1,4 +1,3 @@
-import {LayoutMode} from 'src/app/manga-reader/_models/layout-mode';
 import {BookPageLayoutMode} from '../readers/book-page-layout-mode';
 import {PageLayoutMode} from '../page-layout-mode';
 import {PageSplitOption} from './page-split-option';
@@ -11,6 +10,7 @@ import {PdfScrollMode} from "./pdf-scroll-mode";
 import {PdfLayoutMode} from "./pdf-layout-mode";
 import {PdfSpreadMode} from "./pdf-spread-mode";
 import {Breakpoint} from "../../_services/breakpoint.service";
+import {LayoutMode} from "../../manga-reader/_models/layout-mode";
 
 export enum ReadingProfileKind {
   Default = 0,
@@ -22,7 +22,6 @@ export interface ReadingProfile {
 
   id: number;
   name: string;
-  normalizedName: string;
   kind: ReadingProfileKind;
   deviceIds: number[];
 
@@ -38,7 +37,7 @@ export interface ReadingProfile {
   emulateBook: boolean;
   swipeToPaginate: boolean;
   allowAutomaticWebtoonReaderDetection: boolean;
-  widthOverride?: number;
+  widthOverride: number | null;
   disableWidthOverride: Breakpoint;
 
   // Book Reader
@@ -77,4 +76,4 @@ export const pdfLayoutModes = [{text: 'pdf-multiple', value: PdfLayoutMode.Multi
 export const pdfScrollModes = [{text: 'pdf-vertical', value: PdfScrollMode.Vertical}, {text: 'pdf-horizontal', value: PdfScrollMode.Horizontal}, {text: 'pdf-page', value: PdfScrollMode.Page}];
 export const pdfSpreadModes = [{text: 'pdf-none', value: PdfSpreadMode.None}, {text: 'pdf-odd', value: PdfSpreadMode.Odd}, {text: 'pdf-even', value: PdfSpreadMode.Even}];
 export const pdfThemes = [{text: 'pdf-light', value: PdfTheme.Light}, {text: 'pdf-dark', value: PdfTheme.Dark}];
-export const breakPoints = [Breakpoint.Mobile, Breakpoint.Tablet, Breakpoint.Desktop];
+export const breakPoints = [Breakpoint.Never, Breakpoint.Mobile, Breakpoint.Tablet, Breakpoint.Desktop];

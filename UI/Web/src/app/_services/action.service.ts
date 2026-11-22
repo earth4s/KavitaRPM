@@ -1,6 +1,7 @@
+import {MetadataProvider} from "../_models/kavitaplus/metadata-provider.enum";
 import {inject, Injectable} from '@angular/core';
 import {NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
-import {ToastrService} from 'ngx-toastr';
+import {ToastrService} from '@openng/ngx-toastr';
 import {catchError, finalize, map, take} from 'rxjs/operators';
 import {ListSelectModalComponent} from '../shared/_components/list-select-modal/list-select-modal.component';
 import {ScrobbleProvider} from './scrobbling.service';
@@ -62,8 +63,9 @@ import {NavService} from "./nav.service";
 import {ModalResult} from "../_models/modal/modal-result";
 import {addToModal, editModal} from "../_models/modal/modal-options";
 import {ModalService, TypedModalRef} from "./modal.service";
-import {FilterService} from "src/app/_services/filter.service";
 import {DashboardService} from "./dashboard.service";
+import {FilterService} from "./filter.service";
+import {AccountService} from "./account.service";
 
 
 export type LibraryActionCallback = (library: Partial<Library>) => void;
@@ -103,6 +105,7 @@ export class ActionService {
   private readonly sideNavService = inject(NavService);
   private readonly filterService = inject(FilterService);
   private readonly dashboardService = inject(DashboardService);
+  private readonly accountService = inject(AccountService);
 
   private readingListModalRef: TypedModalRef<BulkSetReadingProfileModalComponent> |  TypedModalRef<ListSelectModalComponent<ReadingList>> | null = null;
   private collectionModalRef: TypedModalRef<ListSelectModalComponent<UserCollection>> | null = null;
@@ -149,7 +152,7 @@ export class ActionService {
 
       case Action.Edit: {
         const modalRef = this.modalService.open(LibrarySettingsModalComponent, editModal());
-        modalRef.componentInstance.library = library;
+        modalRef.setInput('library', library);
         return this.handleEditModal(modalRef, action, library);
       }
 
@@ -224,7 +227,7 @@ export class ActionService {
 
       case Action.Edit: {
         const modalRef = this.modalService.open(EditSeriesModalComponent, editModal());
-        modalRef.componentInstance.series = series;
+        modalRef.setInput('series', series);
         return this.handleEditModal(modalRef, action, series);
       }
 
@@ -423,10 +426,10 @@ export class ActionService {
 
       case Action.Edit: {
         const ref = this.modalService.open(EditVolumeModalComponent, editModal());
-        ref.componentInstance.volume = volume;
-        ref.componentInstance.libraryType = libraryType;
-        ref.componentInstance.seriesId = seriesId;
-        ref.componentInstance.libraryId = libraryId;
+        ref.setInput('volume', volume);
+        ref.setInput('libraryType', libraryType);
+        ref.setInput('seriesId', seriesId);
+        ref.setInput('libraryId', libraryId);
         return this.handleEditModal(ref, action, volume);
       }
 
@@ -549,10 +552,10 @@ export class ActionService {
 
       case Action.Edit:
         const ref = this.modalService.open(EditChapterModalComponent, editModal());
-        ref.componentInstance.chapter = chapter;
-        ref.componentInstance.libraryType = libraryType;
-        ref.componentInstance.seriesId = seriesId;
-        ref.componentInstance.libraryId = libraryId;
+        ref.setInput('chapter', chapter);
+        ref.setInput('libraryType', libraryType);
+        ref.setInput('seriesId', seriesId);
+        ref.setInput('libraryId', libraryId);
 
         return this.handleEditModal(ref, action, chapter);
 
@@ -665,10 +668,11 @@ export class ActionService {
         this.downloadService.download(DownloadEntityType.ReadingList, readingList, 0, 0);
         return of(this.fromAction(action, readingList, 'none'));
 
-      case Action.Edit:
+      case Action.Edit: {
         const ref = this.modalService.open(EditReadingListModalComponent, editModal());
-        ref.componentInstance.readingList = readingList;
+        ref.setInput('readingList', readingList);
         return this.handleEditModal(ref, action, readingList);
+      }
       case Action.RefreshMetadata:
         return this.readingListService.refreshCover(readingList.id).pipe(
           map(() => this.fromAction(action, {...readingList}, 'none'))
@@ -705,13 +709,21 @@ export class ActionService {
    */
   handleCollectionAction(action: ActionItem<UserCollection>, collection: UserCollection) {
     switch (action.action) {
-      case Action.Delete:
-        return from(this.confirmService.confirm(translate('toasts.confirm-delete-collection'))).pipe(
+      case Action.Delete: {
+        const koboPreferences = this.accountService.currentUser()?.preferences.koboSyncPreferences;
+        const isKoboSyncCollection = koboPreferences != null && (koboPreferences.managedCollection === collection.id
+          || (koboPreferences.syncCollections ?? []).includes(collection.id));
+        const content = isKoboSyncCollection
+          ? translate('toasts.confirm-delete-kobo-collection')
+          : translate('toasts.confirm-delete-collection');
+
+        return from(this.confirmService.confirm(content)).pipe(
           filter(confirmed => confirmed),
           switchMap(() => this.collectionService.deleteTag(collection.id)),
           tap(() => this.toastr.success(translate('toasts.collection-tag-deleted'))),
           map(() => this.fromAction(action, collection, 'remove'))
         );
+      }
 
       case Action.Edit:
         const ref = this.modalService.open(EditCollectionTagsModalComponent, editModal());
@@ -802,13 +814,13 @@ export class ActionService {
     switch (action.action) {
       case Action.Edit:
         const ref = this.modalService.open(EditPersonModalComponent, editModal());
-        ref.componentInstance.person = person;
+        ref.setInput('person', person);
 
         return this.handleEditModal(ref, action, person);
 
       case Action.Merge:
         const ref2 = this.modalService.open(MergePersonModalComponent, editModal());
-        ref2.componentInstance.person = person;
+        ref2.setInput('person', person);
 
         return from(ref2.closed).pipe(
           filter((res: ModalResult<Person>) => res.success),
@@ -825,7 +837,7 @@ export class ActionService {
    * Centralized handler for all smart filter actions.
    * Returns Observable<ActionResult<SmartFilter>> so the caller can react to effects.
    */
-  handleSmartFilterAction(action: ActionItem<SmartFilter>, smartFilter: SmartFilter, allFilters: SmartFilter[]) {
+  handleSmartFilterAction(action: ActionItem<SmartFilter>, smartFilter: SmartFilter) {
     switch (action.action) {
       case Action.AddToDashboard:
         return this.dashboardService.createDashboardStream(smartFilter.id).pipe(
@@ -837,8 +849,8 @@ export class ActionService {
         );
       case Action.Edit:
         const ref = this.modalService.open(EditSmartFilterModalComponent, editModal());
-        ref.componentInstance.smartFilter = smartFilter;
-        ref.componentInstance.allFilters = allFilters;
+        ref.setInput('smartFilter', smartFilter);
+
         return this.handleEditModal(ref, action, smartFilter);
       case Action.Delete:
       return from(this.confirmService.confirm(translate('toasts.confirm-delete-smart-filter'))).pipe(
@@ -1247,13 +1259,23 @@ export class ActionService {
           map(() => this.fromAction(action, collections.map(c => ({...c, promoted: false})), 'update'))
         );
 
-      case Action.Delete:
-        return from(this.confirmService.confirm(translate('toasts.confirm-delete-collections'))).pipe(
+      case Action.Delete: {
+        const koboPreferences = this.accountService.currentUser()?.preferences.koboSyncPreferences;
+        const isKoboSyncCollection = collections.some(collection => {
+          return koboPreferences != null && (koboPreferences.managedCollection === collection.id
+            || (koboPreferences.syncCollections ?? []).includes(collection.id));
+        });
+        const content = isKoboSyncCollection
+          ? translate('toasts.confirm-delete-collections-kobo')
+          : translate('toasts.confirm-delete-collections')
+
+        return from(this.confirmService.confirm(content)).pipe(
           filter(confirmed => confirmed),
           switchMap(() => this.collectionTagService.deleteMultipleCollections(collections.map(c => c.id))),
           tap(() => this.toastr.success(translate('toasts.collections-deleted'))),
           map(() => this.fromAction(action, collections, 'remove'))
         );
+      }
 
       case Action.Download:
         for (let c of collections) this.downloadService.download(DownloadEntityType.Collection, c, 0, 0);
@@ -1454,7 +1476,8 @@ export class ActionService {
 
   editReadingList(readingList: ReadingList, callback?: ReadingListActionCallback) {
     const readingListModalRef = this.modalService.open(EditReadingListModalComponent, editModal());
-    readingListModalRef.componentInstance.readingList = readingList;
+    readingListModalRef.setInput('readingList', readingList);
+
     readingListModalRef.closed.pipe(take(1)).subscribe((list) => {
       if (callback && list !== undefined) {
         callback(readingList);
@@ -1516,9 +1539,10 @@ export class ActionService {
     });
   }
 
-  matchSeries(series: Series, callback?: BooleanActionCallback) {
+  matchSeries(series: Series, callback?: BooleanActionCallback, initialProvider?: MetadataProvider) {
    const ref = this.modalService.open(MatchSeriesModalComponent);
      ref.setInput('series', series);
+     ref.setInput('initialProvider', initialProvider);
      ref.closed.subscribe(saved => {
        if (callback) {
          callback(saved);

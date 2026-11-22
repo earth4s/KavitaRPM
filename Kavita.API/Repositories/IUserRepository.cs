@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +8,7 @@ using Kavita.Models.DTOs.Dashboard;
 using Kavita.Models.DTOs.Filtering.v2;
 using Kavita.Models.DTOs.Filtering.v2.Requests;
 using Kavita.Models.DTOs.KavitaPlus.Account;
+using Kavita.Models.DTOs.Kobo;
 using Kavita.Models.DTOs.Reader;
 using Kavita.Models.DTOs.Scrobbling;
 using Kavita.Models.DTOs.SeriesDetail;
@@ -21,6 +22,7 @@ namespace Kavita.API.Repositories;
 public enum AppUserIncludes
 {
     None = 1,
+    [Obsolete("Do not use, very bad performance and memory usage")]
     Progress = 1 << 1,
     Bookmarks = 1 << 2,
     ReadingLists = 1 << 3,
@@ -36,7 +38,8 @@ public enum AppUserIncludes
     ExternalSources = 1 << 13,
     Collections = 1 << 14,
     ChapterRatings = 1 << 15,
-    AuthKeys = 1 << 16
+    AuthKeys = 1 << 16,
+    CoverImageFile = 1 << 17,
 }
 
 public interface IUserRepository
@@ -75,6 +78,7 @@ public interface IUserRepository
     Task<AppUser> GetDefaultAdminUser(AppUserIncludes includes = AppUserIncludes.None, CancellationToken ct = default);
     Task<AppUser?> GetUserByDeviceEmail(string deviceEmail, CancellationToken ct = default);
     Task<AppUser?> GetByOidcId(string? oidcId, AppUserIncludes includes = AppUserIncludes.None, CancellationToken ct = default);
+    Task<UserRatingAndReviewDto> GetMyRatingAndReviewForSeries(int userId, int seriesId, CancellationToken ct = default);
     #endregion
 
     #region Ratings & Reviews
@@ -82,6 +86,7 @@ public interface IUserRepository
     Task<AppUserChapterRating?> GetUserChapterRatingAsync(int userId, int chapterId, CancellationToken ct = default);
     Task<IList<UserReviewDto>> GetUserRatingDtosForSeriesAsync(int seriesId, int userId, CancellationToken ct = default);
     Task<IList<UserReviewDto>> GetUserRatingDtosForChapterAsync(int chapterId, int userId, CancellationToken ct = default);
+    Task<List<KoboReviewDto>> GetKoboReviewsForChapterAsync(int userId, IEnumerable<int> chapterIds, CancellationToken ct = default);
     Task<IEnumerable<AppUserRating>> GetSeriesWithRatings(int userId, CancellationToken ct = default);
     Task<List<AppUserChapterRating>> GetChaptersWithRatings(int userId, CancellationToken ct = default);
     Task<IEnumerable<AppUserRating>> GetSeriesWithReviews(int userId, CancellationToken ct = default);
@@ -97,11 +102,12 @@ public interface IUserRepository
     Task<IEnumerable<AppUserBookmark>> GetAllBookmarksAsync(CancellationToken ct = default);
     Task<AppUserBookmark?> GetBookmarkForPage(int page, int chapterId, int imageOffset, int userId, CancellationToken ct = default);
     Task<AppUserBookmark?> GetBookmarkAsync(int bookmarkId, CancellationToken ct = default);
-    Task<IList<AppUserBookmark>> GetAllBookmarksByIds(int seriesId, IList<int> bookmarkIds, CancellationToken ct = default);
+    Task<IList<AppUserBookmark>> GetAllBookmarksByIds(int userId, int seriesId, IList<int> bookmarkIds, CancellationToken ct = default);
     #endregion
 
     #region Preferences & Settings
     Task<AppUserPreferences?> GetPreferencesAsync(string username, CancellationToken ct = default);
+    Task<AppUserKoboSyncPreferences> GetKoboSyncPreferences(int userId, CancellationToken ct = default);
     Task<IEnumerable<AppUserPreferences>> GetAllPreferencesByThemeAsync(int themeId, CancellationToken ct = default);
     Task<string> GetLocale(int userId, CancellationToken ct = default);
     Task<AppUserSocialPreferences> GetSocialPreferencesForUser(int userId, CancellationToken ct = default);
@@ -111,11 +117,15 @@ public interface IUserRepository
 
     #region Permissions
     Task<bool> HasAccessToLibrary(int userId, int libraryId, CancellationToken ct = default);
+    Task<bool> HasAccessToSeries(int userId, IEnumerable<int> seriesIds, CancellationToken ct = default);
     Task<bool> HasAccessToSeries(int userId, int seriesId, CancellationToken ct = default);
     Task<bool> HasAccessToVolume(int userId, int volumeId, CancellationToken ct = default);
     Task<bool> HasAccessToChapter(int userId, int chapterId, CancellationToken ct = default);
+    Task<bool> HasAccessToAllVolumes(int userId, IEnumerable<int> volumeIds, CancellationToken ct = default);
+    Task<bool> HasAccessToAllChapters(int userId, IEnumerable<int> chapterIds, CancellationToken ct = default);
     Task<bool> HasAccessToPerson(int userId, int personId, CancellationToken ct = default);
     Task<bool> HasAccessToReadingList(int userId, int readingListId, bool allowPromoted = true, CancellationToken ct = default);
+    Task<bool> HasAccessToCollection(int userId, int collectionId, bool allowPromoted, CancellationToken ct = default);
     #endregion
 
     #region Scrobbling & Holds

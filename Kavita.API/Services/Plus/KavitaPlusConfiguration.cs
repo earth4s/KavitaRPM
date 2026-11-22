@@ -22,6 +22,8 @@ public static class KavitaPlusConfiguration
                 },
                 [LibraryType.Comic] = new HashSet<MetadataProvider>
                 {
+                    MetadataProvider.ComicVine,
+                    MetadataProvider.Gcd,
                     MetadataProvider.ComicBookRoundup,
                     MetadataProvider.Hardcover
                 },
@@ -42,6 +44,8 @@ public static class KavitaPlusConfiguration
                 },
                 [LibraryType.ComicVine] = new HashSet<MetadataProvider>
                 {
+                    MetadataProvider.ComicVine,
+                    MetadataProvider.Gcd,
                     MetadataProvider.ComicBookRoundup,
                     MetadataProvider.Hardcover
                 }
@@ -85,6 +89,13 @@ public static class KavitaPlusConfiguration
     public static readonly IReadOnlyList<ScrobbleProvider> AllInUseScrobbleProviders = ScrobbleProvidersForLibraryTypes
         .Values.SelectMany(s => s).Distinct().ToList().AsReadOnly();
 
-
+    /// <summary>
+    /// Is the given <see cref="MetadataProvider"/> valid (supported) for the given <see cref="LibraryType"/>.
+    /// Used to validate both a Library's default provider and a Series-level provider override.
+    /// </summary>
+    public static bool IsValidMetadataProviderForLibraryType(LibraryType type, MetadataProvider provider)
+    {
+        return MetadataProvidersForLibraryTypes.TryGetValue(type, out var validProviders) && validProviders.Contains(provider);
+    }
 
 }

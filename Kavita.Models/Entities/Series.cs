@@ -9,7 +9,7 @@ using Kavita.Models.Parser;
 
 namespace Kavita.Models.Entities;
 
-public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMetadataIds
+public class Series : IEntityDate, IHasReadTimeEstimate, IHasMetadataIds, IHasLockableCoverImageFile
 {
     public int Id { get; set; }
     /// <summary>
@@ -57,7 +57,10 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     /// Absolute path to the (managed) image file
     /// </summary>
     /// <remarks>The file is managed internally to Kavita's APPDIR</remarks>
+    [Obsolete("Use CoverImageFile")]
     public string? CoverImage { get; set; }
+    public int? CoverImageFileId { get; set; }
+    public ImageFile? CoverImageFile { get; set; }
     /// <summary>
     /// Denotes if the CoverImage has been overridden by the user. If so, it will not be updated during normal scan operations.
     /// </summary>
@@ -89,7 +92,9 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     /// </summary>
     public MangaFormat Format { get; set; } = MangaFormat.Unknown;
 
+    [Obsolete("Use CoverImageFile")]
     public string PrimaryColor { get; set; } = string.Empty;
+    [Obsolete("Use CoverImageFile")]
     public string SecondaryColor { get; set; } = string.Empty;
 
     public bool SortNameLocked { get; set; }
@@ -125,6 +130,11 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     /// If the series was unable to match, it will be blacklisted until a manual metadata match overrides it
     /// </summary>
     public bool IsBlacklisted { get; set; }
+    /// <summary>
+    /// Overrides the parent <see cref="Library"/>'s <see cref="Library.MetadataProvider"/> for this Series only.
+    /// Null means this Series inherits the Library's default provider.
+    /// </summary>
+    public MetadataProvider? MetadataProviderOverride { get; set; }
     #endregion
 
     #region Metadata
@@ -137,7 +147,8 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     public bool IsStandAlone { get; set; }
     public long MetronId { get; set; }
     public string ComicVineId { get; set; }
-    public long MangaBakaId { get; set; } // TODO: Migrate this back to an int
+    public int? GcdId { get; set; }
+    public int MangaBakaId { get; set; }
     public string MangaBakaEditionId { get; set; }
     public int CbrId { get; set; }
     #endregion
@@ -165,10 +176,10 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     public int LibraryId { get; set; }
 
 
-    public void UpdateLastFolderScanned()
+    public void UpdateLastFolderScanned(DateTime scannedAt)
     {
-        LastFolderScanned = DateTime.Now;
-        LastFolderScannedUtc = DateTime.UtcNow;
+        LastFolderScanned = scannedAt;
+        LastFolderScannedUtc = scannedAt.ToUniversalTime();
     }
 
     public void UpdateLastChapterAdded()
@@ -194,12 +205,6 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
                && (Format == key.Format || Format == MangaFormat.Unknown);
     }
 
-    public void ResetColorScape()
-    {
-        PrimaryColor = string.Empty;
-        SecondaryColor = string.Empty;
-    }
-
     /// <summary>
     /// Is this Series capable of Scrobbling
     /// </summary>
@@ -208,5 +213,22 @@ public class Series : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasMet
     public bool WillScrobble()
     {
         return !IsBlacklisted && !DontMatch;
+    }
+
+    /// <summary>
+    /// The <see cref="MetadataProvider"/> that should be used for this Series: <see cref="MetadataProviderOverride"/>
+    /// when set, otherwise the parent <see cref="Library"/>'s default.
+    /// </summary>
+    public MetadataProvider GetEffectiveMetadataProvider()
+    {
+        if (MetadataProviderOverride.HasValue) return MetadataProviderOverride.Value;
+        if (Library == null)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(Library)} navigation property was not loaded. " +
+                $"Include it in the query before calling {nameof(GetEffectiveMetadataProvider)}().");
+        }
+
+        return Library.MetadataProvider;
     }
 }

@@ -29,7 +29,7 @@ Fork the repository on GitHub, then clone your fork onto your local development 
 
 1. Install the required Node Packages
     - `cd Kavita/UI/Web`
-    - `npm install`
+    - `npm ci`
     - `npm install -g @angular/cli`
 2. Start the frontend 
     - `npm run start`
@@ -50,7 +50,22 @@ The backend may fail to start due to port 5000 already being in use. To fix this
 You can re-enable the setting later, and it will bind to a different port. You may need to do this again after an update or reboot.
 
 ### Deployment
-Run build.sh and pass the Runtime Identifier for your OS or just build.sh for all supported RIDs.
+
+Install our release tools (or clone the repo)
+
+```
+dotnet tool install --global Kavita.ReleaseTools
+```
+
+Run with the local build config
+```
+kavita-releasetools run --config local-release.yml
+```
+
+or
+```
+dotnet run --project ../GitHubActions/Kavita.ReleaseTools/Kavita.ReleaseTools.csproj run --config local-release.yml
+```
 
 ### Database Changes
 - When you need to make changes to the Db, update the Entities then run:
@@ -115,3 +130,4 @@ If you have any questions about any of this, please let us know.
 ## Misc
 - Localization should use component name for primary grouping, -label for labels, -alt for accessibility text
 - /theme can be used to visualize different components available for building
+- Add a unit test for any regression bug fix. This helps us catch it the next time around.

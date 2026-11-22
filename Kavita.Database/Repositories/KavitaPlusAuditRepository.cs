@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -6,12 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Kavita.API.Repositories;
 using Kavita.API.Services.Plus;
+using Kavita.Common.Extensions;
 using Kavita.Common.Helpers;
 using Kavita.Database.Extensions;
 using Kavita.Models.DTOs.KavitaPlus;
 using Kavita.Models.DTOs.KavitaPlus.Audit;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
+using Kavita.Models.Entities.Enums.KavitaPlus;
 using Kavita.Models.Entities.History;
 using Microsoft.EntityFrameworkCore;
 
@@ -72,7 +74,6 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
                              && e.Status == AuditStatus.Failure, ct);
 
         var baseEligible = context.Series
-            .Where(s => !IExternalMetadataService.NonEligibleLibraryTypes.Contains(s.Library.Type))
             .Where(s => s.Library.AllowMetadataMatching)
             .Where(s => !s.DontMatch);
 
@@ -102,10 +103,35 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
         };
     }
 
+    public async Task<KavitaPlusMyAuditStatsDto> GetMyStatsAsync(int userId, CancellationToken ct = default)
+    {
+        var cutoff24H = DateTime.UtcNow.AddHours(-24);
+
+        var events24H = await context.KavitaPlusAuditLogs
+            .Where(e => e.UserId == userId)
+            .CountAsync(e => e.CreatedUtc >= cutoff24H, ct);
+
+        var failures24H = await context.KavitaPlusAuditLogs
+            .Where(e => e.UserId == userId)
+            .CountAsync(e => e.CreatedUtc >= cutoff24H && e.Status == AuditStatus.Failure, ct);
+
+        var scrobbleQueueCount = await context.ScrobbleEvent
+            .Where(e => e.AppUserId == userId)
+            .CountAsync(e => !e.IsProcessed, ct);
+
+        return new KavitaPlusMyAuditStatsDto
+        {
+            Events24H = events24H,
+            Failures24H = failures24H,
+            ScrobbleQueueCount = scrobbleQueueCount,
+        };
+    }
+
     public async Task<KavitaPlusAuditSeriesInfoDto> GetSeriesInfoAsync(
         int seriesId, int callingUserId, bool isAdmin, CancellationToken ct = default)
     {
         var series = await context.Series
+            .Include(s => s.Library)
             .Include(s => s.ExternalSeriesMetadata)
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == seriesId, ct);
@@ -130,37 +156,41 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
                 e.SeriesId, series.LibraryId, series.Name,
                 e.SubjectType, e.SubjectId,
                 e.UserId, e.User != null ? e.User.UserName : null,
-                e.Payload, e.ErrorMessage, e.HasRetried))
+                e.Payload, e.ErrorMessage, e.ScrobbleErrorId, e.HasRetried))
             .ToListAsync(ct);
 
         // Due to Json deserialization, I can't use automapper here and need to do in-mem
         var recentEvents = recentRaw.Select(MapToDto).ToList();
 
+        var direct = series.GetEffectiveMetadataProvider() is MetadataProvider.ComicVine or MetadataProvider.Gcd;
         return new KavitaPlusAuditSeriesInfoDto
         {
             SeriesId = series.Id,
             LibraryId = series.LibraryId,
             SeriesName = series.Name,
-            IsMatched = !series.IsBlacklisted
+            IsMatched = direct ? !series.DontMatch && (series.GetEffectiveMetadataProvider() == MetadataProvider.Gcd ? series.GcdId.HasValue : !string.IsNullOrWhiteSpace(series.ComicVineId)) : !series.IsBlacklisted
                 && series.ExternalSeriesMetadata != null
                 && series.ExternalSeriesMetadata.ValidUntilUtc > DateTime.MinValue,
             MangaBakaId = series.MangaBakaId != 0 ? series.MangaBakaId : null,
             AniListId = series.AniListId != 0 ? series.AniListId : null,
             HardcoverId = series.HardcoverId != 0 ? series.HardcoverId : null,
             CbrId = series.CbrId != 0 ? series.CbrId : null,
+            GcdId = series.GcdId,
             ComicVineId = series.ComicVineId != string.Empty ? series.ComicVineId : null,
             MalId = series.MalId != 0 ? series.MalId : null,
             MetronId = series.MetronId != 0 ? series.MetronId : null,
             IsStandAlone = series.IsStandAlone,
-            MetadataProvider = series.ExternalSeriesMetadata?.Provider,
-            NextRefreshUtc = series.ExternalSeriesMetadata?.ValidUntilUtc,
-            LastRefreshedUtc = series.ExternalSeriesMetadata?.LastModifiedUtc,
+            MetadataProvider = direct ? series.GetEffectiveMetadataProvider() : series.ExternalSeriesMetadata?.Provider,
+            NextRefreshUtc = direct ? null : series.ExternalSeriesMetadata?.ValidUntilUtc,
+            LastRefreshedUtc = direct ? null : series.ExternalSeriesMetadata?.LastModifiedUtc,
             RecentEvents = recentEvents,
         };
     }
 
     private IQueryable<KavitaPlusAuditLog> BuildBaseQuery(KavitaPlusAuditFilterDto filter)
     {
+        var normalizedSeriesName = filter.Search?.ToNormalized() ?? string.Empty;
+
         return context.KavitaPlusAuditLogs
             .AsNoTracking()
             .WhereIf(filter.Category.HasValue, e => e.Category == filter.Category!.Value)
@@ -176,9 +206,9 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
             .WhereIf(filter.FromUtc.HasValue, e => e.CreatedUtc >= filter.FromUtc!.Value)
             .WhereIf(filter.ToUtc.HasValue, e => e.CreatedUtc <= filter.ToUtc!.Value)
             .WhereIf(!string.IsNullOrEmpty(filter.Search), e =>
-                context.Series.Any(s => s.Id == e.SeriesId && s.Name.Contains(filter.Search!)) ||
-                (e.User != null && e.User.UserName!.Contains(filter.Search!)) ||
-                (e.ErrorMessage != null && e.ErrorMessage.Contains(filter.Search!)))
+                context.Series.Any(s => s.Id == e.SeriesId && (s.NormalizedName.Contains(normalizedSeriesName) || s.NormalizedLocalizedName.Contains(normalizedSeriesName))) ||
+                (e.User != null && e.User.UserName != null && EF.Functions.Like(e.User.UserName, $"%{filter.Search}%")) ||
+                (e.ErrorMessage != null && EF.Functions.Like(e.ErrorMessage, $"%{filter.Search}%")))
             .OrderByDescending(e => e.CreatedUtc);
     }
 
@@ -196,7 +226,7 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
                 context.Series.Where(s => s.Id == e.SeriesId).Select(s => s.Name).FirstOrDefault(),
                 e.SubjectType, e.SubjectId,
                 e.UserId, e.User != null ? e.User.UserName : null,
-                e.Payload, e.ErrorMessage, e.HasRetried))
+                e.Payload, e.ErrorMessage, e.ScrobbleErrorId, e.HasRetried))
             .ToListAsync(ct);
 
         var items = raw.Select(MapToDto).ToList();
@@ -262,6 +292,8 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
                         KavitaPlusAuditMatchDetailsDto.From(JsonSerializer.Deserialize<AuditLogMatchFailureParamsDto>(e.Payload, JsonOptions)),
                     KavitaPlusEventType.SeriesDontMatchSet =>
                         KavitaPlusAuditMatchDetailsDto.From(JsonSerializer.Deserialize<AuditLogMatchDontMatchParamsDto>(e.Payload, JsonOptions)),
+                    KavitaPlusEventType.SeriesMetadataProviderOverrideSet =>
+                        KavitaPlusAuditMatchDetailsDto.From(JsonSerializer.Deserialize<AuditLogMatchProviderOverrideParamsDto>(e.Payload, JsonOptions)),
                     _ => null
                 };
             }
@@ -370,13 +402,34 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
             Username = e.Username,
             Diff = diff,
             ErrorMessage = e.ErrorMessage,
+            ScrobbleErrorId = e.ScrobbleErrorId,
             ScrobbleDetails = scrobbleDetails,
             MatchDetails = matchDetails,
             SyncDetails = syncDetails,
             MetadataExtras = metadataExtras,
             SystemDetails = systemDetails,
-            CanRetry = e is { Status: AuditStatus.Failure, Category: KavitaPlusAuditCategory.Scrobble, HasRetried: false },
+            CanRetry = e is { Status: AuditStatus.Failure, Category: KavitaPlusAuditCategory.Scrobble, HasRetried: false }
+                       // We are currently unable to retry chapter reads. See ScrobblingService#RetryScrobbleAsync:L1977
+                       && scrobbleDetails?.ScrobbleEventType != ScrobbleEventType.ChapterRead,
         };
+    }
+
+    public async Task<KavitaPlusAuditEntryDto?> GetEntryAsync(long id, CancellationToken ct = default)
+    {
+        var raw = await context.KavitaPlusAuditLogs
+            .AsNoTracking()
+            .Where(e => e.Id == id)
+            .Select(e => new RawEntry(
+                e.Id, e.CreatedUtc, e.Category, e.EventType, e.Status,
+                e.SeriesId,
+                context.Series.Where(s => s.Id == e.SeriesId).Select(s => (int?)s.LibraryId).FirstOrDefault(),
+                context.Series.Where(s => s.Id == e.SeriesId).Select(s => s.Name).FirstOrDefault(),
+                e.SubjectType, e.SubjectId,
+                e.UserId, e.User != null ? e.User.UserName : null,
+                e.Payload, e.ErrorMessage, e.ScrobbleErrorId, e.HasRetried))
+            .FirstOrDefaultAsync(ct);
+
+        return raw == null ? null : MapToDto(raw);
     }
 
     public async Task MarkAsRetriedAsync(long id, CancellationToken ct = default)
@@ -392,7 +445,7 @@ public class KavitaPlusAuditRepository(DataContext context) : IKavitaPlusAuditRe
         int? SeriesId, int? LibraryId, string? SeriesName,
         AuditSubjectType SubjectType, int? SubjectId,
         int? UserId, string? Username,
-        string? Payload, string? ErrorMessage, bool HasRetried);
+        string? Payload, string? ErrorMessage, int? ScrobbleErrorId, bool HasRetried);
 
     private sealed class ChangesWrapper
     {

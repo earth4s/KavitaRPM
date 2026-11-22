@@ -20,6 +20,10 @@
         <app-setting-cron-item [title]="t('cbl-sync-label')" [subtitle]="t('cbl-sync-tooltip')"
                                [(value)]="taskCblSync" />
       </div>
+      <div class="row g-0 mt-4 mb-4">
+        <app-setting-cron-item [title]="t('composite-covers-label')" [subtitle]="t('composite-covers-tooltip')"
+                               [(value)]="taskCompositeCovers" />
+      </div>
 
 
       <div class="setting-section-break"></div>
@@ -43,7 +47,7 @@
           <ngx-datatable
             class="bootstrap"
             [rows]="data"
-            [columnMode]="ColumnMode.flex"
+            [columnMode]="'flex'"
             rowHeight="auto"
             [footerHeight]="50"
             [limit]="15"

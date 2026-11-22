@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
-using EasyCaching.Core;
 using Hangfire;
 using Kavita.API.Database;
 using Kavita.API.Repositories;
@@ -28,6 +27,7 @@ using Kavita.Models.Entities.Metadata;
 using Kavita.Models.Entities.User;
 using Kavita.Models.Extensions;
 using Kavita.Server.Attributes;
+using Kavita.Services.Extensions;
 using Kavita.Services.Scanner;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -46,13 +46,10 @@ public class LibraryController(
     ITaskScheduler taskScheduler,
     IUnitOfWork unitOfWork,
     IEventHub eventHub,
-    ILibraryWatcher libraryWatcher,
-    IEasyCachingProviderFactory cachingProviderFactory,
+    IFolderWatchService folderWatchService,
     ILocalizationService localizationService)
     : BaseApiController
 {
-    private readonly IEasyCachingProvider _libraryCacheProvider = cachingProviderFactory.GetCachingProvider(EasyCacheProfiles.Library);
-    private const string CacheKey = "library_";
 
     /// <summary>
     /// Creates a new Library. Upon library creation, adds new library to all Admin accounts.
@@ -73,7 +70,7 @@ public class LibraryController(
 
         var library = new LibraryBuilder(dto.Name, dto.Type)
             .WithFolders(dto.Folders.Select(x => new FolderPath {Path = x}).Distinct().ToList())
-            .WithFolderWatching(dto.FolderWatching)
+            .WithFolderWatchMode(dto.FolderWatchMode ?? FolderWatchMode.Automatic)
             .WithIncludeInDashboard(dto.IncludeInDashboard)
             .WithManageCollections(dto.ManageCollections)
             .WithManageReadingLists(dto.ManageReadingLists)
@@ -115,13 +112,6 @@ public class LibraryController(
 
         logger.LogInformation("Created a new library: {LibraryName}", library.Name.Sanitize());
 
-        // Restart Folder watching if on
-        var settings = await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct);
-        if (settings.EnableFolderWatching)
-        {
-            await libraryWatcher.RestartWatching();
-        }
-
         // Assign all the necessary users with this library side nav
         var userIds = admins.Select(u => u.Id).ToList();
         var userNeedingNewLibrary = (await unitOfWork.UserRepository.GetAllUsersAsync(AppUserIncludes.SideNavStreams, ct: ct))
@@ -143,14 +133,12 @@ public class LibraryController(
             await unitOfWork.CommitAsync(ct);
         }
 
-        await _libraryCacheProvider.RemoveByPrefixAsync(CacheKey, ct);
-
-        if (library.FolderWatching)
+        if (library.FolderWatchMode != FolderWatchMode.Off)
         {
-            await libraryWatcher.RestartWatching();
+            await folderWatchService.RestartWatching();
         }
 
-        BackgroundJob.Enqueue(() => taskScheduler.ScanLibrary(library.Id, false));
+        ScanJobQueue.Enqueue(() => taskScheduler.EnqueueScanLibrary(library.Id, false));
         await eventHub.SendMessageAsync(MessageFactory.LibraryModified,
             MessageFactory.LibraryModifiedEvent(library.Id, "create"), false, ct);
         await eventHub.SendMessageAsync(MessageFactory.SideNavUpdate,
@@ -252,19 +240,13 @@ public class LibraryController(
     }
 
     /// <summary>
-    /// Get all libraries a giver username has access to. And cache them for 24h
+    /// Get all libraries a given username has access to
     /// </summary>
     /// <param name="username"></param>
     /// <returns></returns>
-    private async Task<IList<LibraryDto>> GetLibrariesForUser(string username, CancellationToken ct = default)
+    private Task<IList<LibraryDto>> GetLibrariesForUser(string username, CancellationToken ct = default)
     {
-        var cacheKey = CacheKey + username;
-        var result = await _libraryCacheProvider.GetAsync<IList<LibraryDto>>(cacheKey, ct);
-        if (result.HasValue) return result.Value;
-
-        var ret = await unitOfWork.LibraryRepository.GetLibraryDtosForUsernameAsync(username, ct);
-        await _libraryCacheProvider.SetAsync(CacheKey, ret, TimeSpan.FromHours(24), ct);
-        return ret;
+        return unitOfWork.LibraryRepository.GetLibraryDtosForUsernameAsync(username, ct);
     }
 
     /// <summary>
@@ -276,6 +258,7 @@ public class LibraryController(
     [HttpGet("jump-bar")]
     public ActionResult<IEnumerable<JumpKeyDto>> GetJumpBar(int libraryId)
     {
+        // TODO: Not used by UI
         var ct = HttpContext.RequestAborted;
         return Ok(unitOfWork.LibraryRepository.GetJumpBarAsync(libraryId, ct));
     }
@@ -289,6 +272,7 @@ public class LibraryController(
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
     public async Task<ActionResult<MemberDto>> UpdateUserLibraries(UpdateLibraryForUserDto updateLibraryForUserDto)
     {
+        // TODO: This isn't used by UI
         var ct = HttpContext.RequestAborted;
         var user = await unitOfWork.UserRepository.GetUserByUsernameAsync(updateLibraryForUserDto.Username, AppUserIncludes.SideNavStreams, ct);
         if (user == null) return BadRequest(await localizationService.TranslateAsync(UserId, "user-doesnt-exist"));
@@ -325,8 +309,6 @@ public class LibraryController(
         if (await unitOfWork.CommitAsync(ct))
         {
             logger.LogInformation("Added: {SelectedLibraries} to {UserId}", libraryString.Sanitize(), user.Id);
-            // Bust cache
-            await _libraryCacheProvider.RemoveByPrefixAsync(CacheKey, ct);
 
             unitOfWork.UserRepository.Update(user);
 
@@ -348,8 +330,36 @@ public class LibraryController(
     public async Task<ActionResult> Scan(int libraryId, bool force = false)
     {
         if (libraryId <= 0) return BadRequest(await localizationService.TranslateAsync(UserId, "greater-0", "libraryId"));
-        await taskScheduler.ScanLibrary(libraryId, force);
+        await taskScheduler.EnqueueScanLibrary(libraryId, force);
         return Ok();
+    }
+
+    /// <summary>
+    /// Watches the library again after its watcher missed a change or kept failing
+    /// </summary>
+    [HttpPost("folder-watch/retry")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [LibraryAccess]
+    public async Task<ActionResult<FolderWatchStatusDto>> RetryFolderWatch(int libraryId)
+    {
+        var status = await folderWatchService.RetryAsync(libraryId);
+        if (status == null) return NotFound();
+
+        return Ok(status);
+    }
+
+    /// <summary>
+    /// How the library notices changes now and why
+    /// </summary>
+    [HttpGet("watch-status")]
+    [Authorize(Policy = PolicyGroups.AdminPolicy)]
+    [LibraryAccess]
+    public async Task<ActionResult<FolderWatchStatusDto>> GetWatchStatus(int libraryId)
+    {
+        var status = await folderWatchService.GetStatusAsync(libraryId);
+        if (status == null) return NotFound();
+
+        return Ok(status);
     }
 
     /// <summary>
@@ -362,7 +372,7 @@ public class LibraryController(
     {
         foreach (var libraryId in dto.Ids)
         {
-            await taskScheduler.ScanLibrary(libraryId, dto.Force ?? false);
+            await taskScheduler.EnqueueScanLibrary(libraryId, dto.Force ?? false);
         }
 
         return Ok();
@@ -375,9 +385,9 @@ public class LibraryController(
     /// <returns></returns>
     [HttpPost("scan-all")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
-    public ActionResult ScanAll(bool force = false)
+    public async Task<ActionResult> ScanAll(bool force = false)
     {
-        taskScheduler.ScanLibraries(force);
+        await taskScheduler.EnqueueScanLibraries(force);
         return Ok();
     }
 
@@ -431,7 +441,7 @@ public class LibraryController(
                 DefaultLanguage = sourceLibrary.DefaultLanguage,
                 MetadataProvider = sourceLibrary.MetadataProvider,
                 ExcludePatterns = sourceLibrary.LibraryExcludePatterns.Select(p => p.Pattern).ToList(),
-                FolderWatching = sourceLibrary.FolderWatching,
+                FolderWatchMode = sourceLibrary.FolderWatchMode,
                 ManageCollections = sourceLibrary.ManageCollections,
                 FileGroupTypes = sourceLibrary.LibraryFileTypes.Select(t => t.FileTypeGroup).ToList(),
                 IncludeInDashboard = sourceLibrary.IncludeInDashboard,
@@ -442,9 +452,9 @@ public class LibraryController(
 
         await unitOfWork.CommitAsync(ct);
 
-        if (sourceLibrary.FolderWatching)
+        if (sourceLibrary.FolderWatchMode != FolderWatchMode.Off)
         {
-            BackgroundJob.Enqueue(() => libraryWatcher.RestartWatching());
+            BackgroundJob.Enqueue(() => folderWatchService.RestartWatching());
         }
 
         return Ok();
@@ -472,16 +482,7 @@ public class LibraryController(
             return BadRequest(await localizationService.TranslateAsync(UserId, "invalid-path"));
         }
 
-        dto.FolderPath = Parser.NormalizePath(dto.FolderPath);
-
-        var libraryFolder = (await unitOfWork.LibraryRepository.GetLibraryDtosAsync(ct))
-            .SelectMany(l => l.Folders)
-            .Distinct()
-            .Select(Parser.NormalizePath);
-
-        var seriesFolder = directoryService.FindHighestDirectoriesFromFiles(libraryFolder, [dto.FolderPath]);
-
-        taskScheduler.ScanFolder(seriesFolder.Keys.Count == 1 ? seriesFolder.Keys.First() : dto.FolderPath, dto.AbortOnNoSeriesMatch);
+        await taskScheduler.EnqueueScanFolderFromApiAsync(dto.FolderPath, dto.AbortOnNoSeriesMatch);
 
         return Ok();
     }
@@ -524,7 +525,7 @@ public class LibraryController(
     /// <returns></returns>
     [HttpDelete("delete-multiple")]
     [Authorize(Policy = PolicyGroups.AdminPolicy)]
-    public async Task<ActionResult<bool>> DeleteMultipleLibraries([FromBody] List<int> libraryIds)
+    public async Task<ActionResult> DeleteMultipleLibraries([FromBody] List<int> libraryIds)
     {
         var ct = HttpContext.RequestAborted;
         var username = Username!;
@@ -558,7 +559,7 @@ public class LibraryController(
 
         try
         {
-            if (TaskScheduler.HasScanTaskRunningForLibrary(libraryId))
+            if (ScanJobQueue.Read().Jobs.IsLibraryInUse(libraryId, seriesIds))
             {
                 logger.LogInformation("User is attempting to delete a library while a scan is in progress");
                 throw new KavitaException(await localizationService.TranslateAsync(userId, "delete-library-while-scan"));
@@ -588,7 +589,6 @@ public class LibraryController(
 
             await unitOfWork.CommitAsync(ct);
 
-            await _libraryCacheProvider.RemoveByPrefixAsync(CacheKey, ct);
             await eventHub.SendMessageAsync(MessageFactory.SideNavUpdate,
                 MessageFactory.SideNavUpdateEvent(userId), false, ct);
 
@@ -599,12 +599,12 @@ public class LibraryController(
                 taskScheduler.CleanupChapters(chapterIds);
             }
 
-            BackgroundJob.Enqueue(() => libraryWatcher.RestartWatching());
+            BackgroundJob.Enqueue(() => folderWatchService.RestartWatching());
 
             foreach (var seriesId in seriesIds)
             {
                 await eventHub.SendMessageAsync(MessageFactory.SeriesRemoved,
-                    MessageFactory.SeriesRemovedEvent(seriesId, string.Empty, libraryId), false, ct);
+                    MessageFactory.SeriesRemovedEvent(seriesId, libraryId), false, ct);
             }
 
             await eventHub.SendMessageAsync(MessageFactory.LibraryModified,
@@ -661,25 +661,23 @@ public class LibraryController(
         if (await unitOfWork.LibraryRepository.LibraryExists(newName, ct) && !library.Name.Equals(newName))
             return BadRequest(await localizationService.TranslateAsync(userId, "library-name-exists"));
 
-        var originalFoldersCount = library.Folders.Count;
-
         library.Name = newName;
-        library.Folders = dto.Folders.Select(s => new FolderPath() {Path = s}).Distinct().ToList();
+        var foldersUpdate = library.SyncFolders(dto.Folders);
 
         var typeUpdate = library.Type != dto.Type;
-        var folderWatchingUpdate = library.FolderWatching != dto.FolderWatching;
+        var folderWatchingUpdate = dto.FolderWatchMode.HasValue && library.FolderWatchMode != dto.FolderWatchMode;
         UpdateLibrarySettings(dto, library);
 
         if (!await unitOfWork.CommitAsync(ct)) return BadRequest(await localizationService.TranslateAsync(userId, "generic-library-update"));
 
-        if (folderWatchingUpdate || originalFoldersCount != dto.Folders.Count() || typeUpdate)
+        if (folderWatchingUpdate || foldersUpdate || typeUpdate)
         {
-            BackgroundJob.Enqueue(() => libraryWatcher.RestartWatching());
+            BackgroundJob.Enqueue(() => folderWatchService.RestartWatching());
         }
 
-        if (originalFoldersCount != dto.Folders.Count() || typeUpdate)
+        if (foldersUpdate || typeUpdate)
         {
-            await taskScheduler.ScanLibrary(library.Id);
+            await taskScheduler.EnqueueScanLibrary(library.Id);
         }
 
         await eventHub.SendMessageAsync(MessageFactory.LibraryModified,
@@ -687,8 +685,6 @@ public class LibraryController(
 
         await eventHub.SendMessageAsync(MessageFactory.SideNavUpdate,
             MessageFactory.SideNavUpdateEvent(userId), false, ct);
-
-        await _libraryCacheProvider.RemoveByPrefixAsync(CacheKey, ct);
 
         return Ok(await unitOfWork.LibraryRepository.GetLibraryDtoByIdAsync(library.Id, ct));
 
@@ -741,7 +737,10 @@ public class LibraryController(
 
         ValidateMetadataProvider(library.Type, dto.MetadataProvider);
 
-        library.FolderWatching = dto.FolderWatching;
+        if (dto.FolderWatchMode.HasValue)
+        {
+            library.FolderWatchMode = dto.FolderWatchMode.Value;
+        }
         library.IncludeInDashboard = dto.IncludeInDashboard;
         library.IncludeInSearch = dto.IncludeInSearch;
         library.ManageCollections = dto.ManageCollections;
@@ -769,7 +768,7 @@ public class LibraryController(
 
     private static void ValidateMetadataProvider(LibraryType type, MetadataProvider provider)
     {
-        if (!KavitaPlusConfiguration.MetadataProvidersForLibraryTypes.TryGetValue(type, out var validProviders) || !validProviders.Contains(provider))
+        if (!KavitaPlusConfiguration.IsValidMetadataProviderForLibraryType(type, provider))
         {
             throw new KavitaException("invalid-metadata-provider");
         }

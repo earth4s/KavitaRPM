@@ -11,12 +11,13 @@ using Kavita.API.Services.Plus;
 using Kavita.API.Services.ReadingLists;
 using Kavita.Models.Constants;
 using Kavita.Models.DTOs.KavitaPlus.ExternalMetadata.Covers;
-using Kavita.Models.Entities.Enums;
+using Kavita.Models.Images;
 using Kavita.Server.Attributes;
 using Kavita.Services;
 using Kavita.Services.Plus;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Kavita.Services.Helpers;
 
 namespace Kavita.Server.Controllers;
 
@@ -26,22 +27,24 @@ namespace Kavita.Server.Controllers;
 /// <inheritdoc />
 [SkipDeviceTracking]
 public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directoryService,
-    ILocalizationService localizationService, IReadingListService readingListService,
-    ICoverDbService coverDbService, ICollectionTagService collectionTagService,
-    IExternalMetadataService externalMetadataService) : BaseApiController
+    ILocalizationService localizationService, ICoverDbService coverDbService,
+    IExternalMetadataService externalMetadataService, IImageFileService imageFileService) : BaseApiController
 {
 
     /// <summary>
     /// Returns cover image for Chapter
     /// </summary>
     /// <param name="chapterId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [ChapterAccess]
     [HttpGet("chapter-cover")]
-    public async Task<ActionResult> GetChapterCoverImage(int chapterId, string apiKey)
+    public async Task<ActionResult> GetChapterCoverImage(int chapterId)
     {
-        var path = Path.Join(directoryService.CoverImageDirectory, await unitOfWork.ChapterRepository.GetChapterCoverImageAsync(chapterId));
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.ChapterRepository.GetChapterCoverImageAsync(chapterId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
+
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -49,13 +52,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for Library
     /// </summary>
     /// <param name="libraryId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [LibraryAccess]
     [HttpGet("library-cover")]
-    public async Task<ActionResult> GetLibraryCoverImage(int libraryId, string apiKey)
+    public async Task<ActionResult> GetLibraryCoverImage(int libraryId)
     {
-        var path = Path.Join(directoryService.CoverImageDirectory, await unitOfWork.LibraryRepository.GetLibraryCoverImageAsync(libraryId));
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.LibraryRepository.GetLibraryCoverImageAsync(libraryId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
+
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -63,13 +69,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for Volume
     /// </summary>
     /// <param name="volumeId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [VolumeAccess]
     [HttpGet("volume-cover")]
-    public async Task<ActionResult> GetVolumeCoverImage(int volumeId, string apiKey)
+    public async Task<ActionResult> GetVolumeCoverImage(int volumeId)
     {
-        var path = Path.Join(directoryService.CoverImageDirectory, await unitOfWork.VolumeRepository.GetVolumeCoverImageAsync(volumeId));
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.VolumeRepository.GetVolumeCoverImageAsync(volumeId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
+
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -77,13 +86,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for Series
     /// </summary>
     /// <param name="seriesId">Id of Series</param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [SeriesAccess]
     [HttpGet("series-cover")]
-    public async Task<ActionResult> GetSeriesCoverImage(int seriesId, string apiKey)
+    public async Task<ActionResult> GetSeriesCoverImage(int seriesId)
     {
-        var path = Path.Join(directoryService.CoverImageDirectory, await unitOfWork.SeriesRepository.GetSeriesCoverImageAsync(seriesId));
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.SeriesRepository.GetSeriesCoverImageAsync(seriesId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
+
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -91,20 +103,18 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for Collection
     /// </summary>
     /// <param name="collectionTagId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("collection-cover")]
-    public async Task<ActionResult> GetCollectionCoverImage(int collectionTagId, string apiKey)
+    public async Task<ActionResult> GetCollectionCoverImage(int collectionTagId)
     {
-        var collectionTag = await unitOfWork.CollectionTagRepository.GetCollectionAsync(collectionTagId, ct: HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var collectionTag = await unitOfWork.CollectionTagRepository.GetCollectionAsync(collectionTagId, ct: ct);
         if (collectionTag == null || (collectionTag.AppUserId != UserId && !collectionTag.Promoted)) return NotFound();
 
-        var path = Path.Join(directoryService.CoverImageDirectory, collectionTag.CoverImage);
-        if (string.IsNullOrEmpty(path) || !directoryService.FileSystem.File.Exists(path))
-        {
-            path = await collectionTagService.GenerateCollectionCoverImage(collectionTagId);
-        }
+        var cover = await unitOfWork.CollectionTagRepository.GetCoverImageAsync(collectionTagId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
 
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -112,22 +122,18 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for a Reading List
     /// </summary>
     /// <param name="readingListId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("readinglist-cover")]
-    public async Task<ActionResult> GetReadingListCoverImage(int readingListId, string apiKey)
+    public async Task<ActionResult> GetReadingListCoverImage(int readingListId)
     {
-        var readingList = await unitOfWork.ReadingListRepository.GetReadingListByIdAsync(readingListId, ct: HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var readingList = await unitOfWork.ReadingListRepository.GetReadingListByIdAsync(readingListId, ct: ct);
         if (readingList == null || (readingList.AppUserId != UserId && !readingList.Promoted)) return NotFound();
 
-        var path = Path.Join(directoryService.CoverImageDirectory, readingList.CoverImage);
-        if (string.IsNullOrEmpty(path) || !directoryService.FileSystem.File.Exists(path))
-        {
-            readingList.CoverImage = await readingListService.GenerateReadingListCoverImage(readingListId);
-            path = Path.Join(directoryService.CoverImageDirectory, readingList.CoverImage);
-            await unitOfWork.CommitAsync();
-        }
+        var cover = await unitOfWork.ReadingListRepository.GetCoverImageAsync(readingListId, ct);
+        if (string.IsNullOrEmpty(cover)) return NotFound();
 
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -137,19 +143,17 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// <remarks>This request is served unauthenticated, but user must be passed via api key to validate</remarks>
     /// <param name="chapterId"></param>
     /// <param name="pageNum">Starts at 0</param>
-    /// <param name="apiKey">API Key for user. Needed to authenticate request</param>
     /// <param name="imageOffset">Only applicable for Epubs - handles multiple images on one page</param>
     /// <returns></returns>
     [ChapterAccess]
     [HttpGet("bookmark")]
-    public async Task<ActionResult> GetBookmarkImage(int chapterId, int pageNum, string apiKey, int imageOffset = 0)
+    public async Task<ActionResult> GetBookmarkImage(int chapterId, int pageNum, int imageOffset = 0)
     {
-        var bookmark = await unitOfWork.UserRepository.GetBookmarkForPage(pageNum, chapterId, imageOffset, UserId);
-        if (bookmark == null) return BadRequest(await localizationService.TranslateAsync(UserId, "bookmark-doesnt-exist"));
+        var ct = HttpContext.RequestAborted;
+        var bookmark = await unitOfWork.UserRepository.GetBookmarkForPage(pageNum, chapterId, imageOffset, UserId, ct);
+        if (bookmark?.ImageFile == null) return NotFound();
 
-        var bookmarkDirectory =
-            (await unitOfWork.SettingsRepository.GetSettingAsync(ServerSettingKey.BookmarkDirectory)).Value;
-        var path = Path.Join(bookmarkDirectory, bookmark.FileName);
+        var path = Path.Join(await imageFileService.GetImageDirectoryAsync(ImageKind.Bookmark, ct), bookmark.ImageFile.FileName);
 
         return PhysicalFile(path);
     }
@@ -158,16 +162,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns the image associated with a web-link
     /// </summary>
     /// <param name="url"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("web-link")]
-    public async Task<ActionResult> GetWebLinkImage(string url, string apiKey)
+    public async Task<ActionResult> GetWebLinkImage(string url)
     {
+        var ct = HttpContext.RequestAborted;
         if (string.IsNullOrEmpty(url)) return BadRequest(await localizationService.TranslateAsync(UserId, "must-be-defined", "Url"));
 
-        var encodeFormat = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync()).EncodeMediaAs;
+        var encodeFormat = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct)).EncodeMediaAs;
 
-        var webLinkFileName = ImageService.GetWebLinkFormat(url, encodeFormat);
+        var webLinkFileName = ImageHelper.GetWebLinkFormat(url, encodeFormat);
         if (!IsPathWithinDirectory(directoryService.FaviconDirectory, webLinkFileName)) return BadRequest();
 
         // Check if the domain exists
@@ -178,7 +182,7 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
             try
             {
                 domainFilePath = directoryService.FileSystem.Path.Join(directoryService.FaviconDirectory,
-                    await coverDbService.DownloadFaviconAsync(url, encodeFormat));
+                    await coverDbService.DownloadFaviconAsync(url, encodeFormat, ct));
             }
             catch (Exception)
             {
@@ -194,16 +198,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns the image associated with a publisher
     /// </summary>
     /// <param name="publisherName"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("publisher")]
-    public async Task<ActionResult> GetPublisherImage(string publisherName, string apiKey)
+    public async Task<ActionResult> GetPublisherImage(string publisherName)
     {
+        var ct = HttpContext.RequestAborted;
         if (string.IsNullOrEmpty(publisherName)) return BadRequest(await localizationService.TranslateAsync(UserId, "must-be-defined", "publisherName"));
 
-        var encodeFormat = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync()).EncodeMediaAs;
+        var encodeFormat = (await unitOfWork.SettingsRepository.GetSettingsDtoAsync(ct)).EncodeMediaAs;
 
-        var publisherFileName = ImageService.GetPublisherFormat(publisherName, encodeFormat);
+        var publisherFileName = ImageHelper.GetPublisherFormat(publisherName, encodeFormat);
         if (!IsPathWithinDirectory(directoryService.PublisherDirectory, publisherFileName)) return BadRequest();
 
         // Check if the domain exists
@@ -214,7 +218,7 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
             try
             {
                 domainFilePath = directoryService.FileSystem.Path.Join(directoryService.PublisherDirectory,
-                    await coverDbService.DownloadPublisherImageAsync(publisherName, encodeFormat));
+                    await coverDbService.DownloadPublisherImageAsync(publisherName, encodeFormat, ct));
             }
             catch (Exception)
             {
@@ -234,13 +238,16 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for Person
     /// </summary>
     /// <param name="personId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [PersonAccess]
     [HttpGet("person-cover")]
-    public async Task<ActionResult> GetPersonCoverImage(int personId, string apiKey)
+    public async Task<ActionResult> GetPersonCoverImage(int personId)
     {
-        var path = Path.Join(directoryService.CoverImageDirectory, await unitOfWork.UserRepository.GetPersonCoverImageAsync(personId));
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.UserRepository.GetPersonCoverImageAsync(personId, ct);
+        if (cover == null) return NotFound();
+
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return PhysicalFile(path);
     }
 
@@ -248,15 +255,15 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// Returns cover image for User
     /// </summary>
     /// <param name="userId"></param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("user-cover")]
-    public async Task<ActionResult> GetUserCoverImage(int userId, string apiKey)
+    public async Task<ActionResult> GetUserCoverImage(int userId)
     {
-        var filename = await unitOfWork.UserRepository.GetCoverImageAsync(userId);
-        if (filename == null) return NotFound();
+        var ct = HttpContext.RequestAborted;
+        var cover = await unitOfWork.UserRepository.GetCoverImageAsync(userId, ct);
+        if (cover == null) return NotFound();
 
-        var path = Path.Join(directoryService.CoverImageDirectory, filename);
+        var path = Path.Join(directoryService.CoverImageDirectory, cover);
         return CachedFile(path);
     }
 
@@ -265,11 +272,10 @@ public class ImageController(IUnitOfWork unitOfWork, IDirectoryService directory
     /// </summary>
     /// <remarks>Requires Admin Role to perform upload</remarks>
     /// <param name="filename">Filename of file. This is used with upload/upload-by-url</param>
-    /// <param name="apiKey"></param>
     /// <returns></returns>
     [HttpGet("cover-upload")]
     [Authorize(PolicyGroups.AdminPolicy)]
-    public async Task<ActionResult> GetCoverUploadImage(string filename, string apiKey)
+    public async Task<ActionResult> GetCoverUploadImage(string filename)
     {
         if (!IsPathWithinDirectory(directoryService.TempDirectory, filename)) return BadRequest(await localizationService.TranslateAsync(UserId, "invalid-filename"));
 

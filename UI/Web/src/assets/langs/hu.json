@@ -3,7 +3,6 @@
         "title": "Jelentkezz be a fiókodba",
         "username": "{{common.username}}",
         "password": "{{common.password}}",
-        "password-validation": "{{validation.password-validation}}",
         "forgot-password": "Elfelejtett jelszó?",
         "submit": "{{common.submit}}Bejelentkezés",
         "oidc": "OpenID Connect"
@@ -21,7 +20,6 @@
         "edit": "{{common.edit}}",
         "close": "{{common.close}}",
         "username": "{{common.username}}",
-        "required": "{{validation.required-field}}",
         "email": "{{common.email}}",
         "cancel": "{{common.cancel}}",
         "saving": "Mentés…",
@@ -36,31 +34,6 @@
         "identity-provider-tooltip": "A Kavita felhasználók adatait soha nem szinkronizálják az OIDC fiókokkal.",
         "libraries-label": "{{common.libraries}}",
         "roles-label": "{{common.roles}}"
-    },
-    "user-scrobble-history": {
-        "title": "Feldolgozás történet",
-        "filter-label": "{{common.filter}}",
-        "created-header": "Készítve",
-        "last-modified-header": "Legutóbb módosítva",
-        "type-header": "Típus",
-        "series-header": "Sorozat",
-        "data-header": "Adat",
-        "is-processed-header": "Feldolgozva",
-        "no-data": "Nincs adat{{common.no-data}}",
-        "volume-and-chapter-num": "Kötet {{v}} Fejezet {{n}}",
-        "volume-num": "Kötet {{num}}",
-        "chapter-num": "Fejezet {{num}}",
-        "rating": "Értékelés {{r}}",
-        "not-applicable": "Nem alkalmazható",
-        "processed": "Feldolgozva",
-        "not-processed": "Nincs feldolgozva",
-        "special": "{{entity-title.special}}",
-        "scrobbling-disabled": "A scrobbling ki van kapcsolva a Fiók beállításaidban.",
-        "description": "Itt található minden a fiókodhoz tartozó srobble esemény. Ahhoz, hogy az események létrejöjjenek, be kell állítanod egy scrobble szolgáltatót. A feldolgozott események egy hónap után törlődnek. Ha vannak fel nem dolgozott események, azok adatait valószínűleg nem sikerült egyeztetni a feltöltés során. Ilyen esetben vedd fel a kapcsolatot az adminoddal, hogy javításra kerüljenek.",
-        "token-expired": "Az AniList tokened lejárt! A scrobble események nem kerülnek feldolgozásra, amíg a Fiókok oldalon nem frissíted.",
-        "select-all-label": "Összes kijelölése",
-        "delete-selected-label": "Kijelölt(ek) törlése",
-        "not-read-warning": "Az upstream szolgáltatók mindig megtartják a legmagasabb számot"
     },
     "scrobble-event-type-pipe": {
         "chapter-read": "Olvasás folyamata",
@@ -217,8 +190,6 @@
         "save": "{{common.save}}",
         "close": "{{common.close}}",
         "cancel": "{{common.cancel}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "title": "E-mail eszköz szerkesztése",
         "email-tooltip": "Ezt az e-mail címet fogjuk használni a fájl Küldés funkcióval történő fogadásához",
         "device-platform-label": "{{manage-devices.platform-label}}"
@@ -227,7 +198,6 @@
         "password-label": "{{common.password}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "new-password-label": "Új jelszó",
         "current-password-label": "Jelenlegi jelszó",
         "confirm-password-label": "Jelszó megerősítése",
@@ -235,8 +205,6 @@
         "permission-error": "Nincs jogosultsága a jelszó megváltoztatására. Forduljon a szerver adminisztrátorához."
     },
     "change-email": {
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "reset": "{{common.reset}}",
         "save": "{{common.save}}",
         "current-password-label": "Jelenlegi jelszó",
@@ -336,8 +304,6 @@
     },
     "reset-password": {
         "email-label": "{{common.email}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "submit": "{{common.submit}}",
         "description": "Add meg a fiókodhoz tartozó e-mail címet. Kavita küld neked egy e-mailt, ha van érvényes címed a listán, ellenkező esetben kérd meg az adminisztrátort, hogy állítsa vissza a jelszavadat.",
         "title": "Jelszó visszaállítása"
@@ -361,7 +327,6 @@
     "invite-user": {
         "close": "{{common.close}}",
         "email": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
         "cancel": "{{common.cancel}}",
         "email-not-sent": "{{toasts.email-not-sent}}",
         "notice": "{{manage-settings.notice}}",
@@ -385,7 +350,6 @@
     },
     "book-line-overlay": {
         "close": "{{common.close}}",
-        "required-field": "{{common.required-field}}",
         "save": "{{common.save}}",
         "copy": "Másolat",
         "bookmark": "Könyvjelző",
@@ -396,15 +360,12 @@
         "username-label": "{{common.username}}",
         "password-label": "{{common.password}}",
         "email-label": "{{common.email}}",
-        "required-field": "{{common.required-field}}",
-        "valid-email": "{{common.valid-email}}",
         "password-validation": "{{validation.password-validation}}",
         "title": "Nyilvántartás",
         "description": "Töltsd ki az űrlapot a regisztráció befejezéséhez"
     },
     "confirm-reset-password": {
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
         "submit": "{{common.submit}}",
         "password-validation": "{{validation.password-validation}}"
     },
@@ -412,8 +373,6 @@
         "username-label": "{{common.username}}",
         "email-label": "{{common.email}}",
         "password-label": "{{common.password}}",
-        "required-field": "{{validation.required-field}}",
-        "valid-email": "{{validation.valid-email}}",
         "password-validation": "{{validation.password-validation}}"
     },
     "series-detail": {
@@ -500,7 +459,6 @@
         "reset": "{{common.reset}}",
         "cancel": "{{common.cancel}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "help": "{{common.help}}",
         "edit-title": "Szerkeszd a {{név}}-t",
         "add-title": "Könyvtár hozzáadása",
@@ -528,8 +486,6 @@
         "allow-scrobbling-tooltip": "Amennyiben a Kavita scrobble módon olvassa az eseményeket, szeretné beolvasni az állapotot, az értékeléseket és a véleményeket a konfigurált szolgáltatóknak. Ez csak akkor történik meg, ha a szerver aktív Kavita+ előfizetéssel rendelkezik.",
         "allow-metadata-matching-label": "Metaadat-egyeztetés engedélyezése",
         "allow-metadata-matching-tooltip": "A Kavitának le kell töltenie a metaadatokat a könyvtárban található sorozatokhoz. Ez csak akkor történik meg, ha a szerver rendelkezik aktív Kavita+ előfizetéssel.",
-        "folder-watching-label": "Mappafigyelés",
-        "folder-watching-tooltip": "Kiszolgálói mappafigyelés felülbírálása ennél a könyvtárnál. Ha ki van kapcsolva, a mappafigyelés nem fut a könyvtárban található mappákon. Ha a könyvtárak megosztják a mappákat, akkor a mappák továbbra is futtathatók. A vizsgálat indítása előtt mindig 10 percet fog várni.",
         "include-in-dashboard-label": "Tartalmazza az irányítópulton",
         "include-in-dashboard-tooltip": "A könyvtárból származó sorozatoknak szerepelniük kell az irányítópulton? Ez az összes streamet érinti, például a Fedélzeten, a Legutóbb frissített, a Legutóbb hozzáadott vagy az egyéni kiegészítéseket.",
         "include-in-search-label": "Keresésbe foglalás",
@@ -664,7 +620,6 @@
         "encode-as-description-part-1": "A WebP/AVIF jelentősen csökkentheti a fájlok helyigényét. A WebP/AVIF nem minden böngészőben vagy verzióban támogatott. Ha szeretné megtudni, hogy ezek a beállítások megfelelőek-e az Ön számára, látogasson el a következő oldalra: ",
         "encode-as-description-part-2": "Használhatom a WebP-t?",
         "encode-as-description-part-3": "Használhatom az AVIF-et?",
-        "encode-as-warning": "Miután WebP/AVIF-re váltottál, nem konvertálhatod vissza PNG formátumba. Az összes borító újragenerálásához frissítened kell a borítókat a könyvtáraidban. A könyvjelzők és a faviconok nem konvertálhatók.",
         "media-warning": "A mentés után a Feladatok lapon kell elindítania a médiakonvertálási feladatot.",
         "encode-as-label": "Média mentése másként",
         "encode-as-tooltip": "Minden, Kavita által kezelt média (borítók, könyvjelzők, faviconok) ebben a típusban lesz kódolva.",
@@ -721,9 +676,6 @@
         "convert-media-task-success": "A média célkódolásra konvertálása sorba került",
         "bust-cache-task-desc": "Feltöri a Kavita+ gyorsítótárat - csak rossz egyezések hibakeresésekor használható.",
         "bust-cache-task-success": "Kavita+ gyorsítótár feltörve",
-        "bust-locale-task": "Bust Locale gyorsítótár",
-        "bust-locale-task-desc": "Feltöri a területi beállítások gyorsítótárát. Ez kijavíthatja a frissítés utáni helytelenül megjelenő karakterláncok problémáit. Böngésző frissítése szükséges.",
-        "bust-locale-task-success": "A területi gyorsítótár feltörve",
         "clear-reading-cache-task": "Olvasási gyorsítótár törlése",
         "clear-reading-cache-task-desc": "Törli a gyorsítótárban tárolt fájlokat olvasáshoz. Hasznos, ha éppen frissítettél egy olyan fájlt, amelyet az elmúlt 24 órában olvastál.",
         "clear-reading-cache-task-success": "A gyorsítótár törölve lett",
@@ -769,10 +721,8 @@
         "pending-tooltip": "Ez a felhasználó nem erősítette meg az e-mail címét"
     },
     "edit-collection-tags": {
-        "required-field": "{{validation.required-field}}",
         "save": "{{common.save}}",
         "close": "{{common.close}}",
-        "cancel": "{{common.cancel}}",
         "deselect-all": "{{common.deselect-all}}",
         "select-all": "{{common.select-all}}",
         "filter-label": "{{common.filter}}",
@@ -852,17 +802,8 @@
         "characters-title": "{{metadata-fields.characters-title}}",
         "read-options-alt": "Olvassa el a lehetőségeket"
     },
-    "events-widget": {
-        "close": "{{common.close}}"
-    },
     "shortcuts-modal": {
         "close": "{{common.close}}"
-    },
-    "grouped-typeahead": {
-        "genres": "{{metadata-fields.genres-title}}",
-        "bookmarks": "{{side-nav.bookmarks}}",
-        "close": "{{common.close}}",
-        "loading": "{{common.loading}}"
     },
     "nav-header": {
         "help": "{{common.help}}",
@@ -885,7 +826,6 @@
     "edit-reading-list-modal": {
         "close": "{{common.close}}",
         "save": "{{common.save}}",
-        "required-field": "{{validation.required-field}}",
         "title": "Olvasási lista szerkesztése: {{name}}",
         "year-validation": "1000-nél nagyobbnak, 0-nak vagy üresnek kell lennie",
         "month-validation": "1 és 12 közötti számnak vagy üresnek kell lennie",
@@ -1016,7 +956,6 @@
         "location-label": "{{metadata-fields.locations-title}}",
         "language-label": "{{metadata-fields.language-title}}",
         "age-rating-label": "{{metadata-fields.age-rating-title}}",
-        "required-field": "{{validation.required-field}}",
         "close": "{{common.close}}",
         "release-year-label": "{{sort-field-pipe.release-year}}",
         "web-link-label": "{{tabs.weblink-tab}}",
@@ -1035,7 +974,6 @@
         "summary-label": "Összefoglalás",
         "web-link-description": "Itt számos különböző külső szolgáltatásra mutató linket adhatsz hozzá.",
         "cover-image-description": "Töltsön fel és válasszon egy új borítóképet. Nyomja meg a Mentés gombot a borító feltöltéséhez és felülírásához.",
-        "field-locked-alt": "A mező zárolva van",
         "info-title": "Információ",
         "library-title": "Könyvtár",
         "format-title": "Formátum",
@@ -1073,7 +1011,6 @@
         "age-rating-label": "{{edit-series-modal.age-rating-label}}",
         "web-link-description": "{{edit-series-modal.web-link-description}}",
         "web-link-label": "{{edit-series-modal.web-link-label}}",
-        "field-locked-alt": "{{edit-series-modal.field-locked-alt}}",
         "cover-image-description": "{{edit-series-modal.cover-image-description}}",
         "size-label": "{{edit-series-modal.size-title}}",
         "links-label": "{{metadata-fields.links-title}}",
@@ -1139,8 +1076,7 @@
         "save": "{{common.save}}",
         "edit": "{{common.edit}}",
         "cancel": "{{common.cancel}}",
-        "delete": "{{common.delete}}",
-        "required": "{{validation.required-field}}"
+        "delete": "{{common.delete}}"
     },
     "stream-pipe": {
         "on-deck": "{{dashboard.on-deck-title}}",
@@ -1175,8 +1111,7 @@
         "close": "{{common.close}}",
         "save": "{{common.save}}",
         "min-length": "A kritika minimum {{count}} karakter hosszúságú kell legyen",
-        "delete": "{{common.delete}}",
-        "required": "{{validation.required-field}}"
+        "delete": "{{common.delete}}"
     },
     "theme": {
         "theme-dark": "Sötét",
@@ -1218,7 +1153,6 @@
         "save": "{{common.save}}",
         "other-field-required": "{{validation.other-field-required}}",
         "other-field-invalid": "{{validation.other-field-invalid}}",
-        "invalid-uri": "{{validation.invalid-uri}}",
         "disable-password-authentication-label": "Jelszóhitelesítés letiltása",
         "provider-name-label": "Szolgáltató neve",
         "provider-name-tooltip": "A bejelentkezési képernyőn megjelenő név",
@@ -1271,7 +1205,6 @@
         "name-label": "Név",
         "key-length-label": "Kulcshossz",
         "expiration-label": "Lejárat",
-        "required-field": "{{validations.required-field}}",
         "total-key-length": "Teljes kulcshossz: {{length}}",
         "cancel": "{{common.cancel}}",
         "close": "{{common.close}}",

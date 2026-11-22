@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Kavita.Common.Helpers;
 using Kavita.Models.DTOs.System;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Parser;
 using Microsoft.Extensions.Logging;
 
 namespace Kavita.API.Services;
@@ -25,6 +26,10 @@ public interface IDirectoryService
     string TemplateDirectory { get; }
     string PublisherDirectory { get; }
     /// <summary>
+    /// Holds db file while pre- / post-migrations are running in case of restoration
+    /// </summary>
+    string MigrationDirectory { get; }
+    /// <summary>
     /// Used for caching documents that may need to stay on disk for more than a day
     /// </summary>
     string LongTermCacheDirectory { get; }
@@ -38,6 +43,7 @@ public interface IDirectoryService
     string AssetsDirectory { get; }
     string EpubFontDirectory { get; }
     string BackupDirectory { get; }
+    string DebugExportDirectory { get; }
 
     /// <summary>
     /// Lists out top-level folders for a given directory. Filters out System and Hidden folders.
@@ -66,6 +72,11 @@ public interface IDirectoryService
     IEnumerable<string> GetFiles(string path, string fileNameRegex = "", SearchOption searchOption = SearchOption.TopDirectoryOnly);
     bool ExistOrCreate(string directoryPath);
     void DeleteFiles(IEnumerable<string> files);
+    /// <summary>
+    /// Deletes <paramref name="path"/>, logging a warning instead of throwing when the file is in use or not allowed
+    /// </summary>
+    /// <returns>False when the file is still there</returns>
+    bool DeleteFileQuietly(string path);
     void CopyFile(string sourcePath, string destinationPath, bool overwrite = true);
     void RemoveNonImages(string directoryName);
     void Flatten(string directoryName);
@@ -75,8 +86,18 @@ public interface IDirectoryService
         SearchOption searchOption = SearchOption.TopDirectoryOnly);
     IEnumerable<string> GetDirectories(string folderPath);
     IEnumerable<string> GetDirectories(string folderPath, GlobMatcher? matcher);
-    IEnumerable<string> GetAllDirectories(string folderPath, GlobMatcher? matcher = null);
+    /// <summary>
+    /// Lists every folder below <paramref name="folderPath"/> once, keeping the library files in each. Folders that are excluded
+    /// or match the glob are skipped with everything below them. Empty if the folder does not exist
+    /// </summary>
+    /// <remarks>This is explicitly to be used with the Scanner</remarks>
+    /// <param name="onFolderListed">Called with each folder after it is listed</param>
+    /// <param name="withRootFiles">Also keep the files directly in <paramref name="folderPath"/>, for a series folder.
+    /// A library root's own files are not scanned</param>
+    /// <exception cref="UnauthorizedAccessException">The folder itself cannot be listed</exception>
+    /// <exception cref="IOException">The folder itself cannot be listed</exception>
+    Task<FolderTree> ListFolderTreeAsync(string folderPath, string fileTypes, GlobMatcher? matcher, Func<string, Task> onFolderListed,
+        bool withRootFiles = false);
     string GetParentDirectoryName(string fileOrFolder);
-    IList<string> ScanFiles(string folderPath, string fileTypes, GlobMatcher? matcher = null, SearchOption searchOption = SearchOption.AllDirectories);
-    DateTime GetLastWriteTime(string folderPath);
+    IList<FileStamp> ScanFiles(string folderPath, string fileTypes, GlobMatcher? matcher = null, SearchOption searchOption = SearchOption.AllDirectories);
 }

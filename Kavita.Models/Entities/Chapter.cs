@@ -6,11 +6,12 @@ using Kavita.Models.Entities.Metadata;
 using Kavita.Models.Entities.MetadataMatching;
 using Kavita.Models.Entities.Person;
 using Kavita.Models.Entities.Progress;
+using Kavita.Models.Entities.ReadingLists;
 using Kavita.Models.Entities.User;
 
 namespace Kavita.Models.Entities;
 
-public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKPlusMetadata, IHasMetadataIds, IHasTags<Tag>
+public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasKPlusMetadata, IHasMetadataIds, IHasTags<Tag>, IHasLockableCoverImageFile
 {
     public int Id { get; set; }
     /// <summary>
@@ -43,10 +44,19 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
     public DateTime CreatedUtc { get; set; }
     public DateTime LastModifiedUtc { get; set; }
 
+    [Obsolete("Use CoverImageFile")]
     public string? CoverImage { get; set; }
+    public int? CoverImageFileId { get; set; }
+    public ImageFile? CoverImageFile { get; set; }
+    [Obsolete("Use CoverImageFile")]
     public string PrimaryColor { get; set; }
+    [Obsolete("Use CoverImageFile")]
     public string SecondaryColor { get; set; }
     public bool CoverImageLocked { get; set; }
+    /// <summary>
+    /// The first file's write time when <see cref="CoverImage"/> was made from it. Null until the first cover pass after v0.9.2
+    /// </summary>
+    public DateTime? CoverFileWriteTimeUtc { get; set; }
     /// <summary>
     /// Total number of pages in all MangaFiles
     /// </summary>
@@ -138,7 +148,8 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
     public int HardcoverId { get; set; }
     public long MetronId { get; set; }
     public string? ComicVineId { get; set; }
-    public long MangaBakaId { get; set; }
+    public int? GcdId { get; set; }
+    public int MangaBakaId { get; set; }
     public int CbrId { get; set; }
 
     #endregion
@@ -185,6 +196,7 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
     /// The files that represent this Chapter
     /// </summary>
     public ICollection<MangaFile> Files { get; set; } = null!;
+    public ICollection<ReadingListItem> ReadingListItems { get; set; }
 
 
     public Volume Volume { get; set; } = null!;
@@ -192,11 +204,6 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
 
     public ICollection<ExternalReview> ExternalReviews { get; set; } = [];
     public ICollection<ExternalRating> ExternalRatings { get; set; } = null!;
-    public void ResetColorScape()
-    {
-        PrimaryColor = string.Empty;
-        SecondaryColor = string.Empty;
-    }
 
     public bool IsPersonRoleLocked(PersonRole role)
     {
@@ -217,5 +224,53 @@ public class Chapter : IEntityDate, IHasReadTimeEstimate, IHasCoverImage, IHasKP
             PersonRole.Location => LocationLocked,
             _ => throw new ArgumentOutOfRangeException(nameof(role), role, null)
         };
+    }
+
+    public void LockPersonRole(PersonRole role)
+    {
+        switch (role)
+        {
+            case PersonRole.Writer:
+                WriterLocked = true;
+                break;
+            case PersonRole.Penciller:
+                PencillerLocked = true;
+                break;
+            case PersonRole.Inker:
+                InkerLocked = true;
+                break;
+            case PersonRole.Colorist:
+                ColoristLocked = true;
+                break;
+            case PersonRole.Letterer:
+                LettererLocked = true;
+                break;
+            case PersonRole.CoverArtist:
+                CoverArtistLocked = true;
+                break;
+            case PersonRole.Editor:
+                EditorLocked = true;
+                break;
+            case PersonRole.Publisher:
+                PublisherLocked = true;
+                break;
+            case PersonRole.Character:
+                CharacterLocked = true;
+                break;
+            case PersonRole.Translator:
+                TranslatorLocked = true;
+                break;
+            case PersonRole.Imprint:
+                ImprintLocked = true;
+                break;
+            case PersonRole.Team:
+                TeamLocked = true;
+                break;
+            case PersonRole.Location:
+                LocationLocked = true;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(role), role, null);
+        }
     }
 }

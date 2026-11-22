@@ -12,6 +12,7 @@ using Kavita.Common;
 using Kavita.Common.Extensions;
 using Kavita.Models.DTOs.Archive;
 using Kavita.Models.Entities.Enums;
+using Kavita.Models.Images;
 using Kavita.Models.Metadata;
 using Kavita.Services.Extensions;
 using Kavita.Services.Scanner;
@@ -28,7 +29,6 @@ namespace Kavita.Services;
 public class ArchiveService(
     ILogger<ArchiveService> logger,
     IDirectoryService directoryService,
-    IImageService imageService,
     IMediaErrorService mediaErrorService)
     : IArchiveService
 {
@@ -41,9 +41,17 @@ public class ArchiveService(
     /// <returns></returns>
     public virtual ArchiveLibrary CanOpen(string archivePath)
     {
+        return CanOpen(archivePath, out _);
+    }
+
+    /// <inheritdoc cref="CanOpen(string)"/>
+    /// <param name="error">Why SharpCompress could not open it, when neither library could</param>
+    public ArchiveLibrary CanOpen(string archivePath, out Exception? error)
+    {
+        error = null;
         if (string.IsNullOrEmpty(archivePath) || !(File.Exists(archivePath) && Parser.IsArchive(archivePath) || Parser.IsEpub(archivePath))) return ArchiveLibrary.NotSupported;
 
-        var ext = directoryService.FileSystem.Path.GetExtension(archivePath).ToUpper();
+        var ext = directoryService.FileSystem.Path.GetExtension(archivePath).ToUpperInvariant();
         if (ext.Equals(".CBR") || ext.Equals(".RAR")) return ArchiveLibrary.SharpCompress;
 
         try
@@ -51,15 +59,18 @@ public class ArchiveService(
             using var a2 = ZipFile.OpenRead(archivePath);
             return ArchiveLibrary.Default;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogTrace(ex, "[CanOpen/ZipFile] This archive cannot be read: {ArchivePath}", archivePath);
             try
             {
                 using var a1 = ArchiveFactory.OpenArchive(archivePath);
                 return ArchiveLibrary.SharpCompress;
             }
-            catch (Exception)
+            catch (Exception ex2)
             {
+                logger.LogTrace(ex2, "[CanOpen/ArchiveFactory] This archive cannot be read: {ArchivePath}", archivePath);
+                error = ex2;
                 return ArchiveLibrary.NotSupported;
             }
         }
@@ -75,7 +86,7 @@ public class ArchiveService(
 
         try
         {
-            var libraryHandler = CanOpen(archivePath);
+            var libraryHandler = CanOpen(archivePath, out var openError);
             switch (libraryHandler)
             {
                 case ArchiveLibrary.Default:
@@ -88,15 +99,20 @@ public class ArchiveService(
                     using var archive = ArchiveFactory.OpenArchive(archivePath);
                     return archive.Entries.Count(entry => !entry.IsDirectory &&
                                                           !Parser.HasBlacklistedFolderInPath(Path.GetDirectoryName(entry.Key) ?? string.Empty)
-                                                          && Parser.IsImage(entry.Key));
+                                                          && Parser.IsImage(entry.Key ?? string.Empty));
                 }
                 case ArchiveLibrary.NotSupported:
-                    logger.LogWarning("[GetNumberOfPagesFromArchive] This archive cannot be read: {ArchivePath}. Defaulting to 0 pages", archivePath);
-                    mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService, "File format not supported", string.Empty);
-                    return 0;
                 default:
-                    logger.LogWarning("[GetNumberOfPagesFromArchive] There was an exception when reading archive stream: {ArchivePath}. Defaulting to 0 pages", archivePath);
-                    mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService, "File format not supported", string.Empty);
+                    logger.LogWarning(openError, "[GetNumberOfPagesFromArchive] This archive cannot be read: {ArchivePath}. Defaulting to 0 pages", archivePath);
+                    if (openError == null)
+                    {
+                        mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService, MediaErrorReason.UnreadableArchive, string.Empty);
+                    }
+                    else
+                    {
+                        mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService,
+                            ParseIssues.ReasonFor(archivePath, openError), openError);
+                    }
                     return 0;
             }
         }
@@ -104,7 +120,7 @@ public class ArchiveService(
         {
             logger.LogWarning(ex, "[GetNumberOfPagesFromArchive] There was an exception when reading archive stream: {ArchivePath}. Defaulting to 0 pages", archivePath);
             mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService,
-                "This archive cannot be read or not supported", ex);
+                ParseIssues.ReasonFor(archivePath, ex), ex);
             return 0;
         }
     }
@@ -148,7 +164,7 @@ public class ArchiveService(
 
         // Check the first folder and sort within that to see if we can find a file, else fallback to first file with basic sort.
         // Get first folder, then sort within that
-        var firstDirectoryFile = fullNames.OrderByNatural(Path.GetDirectoryName!).FirstOrDefault();
+        var firstDirectoryFile = fullNames.OrderByNatural(Path.GetDirectoryName).FirstOrDefault();
         if (!string.IsNullOrEmpty(firstDirectoryFile))
         {
             var firstDirectory = Path.GetDirectoryName(firstDirectoryFile);
@@ -171,64 +187,65 @@ public class ArchiveService(
 
 
     /// <summary>
-    /// Generates byte array of cover image.
-    /// Given a path to a compressed file <see cref="Scanner.Parser.Parser.ArchiveFileExtensions"/>, will ensure the first image (respects directory structure) is returned unless
-    /// a folder/cover.(image extension) exists in the the compressed file (if duplicate, the first is chosen)
-    ///
-    /// This skips over any __MACOSX folder/file iteration.
+    /// Given a path to a compressed file <see cref="Scanner.Parser.Parser.ArchiveFileExtensions"/>, opens the first image
+    /// (respects directory structure) unless a folder/cover.(image extension) exists in the compressed file (if duplicate,
+    /// the first is chosen). This skips over any __MACOSX folder/file iteration.
     /// </summary>
-    /// <remarks>This always creates a thumbnail</remarks>
-    /// <param name="archivePath"></param>
-    /// <param name="fileName">File name to use based on context of entity.</param>
-    /// <param name="outputDirectory">Where to output the file, defaults to covers directory</param>
-    /// <param name="format">When saving the file, use encoding</param>
-    /// <returns></returns>
-    public string GetCoverImage(string archivePath, string fileName, string outputDirectory, EncodeFormat format, CoverImageSize size = CoverImageSize.Default)
+    public OpenedCover? OpenCover(string archivePath)
     {
-        if (string.IsNullOrEmpty(archivePath) || !IsValidArchive(archivePath)) return string.Empty;
+        if (string.IsNullOrEmpty(archivePath) || !IsValidArchive(archivePath)) return null;
+
+        IDisposable? archive = null;
         try
         {
-            var libraryHandler = CanOpen(archivePath);
-            switch (libraryHandler)
+            switch (CanOpen(archivePath))
             {
                 case ArchiveLibrary.Default:
                 {
-                    using var archive = ZipFile.OpenRead(archivePath);
+                    var zip = ZipFile.OpenRead(archivePath);
+                    archive = zip;
 
-                    var entryName = FindCoverImageFilename(archivePath, archive.Entries.Select(e => e.FullName));
-                    var entry = archive.Entries.Single(e => e.FullName == entryName);
+                    var entryName = FindCoverImageFilename(archivePath, zip.Entries.Select(e => e.FullName));
+                    var entry = zip.Entries.Single(e => e.FullName == entryName);
 
-                    using var stream = entry.Open();
-                    return imageService.WriteCoverThumbnail(stream, fileName, outputDirectory, format, size);
+                    return new OpenedCover(new ImageSource.FromStream(entry.Open()), zip);
                 }
                 case ArchiveLibrary.SharpCompress:
                 {
-                    using var archive = ArchiveFactory.OpenArchive(archivePath);
-                    var entryNames = archive.Entries.Where(archiveEntry => !archiveEntry.IsDirectory).Select(e => e.Key).ToList();
+                    var rar = ArchiveFactory.OpenArchive(archivePath);
+                    archive = rar;
+                    var entryNames = rar.Entries
+                        .Where(archiveEntry => !archiveEntry.IsDirectory)
+                        .Select(e => e.Key)
+                        .WhereNotNull()
+                        .ToList();
 
                     var entryName = FindCoverImageFilename(archivePath, entryNames);
-                    if (entryName == null) return string.Empty;
-                    var entry = archive.Entries.Single(e => e.Key == entryName);
+                    if (entryName == null)
+                    {
+                        rar.Dispose();
+                        return null;
+                    }
 
-                    using var stream = entry.OpenEntryStream();
-                    return imageService.WriteCoverThumbnail(stream, fileName, outputDirectory, format, size);
+                    var entry = rar.Entries.Single(e => e.Key == entryName);
+                    return new OpenedCover(new ImageSource.FromStream(entry.OpenEntryStream()), rar);
                 }
                 case ArchiveLibrary.NotSupported:
-                    logger.LogWarning("[GetCoverImage] This archive cannot be read: {ArchivePath}. Defaulting to no cover image", archivePath);
-                    return string.Empty;
+                    logger.LogWarning("[OpenCover] This archive cannot be read: {ArchivePath}. Defaulting to no cover image", archivePath);
+                    return null;
                 default:
-                    logger.LogWarning("[GetCoverImage] There was an exception when reading archive stream: {ArchivePath}. Defaulting to no cover image", archivePath);
-                    return string.Empty;
+                    logger.LogWarning("[OpenCover] There was an exception when reading archive stream: {ArchivePath}. Defaulting to no cover image", archivePath);
+                    return null;
             }
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[GetCoverImage] There was an exception when reading archive stream: {ArchivePath}. Defaulting to no cover image", archivePath);
-            mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService,
-                "This archive cannot be read or not supported", ex); // TODO: Localize this. Which user?
+            archive?.Dispose();
+            logger.LogWarning(ex, "[OpenCover] There was an exception when reading archive stream: {ArchivePath}. Defaulting to no cover image", archivePath);
+            mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService, MediaErrorReason.CoverFailed, ex);
         }
 
-        return string.Empty;
+        return null;
     }
 
     /// <summary>
@@ -448,8 +465,7 @@ public class ArchiveService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[GetComicInfo] There was an exception when reading archive stream: {Filepath}", archivePath);
-            mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService,
-                "This archive cannot be read or not supported", ex);
+            throw;
         }
 
         return null;
@@ -560,7 +576,7 @@ public class ArchiveService(
         {
             logger.LogWarning(ex, "[ExtractArchive] There was a problem extracting {ArchivePath} to {ExtractPath}",archivePath, extractPath);
             mediaErrorService.ReportMediaIssue(archivePath, MediaErrorProducer.ArchiveService,
-                "This archive cannot be read or not supported", ex);
+                ParseIssues.ReasonFor(archivePath, ex), ex);
             throw new KavitaException(
                 $"There was an error when extracting {archivePath}. Check the file exists, has read permissions or the server OS can support all path characters.");
         }

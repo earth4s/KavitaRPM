@@ -1,7 +1,7 @@
 import {HttpClient, httpResource} from '@angular/common/http';
-import {inject, Injectable} from '@angular/core';
+import {inject, Injectable, Signal} from '@angular/core';
 import {map, of} from 'rxjs';
-import {environment} from 'src/environments/environment';
+import {environment} from '../../environments/environment';
 import {TextResonse} from '../_types/text-response';
 import {ServerSettings} from './_models/server-settings';
 import {MetadataSettings} from "./_models/metadata-settings";
@@ -9,6 +9,8 @@ import {MetadataMappingsExport} from "./manage-metadata-mappings/manage-metadata
 import {FieldMappingsImportResult, ImportSettings} from "../_models/import-field-mappings";
 import {AuthorityValidationResult, OidcPublicConfig} from "./_models/oidc-config";
 import {RunMetadataMappingsRequest} from "../_models/metadata/run-metadata-mappings-request";
+import {KepubifyStatus} from "./_models/kepubify-status";
+import {ComicVineConnectionResult, ComicVineHealth, ComicVineSettings} from './_models/comicvine-settings';
 
 /**
  * Used only for the Test Email Service call
@@ -30,6 +32,47 @@ export class SettingsService {
 
   getServerSettings() {
     return this.http.get<ServerSettings>(this.baseUrl + 'settings');
+  }
+
+  getGcdSettings() {
+    return this.http.get<{configured: boolean, requiresReplacement: boolean}>(this.baseUrl + 'gcd/settings');
+  }
+
+  saveGcdCredentials(username: string, password: string) {
+    return this.http.put(this.baseUrl + 'gcd/settings', {username, password});
+  }
+
+  removeGcdCredentials() {
+    return this.http.delete(this.baseUrl + 'gcd/settings');
+  }
+
+  testGcdConnection() {
+    return this.http.post<boolean>(this.baseUrl + 'gcd/test', {});
+  }
+
+  getGcdHealth() {
+    return this.http.get<{configured: boolean, requestsLastMinute: number, requestsLastDay: number,
+      lastSuccess?: string, lastFailure?: string, failure?: string, retryAt?: string}>(this.baseUrl + 'gcd/health');
+  }
+
+  getComicVineHealth() {
+    return this.http.get<ComicVineHealth>(this.baseUrl + 'comicvine/health');
+  }
+
+  getComicVineSettings() {
+    return this.http.get<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  saveComicVineSettings(apiKey: string) {
+    return this.http.post<ComicVineSettings>(this.baseUrl + 'settings/comicvine', {apiKey});
+  }
+
+  removeComicVineSettings() {
+    return this.http.delete<ComicVineSettings>(this.baseUrl + 'settings/comicvine');
+  }
+
+  testComicVineConnection() {
+    return this.http.post<ComicVineConnectionResult>(this.baseUrl + 'settings/comicvine/test', {});
   }
 
   getPublicOidcConfig() {
@@ -75,8 +118,8 @@ export class SettingsService {
     return this.http.post<EmailTestResult>(this.baseUrl + 'settings/test-email-url', {});
   }
 
-  isEmailSetup() {
-    return this.http.get<string>(this.baseUrl + 'settings/is-email-setup', TextResonse).pipe(map(d => d == "true"));
+  isEmailSetup(forDevice: boolean = false) {
+    return this.http.get<string>(this.baseUrl + 'settings/is-email-setup?forDevice=' + forDevice, TextResonse).pipe(map(d => d == "true"));
   }
 
   getTaskFrequencies() {
@@ -95,6 +138,21 @@ export class SettingsService {
     return httpResource<boolean>(() => this.baseUrl + 'settings/opds-enabled').asReadonly();
   }
 
+  getKoboEnabledResource() {
+    return httpResource<boolean>(() => this.baseUrl + 'settings/kobo-enabled').asReadonly();
+  }
+
+  getKepubifyStatus() {
+    return this.http.get<KepubifyStatus>(this.baseUrl + 'settings/kepubify-supported');
+  }
+
+  /**
+   * Returns Checking at once. The result comes as a kepubify-checked event
+   */
+  updateKepubify(enabled: boolean) {
+    return this.http.post<KepubifyStatus>(this.baseUrl + 'settings/kepubify', {enabled});
+  }
+
   clearExternalIds() {
     return this.http.post(this.baseUrl + 'settings/reset-external-ids', {})
   }
@@ -104,9 +162,16 @@ export class SettingsService {
     return this.http.get<string>(this.baseUrl + 'settings/is-valid-cron?cronExpression=' + val, TextResonse).pipe(map(d => d === 'true'));
   }
 
-  ifValidAuthority(authority: string) {
-    if (authority === '' || authority === undefined || authority === null) return of(AuthorityValidationResult.NotApplicable);
-
-    return this.http.post<string>(this.baseUrl + 'settings/is-valid-authority', {authority}, TextResonse).pipe(map(r => parseInt(r) as AuthorityValidationResult));
+  validAuthorityRsc(authority: Signal<string | null | undefined>) {
+    return httpResource.text(() => ({
+      url: this.baseUrl + 'settings/is-valid-authority',
+      method: 'POST',
+      body: {
+        authority: authority()
+      },
+    }), {
+      parse: (value) => parseInt(value) as AuthorityValidationResult,
+    }).asReadonly();
   }
+
 }

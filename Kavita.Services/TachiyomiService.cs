@@ -37,22 +37,24 @@ public class TachiyomiService(
 
     public async Task<TachiyomiChapterDto?> GetLatestChapter(int seriesId, int userId, CancellationToken ct = default)
     {
-        var currentChapter = await readerService.GetContinuePoint(seriesId, userId);
+        var currentChapter = await readerService.GetContinuePoint(seriesId, userId, ct);
 
         var prevChapterId =
-            await readerService.GetPrevChapterIdAsync(seriesId, currentChapter.VolumeId, currentChapter.Id, userId);
+            await readerService.GetPrevChapterIdAsync(seriesId, currentChapter.VolumeId, currentChapter.Id, userId, ct);
 
         // If prevChapterId is -1, this means either nothing is read or everything is read.
         if (prevChapterId == -1)
         {
             var series = await unitOfWork.SeriesRepository.GetSeriesDtoByIdAsync(seriesId, userId, ct);
+            if (series is null) return null;
+
             var userHasProgress = series.PagesRead != 0 && series.PagesRead <= series.Pages;
 
             // If the user doesn't have progress, then return null, which the extension will catch as 204 (no content) and report nothing as read
             if (!userHasProgress) return null;
 
             // Else return the max chapter to Tachiyomi so it can consider everything read
-            var volumes = (await unitOfWork.VolumeRepository.GetVolumes(seriesId, ct)).ToImmutableList();
+            var volumes = (await unitOfWork.VolumeRepository.GetVolumesForSeriesAsync(seriesId, ct: ct)).ToImmutableList();
             var looseLeafChapterVolume = volumes.GetLooseLeafVolumeOrDefault();
             if (looseLeafChapterVolume == null)
             {
@@ -110,8 +112,6 @@ public class TachiyomiService(
         logger.LogDebug("Marking chapters until {ChapterNumber} for series {SeriesId} for user {UserId}",
             chapterNumber, seriesId, user.Id);
 
-        user.Progresses ??= [];
-
         var chapters = chapterNumber switch
         {
             // When Tachiyomi sync's progress, if there is no current progress in Tachiyomi, 0.0f is sent.
@@ -130,7 +130,7 @@ public class TachiyomiService(
         var progressDictionary = await unitOfWork.AppUserProgressRepository
             .GetUserProgressForChaptersByChapters(user.Id, seriesId, chapterIds, ct);
 
-        await readerService.MarkChaptersAsRead(user, seriesId, chapters);
+        await readerService.MarkChaptersAsRead(user, seriesId, chapters, ct);
 
         if (generateReadingSessions)
         {
@@ -150,7 +150,7 @@ public class TachiyomiService(
 
     private async Task<List<Chapter>> GetChaptersUntilVolume(int seriesId, int volumeNumber)
     {
-        var volumes = await unitOfWork.VolumeRepository.GetVolumesForSeriesAsync([seriesId], true);
+        var volumes = await unitOfWork.VolumeRepository.GetVolumesForSeriesIdsAsync([seriesId], true);
 
         return volumes
             .Where(v => v.MinNumber <= volumeNumber && v.MinNumber > 0)
@@ -161,7 +161,7 @@ public class TachiyomiService(
 
     private async Task<List<Chapter>> GetChaptersUntilChapter(int seriesId, float chapterNumber)
     {
-        var volumes = await unitOfWork.VolumeRepository.GetVolumesForSeriesAsync([seriesId], true);
+        var volumes = await unitOfWork.VolumeRepository.GetVolumesForSeriesIdsAsync([seriesId], true);
 
         return volumes
             .OrderBy(v => v.MinNumber)

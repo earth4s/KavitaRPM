@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Kavita.Models.Attributes;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.UserPreferences;
 
@@ -179,12 +180,26 @@ public class AppUserPreferences
     /// </summary>
     /// <remarks>0 days will disable the feature</remarks>
     public int PromptForRereadsAfter { get; set; }
+    /// <summary>
+    /// How many Days since today in the past for reading progress, should content be considered for On Deck, before it gets removed automatically
+    /// </summary>
+    public int OnDeckProgressDays { get; set; }
+    /// <summary>
+    /// How many Days since today in the past for chapter updates, should content be considered for On Deck, before it gets removed automatically
+    /// </summary>
+    public int OnDeckUpdateDays { get; set; }
 
     /// <summary>
     /// JSON dictionary mappings for custom keybinds across the web app.
     /// Values are a list of key codes that need to be pressed at the same time for the keybind to be valid
     /// </summary>
     public Dictionary<KeyBindTarget, IList<KeyBind>> CustomKeyBinds { get; set; }
+
+    /// <summary>
+    /// Kobo sync settings
+    /// </summary>
+    [JsonColumn]
+    public AppUserKoboSyncPreferences KoboSyncPreferences { get; set; } = new();
 
     #endregion
 

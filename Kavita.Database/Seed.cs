@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -142,10 +143,23 @@ public static class Seed
         await unitOfWork.CommitAsync();
     }
 
+    /// <summary>
+    /// Server settings to use the default value of, if empty.
+    /// Reports of users with these as an empty value. I cannot figure out how they got it that way
+    /// See: https://github.com/Kareadita/Kavita/issues/5017
+    /// </summary>
+    private static readonly IReadOnlyList<ServerSettingKey> UseDefaultIfEmpty = [
+        ServerSettingKey.TaskScan,
+        ServerSettingKey.TaskBackup,
+        ServerSettingKey.TaskCleanup,
+        ServerSettingKey.TaskCblSync,
+        ServerSettingKey.TaskCompositeCovers,
+    ];
+
     public static async Task SeedSettings(IDataContext context, IDirectoryService directoryService)
     {
         await context.Database.EnsureCreatedAsync();
-        Defaults.DefaultSettings = [
+        ImmutableArray<ServerSetting> defaultSettings = [
             ..new List<ServerSetting>()
             {
                 new() {Key = ServerSettingKey.CacheDirectory, Value = directoryService.CacheDirectory},
@@ -153,6 +167,7 @@ public static class Seed
                 new() {Key = ServerSettingKey.TaskBackup, Value = "daily"},
                 new() {Key = ServerSettingKey.TaskCleanup, Value = "daily"},
                 new() {Key = ServerSettingKey.TaskCblSync, Value = "0 4 * * *"}, // 4am daily
+                new() {Key = ServerSettingKey.TaskCompositeCovers, Value = "0 5 * * *"}, // 5am daily, an hour after CBL sync
                 new() {Key = ServerSettingKey.LoggingLevel, Value = "Debug"},
                 new()
                 {
@@ -173,7 +188,7 @@ public static class Seed
                 new() {Key = ServerSettingKey.BookmarkDirectory, Value = directoryService.BookmarkDirectory},
                 new() {Key = ServerSettingKey.TotalBackups, Value = "30"},
                 new() {Key = ServerSettingKey.TotalLogs, Value = "30"},
-                new() {Key = ServerSettingKey.EnableFolderWatching, Value = "false"},
+                new() {Key = ServerSettingKey.EnableFolderWatching, Value = "true"},
                 new() {Key = ServerSettingKey.HostName, Value = string.Empty},
                 new() {Key = ServerSettingKey.EncodeMediaAs, Value = nameof(EncodeFormat.PNG)},
                 new() {Key = ServerSettingKey.LicenseKey, Value = string.Empty},
@@ -198,15 +213,24 @@ public static class Seed
                 new() {Key = ServerSettingKey.FirstInstallVersion, Value = BuildInfo.Version.ToString()},
                 new() {Key = ServerSettingKey.FirstInstallDate, Value = DateTime.UtcNow.ToString(CultureInfo.InvariantCulture)},
                 new() {Key = ServerSettingKey.StatsApiHits, Value = "0"},
+                new() {Key = ServerSettingKey.EnableKobo, Value = "true"},
+                new() {Key = ServerSettingKey.EnableKepubify, Value = "true"},
+                new() {Key = ServerSettingKey.GcdCredentials, Value = string.Empty},
+                new() {Key = ServerSettingKey.ComicVineApiKey, Value = string.Empty},
             }.ToArray()
         ];
+        Defaults.DefaultSettings = defaultSettings;
 
-        foreach (var defaultSetting in Defaults.DefaultSettings)
+        foreach (var defaultSetting in defaultSettings)
         {
             var existing = await context.ServerSetting.FirstOrDefaultAsync(s => s.Key == defaultSetting.Key);
             if (existing == null)
             {
                 await context.ServerSetting.AddAsync(defaultSetting);
+            }
+            else if (UseDefaultIfEmpty.Contains(defaultSetting.Key) && string.IsNullOrEmpty(existing.Value))
+            {
+                existing.Value = defaultSetting.Value;
             }
         }
 
@@ -273,7 +297,10 @@ public static class Seed
                 EnableChapterPublisher = true,
                 EnableChapterCoverImage = false,
                 EnableChapterReleaseDate = true,
-                PersonRoles = [PersonRole.Writer, PersonRole.CoverArtist, PersonRole.Character]
+                PersonRoles = [PersonRole.Writer, PersonRole.CoverArtist, PersonRole.Character],
+                GlobalNameLanguages = "en",
+                GlobalLocalizedNameLanguages = "ja-Latn",
+                LibraryLanguageTitleOverrides = []
             };
             await context.MetadataSettings.AddAsync(existing);
         }

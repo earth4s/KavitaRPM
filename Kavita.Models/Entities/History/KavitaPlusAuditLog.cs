@@ -1,5 +1,9 @@
 using System;
+using Kavita.Models.Attributes;
+using Kavita.Models.DTOs.KavitaPlus.Audit;
+using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
+using Kavita.Models.Entities.Scrobble;
 using Kavita.Models.Entities.User;
 
 namespace Kavita.Models.Entities.History;
@@ -23,6 +27,9 @@ public class KavitaPlusAuditLog
     /// </summary>
     public int? SeriesId { get; set; }
 
+    public int? ScrobbleErrorId { get; set; }
+    public ScrobbleError? ScrobbleError { get; set; }
+
     /// <summary>
     /// Discriminator describing what SubjectId refers to
     /// </summary>
@@ -34,8 +41,10 @@ public class KavitaPlusAuditLog
     /// <summary>
     /// JSON-serialized event-specific payload.
     /// </summary>
+    [ExportScrub(ExportScrubKind.Json, JsonTypeSelector = typeof(KavitaPlusAuditPayloads))]
     public string? Payload { get; set; }
 
+    [ExportScrub(ExportScrubKind.TextScrub)]
     public string? ErrorMessage { get; set; }
 
     /// <summary>

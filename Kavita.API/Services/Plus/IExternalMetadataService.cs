@@ -8,6 +8,7 @@ using Kavita.Models.DTOs.KavitaPlus.ExternalMetadata.Covers;
 using Kavita.Models.DTOs.KavitaPlus.Metadata;
 using Kavita.Models.DTOs.Metadata.Matching;
 using Kavita.Models.DTOs.SeriesDetail;
+using Kavita.Models.Entities;
 using Kavita.Models.Entities.Enums;
 using Kavita.Models.Entities.Enums.Audit;
 
@@ -15,19 +16,16 @@ namespace Kavita.API.Services.Plus;
 
 public interface IExternalMetadataService
 {
-    public static readonly HashSet<LibraryType> NonEligibleLibraryTypes = [LibraryType.Comic, LibraryType.Book, LibraryType.Image];
-
     /// <summary>
     /// Retrieves Metadata about a Recommended External Series
     /// </summary>
-    /// <param name="aniListId"></param>
-    /// <param name="malId"></param>
-    /// <param name="mangaBakaId"></param>
     /// <param name="seriesId"></param>
+    /// <param name="request"></param>
+    /// /// <param name="recommendedSeriesId"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
     /// <exception cref="KavitaException"></exception>
-    Task<ExternalSeriesDetailDto?> GetExternalSeriesDetail(int? aniListId, long? malId, int? mangaBakaId, int? seriesId, CancellationToken ct = default);
+    Task<ExternalSeriesDetailDto?> GetExternalSeriesDetail(int seriesId, MetadataRequest request, int? recommendedSeriesId, CancellationToken ct = default);
 
     /// <summary>
     /// This is a task that runs on a schedule and slowly fetches data from Kavita+ to keep
@@ -47,16 +45,17 @@ public interface IExternalMetadataService
     /// </remarks>
     /// <param name="dto"></param>
     /// <param name="ct"></param>
-    /// <returns></returns>
-    Task<IList<ExternalSeriesMatchDto>> MatchSeries(MatchSeriesDto dto, CancellationToken ct = default);
+    /// <returns>The matches and the provider they came from, or null if the series doesn't exist</returns>
+    Task<MatchSeriesResultDto?> MatchSeries(MatchSeriesDto dto, CancellationToken ct = default);
 
     /// <summary>
     /// This will override any sort of matching that was done prior and force it to be what the user Selected
     /// </summary>
     /// <param name="seriesId"></param>
     /// <param name="ids"></param>
+    /// <param name="provider">The provider the match came from.</param>
     /// <param name="ct"></param>
-    Task FixSeriesMatch(int seriesId, ExternalMetadataIdsDto ids, CancellationToken ct = default);
+    Task FixSeriesMatch(int seriesId, ExternalMetadataIdsDto ids, MetadataProvider? provider = null, CancellationToken ct = default);
 
     /// <summary>
     /// Sets a series to Don't Match and removes all previously cached
@@ -65,6 +64,14 @@ public interface IExternalMetadataService
     /// <param name="dontMatch"></param>
     /// <param name="ct"></param>
     Task UpdateSeriesDontMatch(int seriesId, bool dontMatch, CancellationToken ct = default);
+
+    /// <summary>
+    /// Changes (or clears) which <see cref="MetadataProvider"/> a Series should match against, overriding its Library's default
+    /// </summary>
+    /// <param name="seriesId"></param>
+    /// <param name="metadataProviderOverride">Null clears the override</param>
+    /// <param name="ct"></param>
+    Task UpdateSeriesMetadataProviderOverride(int seriesId, MetadataProvider? metadataProviderOverride, CancellationToken ct = default);
 
     /// <summary>
     /// Given external metadata from Kavita+, write as much as possible to the Kavita series as possible
@@ -98,4 +105,25 @@ public interface IExternalMetadataService
     /// <returns></returns>
     Task<SeriesDetailPlusDto?> TryMatchAndLoadMetadataForSeries(int seriesId, LibraryType libraryType, MetadataFetchTrigger trigger,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Determines whether changing the Series' Name to <paramref name="proposedName"/> would orphan merged files on
+    /// disk, i.e. the current Name still anchors a folder on disk that is not covered by the Series' LocalizedName or
+    /// OriginalName. When true, the scanner would split those files into a new series and the write should be rejected.
+    /// </summary>
+    /// <param name="series">The Series being edited. Loaded scalar fields (Name, NormalizedLocalizedName, NormalizedOriginalName) are used.</param>
+    /// <param name="proposedName">The new (raw, un-normalized) name.</param>
+    /// <param name="ct"></param>
+    Task<bool> WouldNameChangeOrphanMergedFiles(Series series, string? proposedName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Determines whether changing the Series' LocalizedName to <paramref name="proposedLocalizedName"/> would orphan
+    /// merged files on disk, i.e. the current LocalizedName still anchors a folder on disk that is not covered by the
+    /// Series' Name or OriginalName. When true, the scanner would split those files into a new series and the write
+    /// should be rejected.
+    /// </summary>
+    /// <param name="series">The Series being edited. Loaded scalar fields (LocalizedName, NormalizedName, NormalizedOriginalName) are used.</param>
+    /// <param name="proposedLocalizedName">The new (raw, un-normalized) localized name. Null or empty represents clearing the field.</param>
+    /// <param name="ct"></param>
+    Task<bool> WouldLocalizedNameChangeOrphanMergedFiles(Series series, string? proposedLocalizedName, CancellationToken ct = default);
 }

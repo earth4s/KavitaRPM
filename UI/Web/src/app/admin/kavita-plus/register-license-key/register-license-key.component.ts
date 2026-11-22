@@ -40,20 +40,22 @@ export class RegisterLicenseKeyComponent {
 
   save() {
     if (!this.formData) return;
+
     this.isLoading.set(true);
     this.errorCode.set(null);
-    this.licenseService.registerLicense(this.formData.licenseKey, this.formData.email, this.formData.discordId ?? undefined).subscribe(async result => {
+    
+    this.licenseService.registerLicense(this.formData.licenseKey, this.formData.email, undefined).subscribe(async result => {
       this.isLoading.set(false);
       if (!result.success) {
         if (result.errorCode === KavitaPlusRegistrationErrorCode.AlreadyRegistered) {
-          const answer = await this.confirmService.confirm(translate('license.k+-license-overwrite'), {
+          const answer = await this.confirmService.confirm(translate('register-license.k+-license-overwrite'), {
             _type: 'confirm',
-            content: translate('license.k+-license-overwrite'),
+            content: translate('register-license.k+-license-overwrite'),
             disableEscape: false,
-            header: translate('license.k+-already-registered-header'),
+            header: translate('register-license.k+-already-registered-header'),
             buttons: [
-              {text: translate('license.overwrite'), type: 'primary'},
-              {text: translate('license.cancel'), type: 'secondary'},
+              {text: translate('register-license.overwrite'), type: 'primary'},
+              {text: translate('register-license.cancel'), type: 'secondary'},
             ]
           });
           if (answer) {
@@ -72,7 +74,13 @@ export class RegisterLicenseKeyComponent {
   }
 
   forceSave() {
-    this.licenseService.resetLicense(this.formData!.licenseKey, this.formData!.email)
-      .subscribe(_ => this.save());
+    this.isLoading.set(true);
+    this.licenseService.resetLicense(this.formData!.licenseKey, this.formData!.email).subscribe({
+      next: () => this.save(),
+      error: () => {
+        this.isLoading.set(false);
+        this.errorCode.set(KavitaPlusRegistrationErrorCode.AlreadyRegistered);
+      }
+    });
   }
 }

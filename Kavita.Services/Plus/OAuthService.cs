@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Flurl.Http;
 using Hangfire;
 using Kavita.API.Database;
+using Kavita.API.Services;
 using Kavita.API.Services.Plus;
 using Kavita.API.Services.SignalR;
 using Kavita.Models.DTOs.KavitaPlus.Audit;
@@ -25,11 +26,13 @@ public class OAuthService(
     IScrobblingService scrobblingService,
     IKavitaPlusApiService kavitaPlusApiService,
     IEventHub eventHub,
-    IKavitaPlusAuditService kavitaPlusAuditService): IOAuthService
+    IKavitaPlusAuditService kavitaPlusAuditService,
+    IEmailService emailService): IOAuthService
 {
     private const string DiscordMeApiUrl = "https://discord.com/api/users/@me";
 
-    public async Task HandleCallback(AppUser user, OAuthUpstream upstream, string token, string? refreshToken = null)
+    public async Task HandleCallback(AppUser user, OAuthUpstream upstream, string token, string? refreshToken = null,
+        int? expiresIn = null)
     {
         logger.LogDebug("Handling callback {Callback}, HasToken: {HasToken}, HasRefreshToken: {HasRefreshToken}",
             upstream.ToString(), !string.IsNullOrEmpty(token), !string.IsNullOrEmpty(refreshToken));
@@ -46,6 +49,9 @@ public class OAuthService(
                 return;
             case OAuthUpstream.MyAnimeList:
                 await SetScrobbleProviderToken(user, ScrobbleProvider.Mal, token, refreshToken);
+                break;
+            case OAuthUpstream.Hardcover:
+                await SetScrobbleProviderToken(user, ScrobbleProvider.Hardcover, token, refreshToken, expiresIn);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(upstream), upstream, null);
@@ -85,7 +91,7 @@ public class OAuthService(
         }
     }
 
-    private async Task SetScrobbleProviderToken(AppUser user, ScrobbleProvider provider, string token, string? refreshToken = null)
+    private async Task SetScrobbleProviderToken(AppUser user, ScrobbleProvider provider, string token, string? refreshToken = null, int? expiresIn = null)
     {
         var scrobbleSettings = user.ScrobbleProviders[provider];
 
@@ -101,6 +107,9 @@ public class OAuthService(
 
         user.ScrobbleProviders[provider].AuthenticationToken = token;
         user.ScrobbleProviders[provider].RefreshToken = refreshToken ?? string.Empty;
+        user.ScrobbleProviders[provider].ValidUntilUtc = expiresIn.HasValue
+            ? DateTime.UtcNow + TimeSpan.FromSeconds(expiresIn.Value) - TimeSpan.FromSeconds(30)
+            : DateTime.MaxValue;
         unitOfWork.UserRepository.Update(user);
 
         await unitOfWork.CommitAsync();
@@ -129,7 +138,7 @@ public class OAuthService(
         {
             foreach (var provider in user.ScrobbleProviders.Keys)
             {
-                await RefreshToken(provider, user, ct);
+                await RefreshToken(provider, user, false, ct);
             }
         }
     }
@@ -141,10 +150,10 @@ public class OAuthService(
 
         logger.LogInformation("Retrying token refresh for {Provider} for user {UserId}", provider, user.Id);
 
-        await RefreshToken(provider, user, ct);
+        await RefreshToken(provider, user, true, ct);
     }
 
-    private async Task RefreshToken(ScrobbleProvider provider, AppUser user, CancellationToken ct)
+    private async Task RefreshToken(ScrobbleProvider provider, AppUser user, bool isRetry, CancellationToken ct)
     {
         var settings = user.ScrobbleProviders[provider];
 
@@ -190,10 +199,16 @@ public class OAuthService(
                     Provider = provider
                 }, userId: user.Id, ct: ct);
 
-            logger.LogDebug("Scheduling retry for {Provider} for user {UserId} in 30m", provider, user.Id);
+            if (!isRetry)
+            {
+                logger.LogDebug("Scheduling retry for {Provider} for user {UserId} in 30m", provider, user.Id);
 
-            BackgroundJob.Schedule(() => RetryTokenRefresh(provider, user.Id, CancellationToken.None),
-                TimeSpan.FromMinutes(30));
+                BackgroundJob.Schedule(() => RetryTokenRefresh(provider, user.Id, CancellationToken.None),
+                    TimeSpan.FromMinutes(30));
+                return;
+            }
+
+            await InvalidateToken(user.Id, settings, ct);
 
             return;
         }
@@ -219,5 +234,18 @@ public class OAuthService(
 
         await eventHub.SendMessageToAsync(MessageFactory.ScrobbleProviderUpdated,
             MessageFactory.ScrobbleProviderUpdatedEvent(provider), user.Id, ct);
+    }
+
+    private async Task InvalidateToken(int userId, AppUserScrobbleProvider settings, CancellationToken ct)
+    {
+        logger.LogWarning("Retry for {Provider} has failed, the connection will be invalidated", settings.Provider);
+
+        settings.AuthenticationToken = string.Empty;
+        settings.RefreshToken = null;
+        settings.ValidUntilUtc = DateTime.MinValue;
+        settings.LastSyncedUtc = DateTime.UtcNow;
+        await unitOfWork.CommitAsync(ct);
+
+        await emailService.SendTokenInvalidatedEmail(userId, settings.Provider, ct);
     }
 }
